@@ -35,7 +35,7 @@ bool is_set_motor_number           = false;
 bool isVeryShortDistance           = false;
 
 void    setTargetPosition(String targetPosition);  // Target position is in um or degrees
-void    setMotorIndex(String motorNumber);         // Motor number is 1-4 (0-3)
+void    setMotorIndex(String motorIndex);          // Motor number is 1-4 (0-3)
 int32_t getMotorPosition();
 
 void encoderUpdateTask(void* pvParameters);
@@ -71,7 +71,7 @@ void setup()
 
         if (!driver[di]->begin())
         {
-            Serial.printf("Failed to initialize TMC5160 driver %d\n", di + 1);
+            Serial.printf("Failed to initialize TMC5160 driver %d\n", di);
             while (1)
                 delay(1000);
         }
@@ -82,14 +82,14 @@ void setup()
     {
         if (driver[di]->testConnection())
         {
-            Serial.printf("Driver %d connected successfully\n", di + 1);
+            Serial.printf("Driver %d connected successfully\n", di);
 
             // Get and print driver status
             auto status = driver[di]->getDriverStatus();
-            Serial.printf("Driver %d Status:\n", di + 1);
+            Serial.printf("Driver %d Status:\n", di);
             Serial.printf("  Version: 0x%08X\n", status.version);
             Serial.printf("  Current: %d mA\n", status.current);
-            Serial.printf("  Temperature: %d\n", status.temperature);
+            Serial.printf("  Temperature: %d\n\n", status.temperature);
 
             // Configure motor parameters
             if (di == (uint8_t)MotorType::LINEAR)
@@ -99,7 +99,7 @@ void setup()
         }
         else
         {
-            Serial.printf("Driver %d connection failed!\n", di + 1);
+            Serial.printf("Driver %d connection failed!\n", di);
         }
     }
 
@@ -163,17 +163,17 @@ void setTargetPosition(String targetPosition)
 }
 
 // Motor number is 1-4 (0-3)
-void setMotorIndex(String motorNumber)
+void setMotorIndex(String motorIndex)
 {
     try
     {
-        uint8_t motorNumberInt = motorNumber.toInt();
-        if (motorNumberInt >= NUM_DRIVERS + 1 || motorNumberInt <= 0)
+        uint8_t motorIndexInt = motorIndex.toInt();
+        if (motorIndexInt >= NUM_DRIVERS)
         {
-            Serial.printf("ERROR: Invalid motor number! %d\n", motorNumberInt);
+            Serial.printf("ERROR: Invalid motor number! %d\n", motorIndexInt);
             return;
         }
-        currentIndex = motorNumberInt - 1;
+        currentIndex = motorIndexInt;
     }
     catch (const std::exception& e)
     {
@@ -201,7 +201,7 @@ void encoderUpdateTask(void* pvParameters)
         if (!driver[currentIndex]->testConnection() && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
-            Serial.printf("Driver %d connection failed!\n", currentIndex + 1);
+            Serial.printf("Driver %d connection failed!\n", currentIndex);
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
@@ -245,7 +245,7 @@ void motorUpdateTask(void* pvParameters)
         if (!driver[currentIndex]->testConnection() && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
-            Serial.printf("Driver %d connection failed!\n", currentIndex + 1);
+            Serial.printf("Driver %d connection failed!\n", currentIndex);
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
@@ -262,7 +262,7 @@ void motorUpdateTask(void* pvParameters)
             hasReportedDriverStatus = true;
 
             auto status = driver[currentIndex]->getDriverStatus();
-            Serial.printf("Motor %d Status:\n", currentIndex + 1);
+            Serial.printf("Motor %d Status:\n", currentIndex);
             Serial.printf("  Current: %d mA\n", status.current);
             Serial.printf("  Temperature: %d\n", status.temperature);
 
@@ -420,8 +420,8 @@ void   serialReadTask(void* pvParameters)
                 // Get motor number
                 if (c.getArgument("n").isSet())
                 {
-                    String motorNumStr = c.getArgument("n").getValue();
-                    setMotorIndex(motorNumStr);
+                    String motorIndexStr = c.getArgument("n").getValue();
+                    setMotorIndex(motorIndexStr);
                 }
                 else
                 {
@@ -433,10 +433,9 @@ void   serialReadTask(void* pvParameters)
                 // Handle Get motor position command
                 if (c.getArgument("c").isSet())
                 {
-                    uint8_t motorNumber = currentIndex + 1;
-                    int32_t position    = getMotorPosition();
+                    int32_t position = getMotorPosition();
                     Serial.print(F("*"));
-                    Serial.print(motorNumber);
+                    Serial.print(currentIndex);
                     Serial.print(F("#"));
                     Serial.print(position);
                     Serial.println(F("#"));
@@ -519,7 +518,7 @@ void printSerial()
         Serial.print(F("MOT\tDIR\tCPL\tLAP\tPRD\tPDG\tPMM\tTTM\tTTU\tTAR\tERR\n"));
 
         // Format all values into the buffer
-        Serial.print((currentIndex + 1));
+        Serial.print((currentIndex));
         Serial.print(F("\t"));
         Serial.print(ec.direction);
         Serial.print(F("\t"));
