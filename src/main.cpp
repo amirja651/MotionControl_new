@@ -3,7 +3,7 @@
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
 #include <Arduino.h>
-#include <CLI_Manager.h>
+#include <CLIManager.h>
 #include <SPI.h>
 #include <SimpleCLI.h>
 #include <TMCStepper.h>
