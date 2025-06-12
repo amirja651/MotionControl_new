@@ -1,0 +1,56 @@
+---
+Language: Cpp
+# Based on ESP32 Motion Control System code
+BasedOnStyle: LLVM
+IndentPPDirectives: BeforeHash
+
+# Basic settings
+AccessModifierOffset: -4
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 130
+
+# Brackets
+BreakBeforeBraces: Allman
+BraceWrapping:
+
+# Indentation and spacing
+IndentCaseLabels: true
+NamespaceIndentation: All
+FixNamespaceComments: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignTrailingComments: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Special features for Embedded projects
+AlignConsecutiveMacros: true
+AlignEscapedNewlines: Right
+AllowAllParametersOfDeclarationOnNextLine: true
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# The format of the original codes
+SortIncludes: true
+SortUsingDeclarations: true
+IncludeBlocks: Preserve
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+ReflowComments: true
+
+# Additional settings
+Standard: Cpp11
