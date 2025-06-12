@@ -58,6 +58,9 @@ void setup()
     while (!Serial)
         delay(10);
 
+    // Initialize CLI
+    initializeCLI();
+
     // Initialize and print system diagnostics
     SystemDiagnostics::initialize();
     SystemDiagnostics::printSystemInfo();
@@ -168,12 +171,12 @@ void setMotorIndex(String motorIndex)
     try
     {
         uint8_t motorIndexInt = motorIndex.toInt();
-        if (motorIndexInt >= NUM_DRIVERS)
+        if (motorIndexInt > NUM_DRIVERS || motorIndexInt == 0)
         {
             Serial.printf("[SetMotorIndex] Invalid motor number! %d\n", motorIndexInt);
             return;
         }
-        currentIndex = motorIndexInt;
+        currentIndex = motorIndexInt - 1;
     }
     catch (const std::exception& e)
     {
