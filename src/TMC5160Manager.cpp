@@ -78,16 +78,16 @@ void TMC5160Manager::configureDriver()
     setSGTHRS(100);               // Stall threshold
 
     // Print configuration
-    Serial.printf("Driver %d configured:\n", _driverIndex);
-    Serial.printf("  Current: %d mA\n", DEFAULT_CURRENT);
-    Serial.printf("  Microsteps: 16\n");
-    Serial.printf("  Mode: STEP/DIR with spreadCycle\n");
+    Serial.printf("\n[configureDriver] Driver %d configured:\n", _driverIndex);
+    Serial.printf("  -- Current: %d mA\n", DEFAULT_CURRENT);
+    Serial.printf("  -- Microsteps: 16\n");
+    Serial.printf("  -- Mode: STEP/DIR with spreadCycle\n");
 
     // Read and print important registers
     uint32_t drv_status = _driver->DRV_STATUS();
     uint32_t gconf      = _driver->read(0x00);
-    Serial.printf("  DRV_STATUS: 0x%08X\n", drv_status);
-    Serial.printf("  GCONF: 0x%08X\n", gconf);
+    Serial.printf("  -- DRV_STATUS: 0x%08X\n", drv_status);
+    Serial.printf("  -- GCONF: 0x%08X\n\n", gconf);
 
     // Turn off the driver
     DriverOff();

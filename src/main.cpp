@@ -71,7 +71,7 @@ void setup()
 
         if (!driver[di]->begin())
         {
-            Serial.printf("Failed to initialize TMC5160 driver %d\n", di);
+            Serial.printf("[Setup] Failed to initialize TMC5160 driver %d\n", di);
             while (1)
                 delay(1000);
         }
@@ -82,14 +82,14 @@ void setup()
     {
         if (driver[di]->testConnection())
         {
-            Serial.printf("Driver %d connected successfully\n", di);
+            Serial.printf("[Setup] Driver %d connected successfully\n", di);
 
             // Get and print driver status
             auto status = driver[di]->getDriverStatus();
-            Serial.printf("Driver %d Status:\n", di);
-            Serial.printf("  Version: 0x%08X\n", status.version);
-            Serial.printf("  Current: %d mA\n", status.current);
-            Serial.printf("  Temperature: %d\n\n", status.temperature);
+            Serial.printf("\n[Setup] Driver %d Status:\n", di);
+            Serial.printf("  -- Version: 0x%08X\n", status.version);
+            Serial.printf("  -- Current: %d mA\n", status.current);
+            Serial.printf("  -- Temperature: %d\n\n", status.temperature);
 
             // Configure motor parameters
             if (di == (uint8_t)MotorType::LINEAR)
@@ -99,7 +99,7 @@ void setup()
         }
         else
         {
-            Serial.printf("Driver %d connection failed!\n", di);
+            Serial.printf("[Setup] Driver %d connection failed!\n", di);
         }
     }
 
@@ -157,7 +157,7 @@ void setTargetPosition(String targetPosition)
     }
     catch (const std::exception& e)
     {
-        Serial.printf("ERROR: Invalid target position! %s\n", e.what());
+        Serial.printf("[SetTargetPosition] Invalid target position! %s\n", e.what());
         return;
     }
 }
@@ -170,14 +170,14 @@ void setMotorIndex(String motorIndex)
         uint8_t motorIndexInt = motorIndex.toInt();
         if (motorIndexInt >= NUM_DRIVERS)
         {
-            Serial.printf("ERROR: Invalid motor number! %d\n", motorIndexInt);
+            Serial.printf("[SetMotorIndex] Invalid motor number! %d\n", motorIndexInt);
             return;
         }
         currentIndex = motorIndexInt;
     }
     catch (const std::exception& e)
     {
-        Serial.printf("ERROR: Invalid motor number! %s\n", e.what());
+        Serial.printf("[SetMotorIndex] Invalid motor number! %s\n", e.what());
         return;
     }
 }
@@ -201,7 +201,7 @@ void encoderUpdateTask(void* pvParameters)
         if (!driver[currentIndex]->testConnection() && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
-            Serial.printf("Driver %d connection failed!\n", currentIndex);
+            Serial.printf("[EncoderUpdateTask] Driver %d connection failed!\n", currentIndex);
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
@@ -210,8 +210,11 @@ void encoderUpdateTask(void* pvParameters)
         // Reset the message shown flag
         isDriverConnectedMessageShown = false;
 
-        for (int8_t ei = 0; ei < NUM_DRIVERS; ei++)
+        for (uint8_t ei = 0; ei < NUM_DRIVERS; ei++)
         {
+            if (encoder[ei] == nullptr)
+                continue;
+
             if (ei != currentIndex)
             {
                 if (encoder[ei]->isEnabled())
@@ -245,7 +248,7 @@ void motorUpdateTask(void* pvParameters)
         if (!driver[currentIndex]->testConnection() && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
-            Serial.printf("Driver %d connection failed!\n", currentIndex);
+            Serial.printf("[MotorUpdateTask] Driver %d connection failed!\n", currentIndex);
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
@@ -262,13 +265,13 @@ void motorUpdateTask(void* pvParameters)
             hasReportedDriverStatus = true;
 
             auto status = driver[currentIndex]->getDriverStatus();
-            Serial.printf("Motor %d Status:\n", currentIndex);
-            Serial.printf("  Current: %d mA\n", status.current);
-            Serial.printf("  Temperature: %d\n", status.temperature);
+            Serial.printf("\n[MotorUpdateTask] Motor %d Status:\n", currentIndex);
+            Serial.printf("  -- Current: %d mA\n", status.current);
+            Serial.printf("  -- Temperature: %d\n", status.temperature);
 
             // Get current speed based on motor index
             int16_t speed = motor[currentIndex]->getCurrentSpeed();
-            Serial.printf("  Speed: %d\n", speed);
+            Serial.printf("  -- Speed: %d\n\n", speed);
         }
 
         esp_task_wdt_reset();
