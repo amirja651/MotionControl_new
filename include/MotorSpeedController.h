@@ -1,9 +1,19 @@
 #ifndef MOTOR_SPEED_CONTROLLER_H
 #define MOTOR_SPEED_CONTROLLER_H
 
-#include "DriverPins.h"
+#include "Pins.h"
 #include "TMC5160Manager.h"
 #include <Arduino.h>
+
+enum class MotorType
+{
+    LINEAR     = 0,
+    ROTATIONAL = 1,
+};
+
+static constexpr uint8_t  LEDC_CHANNELS[NUM_DRIVERS] = {0, 1, 2, 3};
+static constexpr uint8_t  LEDC_TIMER_BITS            = 10;
+static constexpr uint32_t LEDC_BASE_FREQ             = 6000;  // 6kHz base frequency
 
 class MotorSpeedController
 {
@@ -28,10 +38,26 @@ public:
         digitalWrite(_DIR_PIN, forward ? HIGH : LOW);
     }
 
-    inline void driverEnable(bool enable)
+    inline void motorEnable(bool enable)
     {
-        driverEnabled = enable;
+        _motorEnabled = enable;
         digitalWrite(_EN_PIN, enable ? LOW : HIGH);
+    }
+
+    inline float wrapAngle180(float value)
+    {
+        if (value > 180.0f)
+            value -= 360.0f;
+        else if (value < -180.0f)
+            value += 360.0f;
+
+        return value;
+    }
+
+    inline float calculateSignedPositionError(float target_pos, float current_pos)
+    {
+        float error = target_pos - current_pos;
+        return error;
     }
 
     // Movement methods
@@ -46,17 +72,18 @@ private:
     uint16_t _STEP_PIN;
     uint16_t _EN_PIN;
 
-    uint8_t motorIndex;
-    int16_t currentSpeed;
-    bool    isRunning;
-    bool    driverEnabled;
-
-    static constexpr uint8_t  LEDC_CHANNELS[NUM_DRIVERS] = {0, 1, 2, 3};
-    static constexpr uint8_t  LEDC_TIMER_BITS            = 10;
-    static constexpr uint32_t LEDC_BASE_FREQ             = 5000;  // 5kHz base frequency
+    uint8_t _motorIndex;
+    int16_t _currentSpeed;
+    bool    _isRunning;
+    bool    _motorEnabled;
+    uint8_t _channel;
 
     // Helper methods
-    void updatePWM();
+    inline void updatePWM(float frequency);
+    float       calculateStoppingDistance(float current_freq);
+    float       calculateFrequencyFromError(float error_pulses);
+    void        updateMotorFrequency(float error_pulses, float target_position_pulses, float current_pos_pulses);
+    void        logging(float base_freq, float error_pulses);
 };
 
 #endif  // MOTOR_SPEED_CONTROLLER_H
