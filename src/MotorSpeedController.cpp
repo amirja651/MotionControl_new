@@ -77,11 +77,6 @@ void MotorSpeedController::emergencyStop()
     _driver.emergencyStop();
 }
 
-bool MotorSpeedController::isMoving() const
-{
-    return _isRunning;
-}
-
 int16_t MotorSpeedController::getCurrentSpeed() const
 {
     return _currentSpeed;
@@ -90,6 +85,11 @@ int16_t MotorSpeedController::getCurrentSpeed() const
 void MotorSpeedController::moveForward() {}
 
 void MotorSpeedController::moveBackward() {}
+
+void MotorSpeedController::setMotorDirection(bool direction)  // dir = true (Forward), false (Reverse)
+{
+    digitalWrite(_DIR_PIN, direction ? HIGH : LOW);
+}
 
 void MotorSpeedController::stopMotor()
 {
@@ -224,21 +224,24 @@ void MotorSpeedController::updateMotorFrequency(float error_pulses, float target
     // Save for next loop
     last_freq = base_freq;
 
-    logging(base_freq, error_pulses);
+    // logging(base_freq, error_pulses);
 
     // helper function:
-    updatePWM(base_freq);
+    // updatePWM(base_freq);
+
+    ledcWriteTone(_channel, base_freq);  // suitable for Stepper Motor
 }
 
 void MotorSpeedController::logging(float base_freq, float error_pulses)
 {
     // Logging
-    String buffer = "ch: " + String(_channel) + " freq: " + String(base_freq, 2) + " err: " + String(error_pulses, 2);
+    String buffer          = "ch: " + String(_channel) + " freq: " + String(base_freq, 2);
+    String bufferWithError = buffer + " err: " + String(error_pulses, 2);
 
     static String lastBuffer = "";
     if (buffer != lastBuffer)
     {
-        Serial.println(buffer);
+        Serial.println(bufferWithError);
         lastBuffer = buffer;
     }
 }

@@ -30,7 +30,6 @@ public:
     void emergencyStop();
 
     // Status methods
-    bool    isMoving() const;
     int16_t getCurrentSpeed() const;
 
     inline void setDirection(bool forward)
@@ -42,6 +41,16 @@ public:
     {
         _motorEnabled = enable;
         digitalWrite(_EN_PIN, enable ? LOW : HIGH);
+    }
+
+    inline bool isMotorEnabled() const
+    {
+        return _motorEnabled;
+    }
+
+    inline bool isMotorMoving() const
+    {
+        return _isRunning;
     }
 
     inline float wrapAngle180(float value)
@@ -64,6 +73,8 @@ public:
     void moveForward();
     void moveBackward();
     void stopMotor();
+    void setMotorDirection(bool direction);
+    void updateMotorFrequency(float error_pulses, float target_position_pulses, float current_pos_pulses);
 
 private:
     TMC5160Manager& _driver;
@@ -82,7 +93,6 @@ private:
     inline void updatePWM(float frequency);
     float       calculateStoppingDistance(float current_freq);
     float       calculateFrequencyFromError(float error_pulses);
-    void        updateMotorFrequency(float error_pulses, float target_position_pulses, float current_pos_pulses);
     void        logging(float base_freq, float error_pulses);
 };
 
