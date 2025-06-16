@@ -59,9 +59,9 @@ private:
     float    _RS;
 
     static constexpr uint16_t DEFAULT_CURRENT = 700;  // Default current in mA
-
+    static constexpr uint16_t MICROSTEPS      = 16;
     // Private helper methods
-    void     configureDriver();
+    bool     configureDriver();
     void     setSGTHRS(uint32_t threshold);
     uint32_t getSG_RESULT();
     void     DriverOff();

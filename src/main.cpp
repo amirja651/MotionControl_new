@@ -5,6 +5,7 @@
 #include "TMC5160Manager.h"
 #include <Arduino.h>
 #include <CLIManager.h>
+#include <Helper.h>
 #include <SPI.h>
 #include <SimpleCLI.h>
 #include <TMCStepper.h>
@@ -71,58 +72,43 @@ void setup()
     {
         // Create driver
         driver[di] = std::unique_ptr<TMC5160Manager>(new TMC5160Manager(di, DriverPins::CS[di]));
+        driver[di]->begin();
 
-        if (!driver[di]->begin())
-        {
-            Serial.printf("[Setup] Failed to initialize TMC5160 driver %d\n", di);
-            while (1)
-                delay(1000);
-        }
-    }
-
-    // Test connection for each driver
-    for (uint8_t di = 0; di < NUM_DRIVERS; di++)
-    {
+        // Test connection for each driver
         if (driver[di]->testConnection())
         {
             Serial.printf("[Setup] Driver %d connected successfully\n", di);
 
             // Get and print driver status
             auto status = driver[di]->getDriverStatus();
-            Serial.printf("\n[Setup] Driver %d Status:\n", di);
-            Serial.printf("  -- Version: 0x%08X\n", status.version);
-            Serial.printf("  -- Current: %d mA\n", status.current);
-            Serial.printf("  -- Temperature: %d\n\n", status.temperature);
+            Serial.printf("[Setup] Driver %d Status:\n", di);
+            Serial.printf(" - Version: 0x%08X\n", status.version);
+            Serial.printf(" - Current: %d mA\n", status.current);
+            Serial.printf(" - Temperature: %d\n\n", status.temperature);
 
             // Configure motor parameters
             if (di == (uint8_t)MotorType::LINEAR)
                 driver[di]->configureDriver_Nema11_1004H();
             else
                 driver[di]->configureDriver_Pancake();
+
+            // Create motor controller
+            motor[di] = std::unique_ptr<MotorSpeedController>(
+                new MotorSpeedController(di, *driver[di], DriverPins::DIR[di], DriverPins::STEP[di], DriverPins::EN[di]));
+
+            // Initialize all motor controllers
+            motor[di]->begin();
+
+            // Create pwm encoder
+            encoder[di] = std::unique_ptr<MAE3Encoder>(new MAE3Encoder(EncoderPins::SIGNAL[di], di));
+
+            // Initialize all encoders
+            encoder[di]->begin();
         }
         else
         {
-            Serial.printf("[Setup] Driver %d connection failed!\n", di);
-        }
-    }
-
-    // Initialize motors
-    for (uint8_t mi = 0; mi < NUM_DRIVERS; mi++)
-    {
-        if (driver[mi]->testConnection())
-        {
-            // Create motor controller
-            motor[mi] = std::unique_ptr<MotorSpeedController>(
-                new MotorSpeedController(mi, *driver[mi], DriverPins::DIR[mi], DriverPins::STEP[mi], DriverPins::EN[mi]));
-
-            // Initialize all motor controllers
-            motor[mi]->begin();
-
-            // Create pwm encoder
-            encoder[mi] = std::unique_ptr<MAE3Encoder>(new MAE3Encoder(EncoderPins::SIGNAL[mi], mi));
-
-            // Initialize all encoders
-            encoder[mi]->begin();
+            String gFailed = Helper::redText("failed");
+            Serial.printf("[Setup] Driver %d connection %s!\n", di, gFailed.c_str());
         }
     }
 
@@ -196,41 +182,40 @@ void encoderUpdateTask(void* pvParameters)
     const TickType_t xFrequency    = pdMS_TO_TICKS(1);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
+    // Show driver connection message only once
+    static bool isDriverConnectedMessageShown = false;
+
     while (1)
     {
-        // Show driver connection message only once
-        static bool isDriverConnectedMessageShown = false;
-
         if (!driver[currentIndex]->testConnection() && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
             Serial.printf("[EncoderUpdateTask] Driver %d connection failed!\n", currentIndex);
-            esp_task_wdt_reset();
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
-            continue;
         }
 
-        // Reset the message shown flag
-        isDriverConnectedMessageShown = false;
+        if (driver[currentIndex]->testConnection())
+            isDriverConnectedMessageShown = false;  // Reset the message shown flag
 
         for (uint8_t ei = 0; ei < NUM_DRIVERS; ei++)
         {
-            if (encoder[ei] == nullptr)
-                continue;
-
-            if (ei != currentIndex)
+            if (encoder[ei] != nullptr)
             {
-                if (encoder[ei]->isEnabled())
-                    encoder[ei]->disable();  // disable other encoder
-            }
-            else
-            {
-                if (encoder[ei]->isDisabled())
-                    encoder[ei]->enable();  // enable current encoder
+                if (ei != currentIndex)
+                {
+                    if (encoder[ei]->isEnabled())
+                        encoder[ei]->disable();  // disable other encoder
+                }
+                else
+                {
+                    if (encoder[ei]->isDisabled())
+                        encoder[ei]->enable();  // enable current encoder
+                }
             }
         }
 
-        encoder[currentIndex]->processPWM();
+        if (driver[currentIndex]->testConnection())
+            encoder[currentIndex]->processPWM();
+
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
@@ -243,38 +228,38 @@ void motorUpdateTask(void* pvParameters)
     const TickType_t xFrequency        = pdMS_TO_TICKS(MOTOR_UPDATE_TIME);
     TickType_t       xLastWakeTime     = xTaskGetTickCount();
 
+    static bool isDriverConnectedMessageShown = false;
+    // Show driver status only once
+    static bool hasReportedDriverStatus = false;
+
     while (1)
     {
         // Show driver connection message only once
-        static bool isDriverConnectedMessageShown = false;
 
         if (!driver[currentIndex]->testConnection() && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
             Serial.printf("[MotorUpdateTask] Driver %d connection failed!\n", currentIndex);
-            esp_task_wdt_reset();
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
-            continue;
         }
 
-        // Reset the message shown flag
-        isDriverConnectedMessageShown = false;
-
-        // Show driver status only once
-        static bool hasReportedDriverStatus = false;
-
-        if (!hasReportedDriverStatus)
+        if (driver[currentIndex]->testConnection())
         {
-            hasReportedDriverStatus = true;
+            // Reset the message shown flag
+            isDriverConnectedMessageShown = false;
 
-            auto status = driver[currentIndex]->getDriverStatus();
-            Serial.printf("\n[MotorUpdateTask] Motor %d Status:\n", currentIndex);
-            Serial.printf("  -- Current: %d mA\n", status.current);
-            Serial.printf("  -- Temperature: %d\n", status.temperature);
+            if (!hasReportedDriverStatus)
+            {
+                hasReportedDriverStatus = true;
 
-            // Get current speed based on motor index
-            int16_t speed = motor[currentIndex]->getCurrentSpeed();
-            Serial.printf("  -- Speed: %d\n\n", speed);
+                auto status = driver[currentIndex]->getDriverStatus();
+                Serial.printf("\n[MotorUpdateTask] Motor %d Status:\n", currentIndex);
+                Serial.printf("  -- Current: %d mA\n", status.current);
+                Serial.printf("  -- Temperature: %d\n", status.temperature);
+
+                // Get current speed based on motor index
+                int16_t speed = motor[currentIndex]->getCurrentSpeed();
+                Serial.printf("  -- Speed: %d\n\n", speed);
+            }
         }
 
         esp_task_wdt_reset();
@@ -510,6 +495,9 @@ int32_t last_pulse[NUM_DRIVERS] = {0};
 
 void printSerial()
 {
+    if (!driver[currentIndex]->testConnection())
+        return;
+
     EncoderContext ec = encoder[currentIndex]->getEncoderContext();
 
     float current_pos = (currentIndex == (uint8_t)MotorType::LINEAR) ? ec.total_travel_um : ec.position_degrees;

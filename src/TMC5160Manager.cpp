@@ -1,4 +1,5 @@
 #include "TMC5160Manager.h"
+#include "Helper.h"
 
 TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : _driverIndex(driverIndex), _pinCS(pinCS), _RS(RS)
 {
@@ -11,9 +12,9 @@ bool TMC5160Manager::begin()
     _driver = new TMC5160StepperExtended(_pinCS, _RS);
 
     // Configure driver
-    configureDriver();
+    bool success = configureDriver();
 
-    return true;
+    return success;
 }
 
 bool TMC5160Manager::testConnection()
@@ -58,39 +59,60 @@ TMC5160Manager::DriverStatus TMC5160Manager::getDriverStatus()
     return status;
 }
 
-void TMC5160Manager::configureDriver()
+bool TMC5160Manager::configureDriver()
 {
     if (!_driver)
-        return;
+        return false;
 
     // Basic configuration
     _driver->begin();
-    _driver->toff(5);                       // Enable driver
+    delay(5);
+    _driver->toff(5);  // Enable driver
+    delay(5);
     _driver->rms_current(DEFAULT_CURRENT);  // Set current to 1A
-    _driver->microsteps(16);                // Set microsteps to 16
-
+    delay(5);
+    _driver->microsteps(MICROSTEPS);  // Set microsteps to 16
+    delay(5);
     // Configure spreadCycle
-    _driver->en_pwm_mode(false);   // Disable stealthChop
+    _driver->en_pwm_mode(false);  // Disable stealthChop
+    delay(5);
     _driver->pwm_autoscale(true);  // Enable automatic current scaling
-
+    delay(5);
     // StallGuard configuration
     _driver->TCOOLTHRS(0xFFFFF);  // 20bit max
-    setSGTHRS(100);               // Stall threshold
+    delay(5);
+    setSGTHRS(100);  // Stall threshold
+    delay(5);
 
-    // Print configuration
-    Serial.printf("\n[configureDriver] Driver %d configured:\n", _driverIndex);
-    Serial.printf("  -- Current: %d mA\n", DEFAULT_CURRENT);
-    Serial.printf("  -- Microsteps: 16\n");
-    Serial.printf("  -- Mode: STEP/DIR with spreadCycle\n");
+    if (!testConnection())
+        return false;
 
+    String gTrue  = Helper::greenText("true");
+    String gFalse = Helper::redText("false");
+    bool   sdMode = _driver->sd_mode();
+    delay(5);
+    bool drvEnn = _driver->drv_enn();
+    delay(5);
     // Read and print important registers
     uint32_t drv_status = _driver->DRV_STATUS();
-    uint32_t gconf      = _driver->read(0x00);
-    Serial.printf("  -- DRV_STATUS: 0x%08X\n", drv_status);
-    Serial.printf("  -- GCONF: 0x%08X\n\n", gconf);
+    delay(5);
+    uint32_t gconf = _driver->read(0x00);
+    delay(5);
+
+    // Print configuration
+    Serial.printf("[configureDriver] Driver %d configured:\n", _driverIndex);
+    Serial.printf(" - Current: %d mA\n", DEFAULT_CURRENT);
+    Serial.printf(" - Microsteps: %d\n", MICROSTEPS);
+    Serial.printf(" - Mode: STEP/DIR with spreadCycle\n");
+    Serial.printf(" - Hardware configured for Step & Dir mode: %s\n", sdMode ? gTrue.c_str() : gFalse.c_str());
+    Serial.printf(" - Hardware enabled: %s\n", drvEnn ? gTrue.c_str() : gFalse.c_str());
+    Serial.printf(" - DRV_STATUS: 0x%08X\n", drv_status);
+    Serial.printf(" - GCONF: 0x%08X\n\n", gconf);
 
     // Turn off the driver
     DriverOff();
+
+    return true;
 }
 
 void TMC5160Manager::configureDriver_Nema11_1004H()

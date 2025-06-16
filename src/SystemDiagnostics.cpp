@@ -15,7 +15,7 @@ void SystemDiagnostics::printSystemInfo()
 
 void SystemDiagnostics::printSystemStatus()
 {
-    Serial.println("\n=== System Status ===");
+    Serial.println("=== System Status ===");
     printResetReason();
     printTaskInfo();
     Serial.println("====================\n");
