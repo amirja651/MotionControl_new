@@ -135,16 +135,16 @@ inline void MotorSpeedController::updatePWM(float frequency)
 }
 
 // This time → based on pulses
-float MotorSpeedController::calculateStoppingDistance(float current_freq)
+float MotorSpeedController::calculateStoppingDistance(float currentFreq)
 {
     // We assume that at different speeds → how many pulses are needed to stop
-    if (current_freq <= 200)
+    if (currentFreq <= 200)
         return 2;  // At low speed → 2 pulses are enough
-    else if (current_freq <= 500)
+    else if (currentFreq <= 500)
         return 4;
-    else if (current_freq <= 1000)
+    else if (currentFreq <= 1000)
         return 6;
-    else if (current_freq <= 3000)
+    else if (currentFreq <= 3000)
         return 10;
     else
         return 15;  // At high speed → we need up to 15 pulses of deceleration
@@ -152,9 +152,9 @@ float MotorSpeedController::calculateStoppingDistance(float current_freq)
 
 #define ERROR_DEADBAND_PULSES 1  // less than 1 pulse → stop
 
-float MotorSpeedController::calculateFrequencyFromError(float error_pulses)
+float MotorSpeedController::calculateFrequencyFromError(float error)
 {
-    float abs_error = fabs(error_pulses);
+    float abs_error = fabs(error);
 
     if (abs_error < ERROR_DEADBAND_PULSES)
         return 0;  // Full stop
@@ -173,70 +173,70 @@ float MotorSpeedController::calculateFrequencyFromError(float error_pulses)
     return 6000;
 }
 
-void MotorSpeedController::updateMotorFrequency(float error_pulses, float target_position_pulses, float current_pos_pulses)
+void MotorSpeedController::updateMotorFrequency(float error, float targetPos, float currentPos)
 {
-    static float last_freq = 0;
+    static float lastFreq = 0;
 
-    float base_freq = calculateFrequencyFromError(error_pulses);
+    float baseFreq = calculateFrequencyFromError(error);
 
     // If we have to stop
-    if (base_freq == 0)
+    if (baseFreq == 0)
     {
         stopMotor();
-        last_freq = 0;
+        lastFreq = 0;
         return;
     }
 
-    float distance_to_target = fabs(target_position_pulses - current_pos_pulses);
-    float stopping_distance  = calculateStoppingDistance(last_freq);
+    float distanceToTarget = fabs(targetPos - currentPos);
+    float stoppingDistance = calculateStoppingDistance(lastFreq);
 
     // Parameters
-    float max_freq_change_per_sec = 1000.0f;  // Hz/sec → Max acceleration/deceleration rate
-    float min_freq                = 100.0f;   // Minimum frequency (avoid motor stall)
-    float max_freq                = 3000.0f;  // Maximum frequency
-    float dt                      = 0.01f;    // Loop time in seconds → e.g. 10ms loop
+    float maxFreqChangePerSec = 1000.0f;  // Hz/sec → Max acceleration/deceleration rate
+    float minFreq             = 100.0f;   // Minimum frequency (avoid motor stall)
+    float maxFreq             = 3000.0f;  // Maximum frequency
+    float dt                  = 0.01f;    // Loop time in seconds → e.g. 10ms loop
 
     // Anticipate stopping → distance-based deceleration
-    if (distance_to_target <= stopping_distance)
+    if (distanceToTarget <= stoppingDistance)
     {
-        float reduction_factor = distance_to_target / stopping_distance;
+        float reduction_factor = distanceToTarget / stoppingDistance;
         reduction_factor       = pow(reduction_factor, 1.5f);
 
-        float target_freq = max(min_freq, max_freq * reduction_factor);
-        base_freq         = min(base_freq, target_freq);
+        float targetFreq = max(minFreq, maxFreq * reduction_factor);
+        baseFreq         = min(baseFreq, targetFreq);
     }
 
     // Limit rate of frequency change
-    float max_freq_change = max_freq_change_per_sec * dt;
+    float maxFreqChange = maxFreqChangePerSec * dt;
 
-    if (base_freq > last_freq)
+    if (baseFreq > lastFreq)
     {
-        base_freq = min(base_freq, last_freq + max_freq_change);
+        baseFreq = min(baseFreq, lastFreq + maxFreqChange);
     }
     else
     {
-        base_freq = max(base_freq, last_freq - max_freq_change);
+        baseFreq = max(baseFreq, lastFreq - maxFreqChange);
     }
 
     // Apply min/max freq limits
-    base_freq = constrain(base_freq, min_freq, max_freq);
+    baseFreq = constrain(baseFreq, minFreq, maxFreq);
 
     // Save for next loop
-    last_freq = base_freq;
+    lastFreq = baseFreq;
 
-    // logging(base_freq, error_pulses);
+    logging(baseFreq, error);
 
     // helper function:
     // updatePWM(base_freq);
 
-    ledcWriteTone(_channel, base_freq);  // suitable for Stepper Motor
+    ledcWriteTone(_channel, baseFreq);  // suitable for Stepper Motor
 }
 
-void MotorSpeedController::logging(float base_freq, float error_pulses)
+void MotorSpeedController::logging(float baseFreq, float error)
 {
     // Logging
-    String buffer          = "ch: " + String(_channel) + " freq: " + String(base_freq, 2);
-    String bufferWithError = buffer + " err: " + String(error_pulses, 2);
+    String buffer          = "ch: " + String(_channel) + " freq: " + String(baseFreq, 2);
+    String bufferWithError = buffer + " err: " + String(error, 2);
 
     static String lastBuffer = "";
     if (buffer != lastBuffer)

@@ -394,13 +394,11 @@ void MotorUpdate()
 
     MotorContext motCtx = getMotorContext();
 
-    newTargetpositionReceived[currentIndex] = false;
-
-    if (isVeryShortDistance || abs(motCtx.errorPulses) > 3)
+    if (isVeryShortDistance || fabs(motCtx.error) > 1)
     {
         isVeryShortDistance = false;
 
-        motor[currentIndex]->setMotorDirection(motCtx.errorPulses > 0);
+        motor[currentIndex]->setMotorDirection(motCtx.error > 0);
 
         if (!motor[currentIndex]->isMotorEnabled())
             motor[currentIndex]->motorEnable(true);
@@ -410,6 +408,7 @@ void MotorUpdate()
     else
     {
         motorStopAndSavePosition();
+        newTargetpositionReceived[currentIndex] = false;
     }
 }
 
@@ -421,7 +420,7 @@ void motorStopAndSavePosition()
     motor[currentIndex]->stopMotor();
     newTargetpositionReceived[currentIndex] = false;
 
-    Serial.print(F("*** Motor Stop ***\r\n"));
+    Serial.print(F("[Motor] Reached target. Stopping...\r\n"));
 
     vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -706,8 +705,14 @@ void printSerial()
         Serial.print(F("TGT POS (p): "));
         Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
         Serial.print(F("    "));
-        Serial.print(F("ERR (p): "));
-        Serial.print(firstTime ? 0 : motCtx.errorPulses, 0);
+        Serial.print(F("ERR: "));
+        Serial.print(firstTime ? 0 : motCtx.error, 0);
+        Serial.print(F("    "));
+        Serial.print(F("newTargetpositionReceived: "));
+        Serial.print(newTargetpositionReceived[currentIndex]);
+        Serial.print(F("    "));
+        Serial.print(F("driverEnabled: "));
+        Serial.print(driverEnabled[currentIndex]);
         Serial.print(F("\r\n\r\n"));
 
         if (firstTime)

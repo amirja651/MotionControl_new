@@ -82,7 +82,7 @@ public:
     void moveBackward();
     void stopMotor();
     void setMotorDirection(bool direction);
-    void updateMotorFrequency(float error_pulses, float target_position_pulses, float current_pos_pulses);
+    void updateMotorFrequency(float error, float targetPos, float currentPos);
 
 private:
     TMC5160Manager& _driver;
@@ -99,9 +99,9 @@ private:
 
     // Helper methods
     inline void updatePWM(float frequency);
-    float       calculateStoppingDistance(float current_freq);
-    float       calculateFrequencyFromError(float error_pulses);
-    void        logging(float base_freq, float error_pulses);
+    float       calculateStoppingDistance(float currentFreq);
+    float       calculateFrequencyFromError(float error);
+    void        logging(float baseFreq, float error);
 };
 
 #endif  // MOTOR_SPEED_CONTROLLER_H
