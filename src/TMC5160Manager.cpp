@@ -1,5 +1,4 @@
 #include "TMC5160Manager.h"
-#include "Helper.h"
 
 TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : _driverIndex(driverIndex), _pinCS(pinCS), _RS(RS)
 {
@@ -87,9 +86,7 @@ bool TMC5160Manager::configureDriver()
     if (!testConnection())
         return false;
 
-    String gTrue  = Helper::greenText("true");
-    String gFalse = Helper::redText("false");
-    bool   sdMode = _driver->sd_mode();
+    bool sdMode = _driver->sd_mode();
     delay(5);
     bool drvEnn = _driver->drv_enn();
     delay(5);
@@ -100,14 +97,14 @@ bool TMC5160Manager::configureDriver()
     delay(5);
 
     // Print configuration
-    Serial.printf("[configureDriver] Driver %d configured:\n", _driverIndex);
-    Serial.printf(" - Current: %d mA\n", DEFAULT_CURRENT);
-    Serial.printf(" - Microsteps: %d\n", MICROSTEPS);
-    Serial.printf(" - Mode: STEP/DIR with spreadCycle\n");
-    Serial.printf(" - Hardware configured for Step & Dir mode: %s\n", sdMode ? gTrue.c_str() : gFalse.c_str());
-    Serial.printf(" - Hardware enabled: %s\n", drvEnn ? gTrue.c_str() : gFalse.c_str());
-    Serial.printf(" - DRV_STATUS: 0x%08X\n", drv_status);
-    Serial.printf(" - GCONF: 0x%08X\n\n", gconf);
+    Serial.printf("[configureDriver] Driver %d configured:\r\n", _driverIndex);
+    Serial.printf(" - Current: %d mA\r\n", DEFAULT_CURRENT);
+    Serial.printf(" - Microsteps: %d\r\n", MICROSTEPS);
+    Serial.printf(" - Mode: STEP/DIR with spreadCycle\r\n");
+    Serial.printf(" - Hardware configured for Step & Dir mode: %s\r\n", sdMode ? "true" : "false");
+    Serial.printf(" - Hardware enabled: %s\r\n", drvEnn ? "true" : "false");
+    Serial.printf(" - DRV_STATUS: 0x%08X\r\n", drv_status);
+    Serial.printf(" - GCONF: 0x%08X\r\n\r\n", gconf);
 
     // Turn off the driver
     DriverOff();

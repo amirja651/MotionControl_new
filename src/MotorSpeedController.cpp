@@ -241,7 +241,8 @@ void MotorSpeedController::logging(float base_freq, float error_pulses)
     static String lastBuffer = "";
     if (buffer != lastBuffer)
     {
-        Serial.println(bufferWithError);
+        Serial.print(bufferWithError);
+        Serial.print(F("\r\n"));
         lastBuffer = buffer;
     }
 }

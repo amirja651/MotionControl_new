@@ -112,11 +112,11 @@ public:
     }
 
     // Converts um to pulses
-    inline float umToPulses(float um)
+    inline int32_t umToPulses(float um)
     {
         float mm            = um / 1000.0f;
         float pulses_per_mm = FULL_SCALE / LEAD_SCREW_PITCH_MM;
-        return mm * pulses_per_mm;
+        return static_cast<int32_t>(mm * pulses_per_mm);
     }
 
     // Converts pulses to um

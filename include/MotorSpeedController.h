@@ -29,6 +29,14 @@ public:
     void stop();
     void emergencyStop();
 
+    inline MotorType getMotorType() const
+    {
+        if (_motorIndex == 0)
+            return MotorType::LINEAR;
+        else
+            return MotorType::ROTATIONAL;
+    }
+
     // Status methods
     int16_t getCurrentSpeed() const;
 
