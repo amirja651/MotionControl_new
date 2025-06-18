@@ -7,6 +7,7 @@ SimpleCLI cli;
 Command   cmdMotor;
 Command   cmdRestart;
 Command   cmdStop;
+Command   cmdShow;
 Command   cmdHelp;
 
 void initializeCLI()
@@ -35,6 +36,9 @@ void initializeCLI()
 
     cmdStop = cli.addCmd("stop");
     cmdStop.setDescription("Stop the motor");
+
+    cmdShow = cli.addCmd("show");
+    cmdShow.setDescription("Show the encoder and motor status");
 
     cmdHelp = cli.addCmd("help");
     cmdHelp.setDescription("Show help information");
