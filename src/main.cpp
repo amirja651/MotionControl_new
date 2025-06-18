@@ -442,7 +442,10 @@ void MotorUpdate()
                     newTargetpositionReceived[currentIndex] = false;
                     Serial.println("[Motor] Movement complete!");
                 });
-            motor[currentIndex]->move(encoder[currentIndex]->umToPulses(targetPosition[currentIndex]), 1000);
+            int32_t targetPulse  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
+            int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
+            int32_t deltaPulse   = targetPulse - currentPulse;
+            motor[currentIndex]->move(deltaPulse, 1000);
             motorMoving[currentIndex] = true;
             Serial.println("[Motor] Started moving...");
         }
