@@ -65,10 +65,7 @@ void MotorSpeedController::begin()
     digitalWrite(_STEP_PIN, LOW);
 
     // Initialize motor
-    if (getMotorType() == MotorType::ROTATIONAL)
-        motorEnable(false);
-    else
-        motorEnable(true);
+    motorEnable(false);
 
     // Allocate timer
     if (_timer == nullptr && _motorIndex < MAX_MOTORS)
@@ -136,7 +133,6 @@ void MotorSpeedController::move(float position, float speed)
 void MotorSpeedController::stop()
 {
     stopTimer();
-
     if (getMotorType() == MotorType::ROTATIONAL)
         motorEnable(false);
 

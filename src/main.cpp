@@ -451,88 +451,11 @@ void MotorUpdate()
         int moveSpeed = (absError <= FINE_MOVE_THRESHOLD_UM) ? FINE_MOVE_SPEED : NORMAL_MOVE_SPEED;
 
         // اجرای حرکت
-        // Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d\n", (long)deltaPulse, motCtx.error, moveSpeed);
+        Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d, isMotorEnabled = %d\n", (long)deltaPulse,
+                      motCtx.error, moveSpeed, motor[currentIndex]->isMotorEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed);
         motorMoving[currentIndex] = true;
-    }
-}
-
-void MotorUpdate2()
-{
-    if (!newTargetpositionReceived[currentIndex])
-        return;
-
-    if (motor[currentIndex] == nullptr)
-        return;
-
-    static const float   POSITION_THRESHOLD_UM = 0.5f;  // Acceptable error in um
-    static const int32_t MAX_MICRO_MOVE_PULSE  = 10;    // Max correction per micro-move
-
-    if (!motorMoving[currentIndex])  // Only if the motor is not currently moving
-    {
-        MotorContext motCtx = getMotorContext();
-
-        float absError = fabs(motCtx.error);
-        if (isVeryShortDistance || absError > POSITION_THRESHOLD_UM)
-        {
-            isVeryShortDistance = false;
-
-            // Determine move direction
-            int8_t moveDirection     = (motCtx.error > 0) ? 1 : (motCtx.error < 0 ? -1 : 0);
-            float  compensatedTarget = targetPosition[currentIndex];
-
-            // Only apply backlash compensation for linear motor (index 0)
-            if (currentIndex == 0 && moveDirection != 0/* && lastMoveDirection[currentIndex] != 0 &&
-                moveDirection != lastMoveDirection[currentIndex]*/)
-            {
-                // Direction reversal detected
-                if (moveDirection == 1)
-                    compensatedTarget += backlash_forward[currentIndex];
-                else
-                    compensatedTarget -= backlash_reverse[currentIndex];
-            }
-
-            lastMoveDirection[currentIndex] = moveDirection;
-
-            motor[currentIndex]->setDirection(motCtx.error > 0);
-
-            if (!motor[currentIndex]->isMotorEnabled())
-                motor[currentIndex]->motorEnable(true);
-
-            // Define a callback specific to this motor
-            motor[currentIndex]->attachOnComplete(
-                []()
-                {
-                    motorMoving[currentIndex] = false;
-                    // Do not set newTargetpositionReceived to false yet, allow for micro-move correction
-                    // Serial.println("[Motor] Movement complete!");
-                });
-            int32_t targetPulse  = encoder[currentIndex]->umToPulses(compensatedTarget);
-            int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
-            int32_t deltaPulse   = targetPulse - currentPulse;
-
-            // For micro-move, limit the correction step
-            if (absError <= POSITION_THRESHOLD_UM && abs(deltaPulse) < MAX_MICRO_MOVE_PULSE)
-            {
-                // Correction is small enough, finish
-                newTargetpositionReceived[currentIndex] = false;
-                Serial.println("[Motor] Final correction within threshold. Done.");
-                return;
-            }
-            if (abs(deltaPulse) > MAX_MICRO_MOVE_PULSE)
-            {
-                deltaPulse = (deltaPulse > 0) ? MAX_MICRO_MOVE_PULSE : -MAX_MICRO_MOVE_PULSE;
-            }
-            motor[currentIndex]->move(deltaPulse, 100);
-            motorMoving[currentIndex] = true;
-            // Serial.printf("[Motor] Started moving... (deltaPulse=%ld, error=%.2f um)\r\n", (long)deltaPulse, motCtx.error);
-        }
-        else
-        {
-            motorStopAndSavePosition();
-            newTargetpositionReceived[currentIndex] = false;
-        }
     }
 }
 
