@@ -438,7 +438,7 @@ void MotorUpdate()
             {
                 deltaPulse = (deltaPulse > 0) ? MAX_MICRO_MOVE_PULSE : -MAX_MICRO_MOVE_PULSE;
             }
-            motor[currentIndex]->move(deltaPulse, 1000);
+            motor[currentIndex]->move(deltaPulse, 100);
             motorMoving[currentIndex] = true;
             // Serial.printf("[Motor] Started moving... (deltaPulse=%ld, error=%.2f um)\r\n", (long)deltaPulse, motCtx.error);
         }
