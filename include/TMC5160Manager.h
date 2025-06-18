@@ -48,8 +48,9 @@ public:
     void emergencyStop();
 
     // Driver Configuration
-    void configureDriver_Nema11_1004H();
+    void configureDriver_Nema11_1004H(bool useStealth);
     void configureDriver_Pancake();
+    void logDriverStatus();
 
 private:
     TMC5160StepperExtended* _driver;

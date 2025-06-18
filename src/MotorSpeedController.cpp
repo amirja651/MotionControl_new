@@ -107,7 +107,7 @@ bool MotorSpeedController::isMotorEnabled() const
     return _motorEnabled;
 }
 
-void MotorSpeedController::move(float position, float speed)
+void MotorSpeedController::move(float position, float speed, float lastSpeed)
 {
     if (_timer == nullptr || speed <= 0)
         return;
@@ -125,9 +125,14 @@ void MotorSpeedController::move(float position, float speed)
     setDirection(steps > 0);
     motorEnable(true);
 
-    uint32_t interval_us = static_cast<uint32_t>(1e6f / speed);
-    timerAlarmWrite(_timer, interval_us, true);
-    timerAlarmEnable(_timer);
+    if (lastSpeed != speed)
+    {
+        lastSpeed = speed;
+
+        uint32_t interval_us = static_cast<uint32_t>(1e6f / speed);
+        timerAlarmWrite(_timer, interval_us, true);
+        timerAlarmEnable(_timer);
+    }
 }
 
 void MotorSpeedController::stop()

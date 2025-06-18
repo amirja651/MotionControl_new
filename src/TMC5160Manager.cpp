@@ -112,74 +112,51 @@ bool TMC5160Manager::configureDriver()
     return true;
 }
 
-void TMC5160Manager::configureDriver_Nema11_1004H()
+void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
 {
     if (!_driver)
         return;
 
-    // ---------------------------
-    // 1. Basic Driver Configuration (GCONF)
-    // ---------------------------
+    // ---- GCONF ----
     uint32_t gconf = 0;
-    // gconf |= (1 << 0);  // Internal Rsense
-    gconf |= (1 << 2);  // StealthChop enable (initially)
     gconf |= (1 << 3);  // Microstep interpolation
     gconf |= (1 << 4);  // Double edge step
     gconf |= (1 << 6);  // Multistep filtering
+    if (useStealth)
+        gconf |= (1 << 2);  // Enable StealthChop
     _driver->GCONF(gconf);
 
-    // ---------------------------
-    // 2. Current Settings (Low Power Mode)
-    // ---------------------------
-    _driver->rms_current(DEFAULT_CURRENT);  // 0.7A RMS (safer for motor life)
+    // ---- Current ----
+    _driver->rms_current(DEFAULT_CURRENT);
     _driver->irun(16);
     _driver->ihold(8);
-    _driver->iholddelay(8);   // 8 * 16 = 128 ms before going to hold current
-    _driver->TPOWERDOWN(10);  // Power down delay (10 × 100ms) (irun -> ihold)
+    _driver->iholddelay(8);
+    _driver->TPOWERDOWN(10);
 
-    // ---------------------------
-    // 3. Microstepping & Interpolation
-    // ---------------------------
-    _driver->microsteps(16);  // Increased microstepping for smoother holding
-    _driver->intpol(true);    // Smooth motion
+    // ---- Microstepping ----
+    _driver->microsteps(16);
+    _driver->intpol(true);
 
-    // ---------------------------
-    // 4. StealthChop Settings (Enable for holding/low speed)
-    // ---------------------------
-    _driver->TPWMTHRS(0xFFFF);  // StealthChop active at low speeds (including holding)
+    // ---- StealthChop Mode ----
+    _driver->en_pwm_mode(useStealth);
     _driver->pwm_autoscale(true);
     _driver->pwm_autograd(true);
-    _driver->pwm_ofs(36);
-    _driver->pwm_grad(10);
-    _driver->pwm_freq(2);
-    _driver->en_pwm_mode(true);  // Enable StealthChop (silent mode) for holding
+    _driver->TPWMTHRS(0xFFFF);
+    if (useStealth)
+    {
+        _driver->pwm_ofs(36);
+        _driver->pwm_grad(10);
+        _driver->pwm_freq(2);
+    }
 
-    // ---------------------------
-    // 5. SpreadCycle Chopper Settings (used only at higher speeds)
-    // ---------------------------
-    // driver->toff(4);
-    // driver->blank_time(24);
-    // driver->hysteresis_start(3);
-    // driver->hysteresis_end(1);
-
-    // ---------------------------
-    // 6. StallGuard & CoolStep
-    // ---------------------------
-    // driver->TCOOLTHRS(200);  // CoolStep threshold
-    // driver->sgt(5);          // StallGuard threshold
-    // driver->sfilt(true);
-
-    // ---------------------------
-    // 7. Motion Configuration (Soft Motion)
-    // ---------------------------
-    _driver->RAMPMODE(0);  // Positioning mode
-    _driver->VSTART(1);    // Start slowly
-    _driver->VSTOP(1);     // Stop slowly
-    _driver->VMAX(600);    // Maximum speed, suitable for initial testing
-    _driver->AMAX(100);    // Acceleration
-    _driver->DMAX(100);    // Deceleration
-    _driver->a1(300);      // Initial acceleration
-    _driver->d1(300);      // Initial deceleration
+    // ---- SpreadCycle config only if StealthChop OFF ----
+    if (!useStealth)
+    {
+        _driver->toff(4);
+        _driver->blank_time(24);
+        _driver->hysteresis_start(3);
+        _driver->hysteresis_end(1);
+    }
 
     // Turn off the driver
     DriverOff();
@@ -309,4 +286,58 @@ uint32_t TMC5160Manager::getSG_RESULT()
 
     // Turn off the driver
     DriverOff();
+}
+
+void TMC5160Manager::logDriverStatus()
+{
+    if (!_driver)
+        return;
+
+    Serial.println("\n=== [TMC5160] Driver Status Log ===");
+
+    uint32_t version = _driver->version();
+    Serial.printf("Version: 0x%08X\n", version);
+
+    bool driverEnabled = !_driver->drv_enn();  // ENN pin: active LOW
+    Serial.printf("Driver Enabled (ENN pin LOW): %s\n", driverEnabled ? "YES" : "NO");
+
+    bool stealthChop = _driver->en_pwm_mode();
+    Serial.printf("StealthChop Mode Enabled: %s\n", stealthChop ? "YES" : "NO");
+
+    uint32_t drv_status = _driver->DRV_STATUS();
+    Serial.printf("DRV_STATUS:  0x%08X\n", drv_status);
+
+    uint32_t gconf = _driver->GCONF();
+    Serial.printf("GCONF:       0x%08X\n", gconf);
+
+    uint16_t current = _driver->rms_current();
+    Serial.printf("RMS Current: %d mA\n", current);
+
+    uint8_t irun  = _driver->irun();
+    uint8_t ihold = _driver->ihold();
+    Serial.printf("IRUN: %d, IHOLD: %d\n", irun, ihold);
+
+    uint16_t tpwmthrs = _driver->TPWMTHRS();
+    Serial.printf("TPWMTHRS (Stealth Threshold): %u\n", tpwmthrs);
+
+    // Turn off the driver
+    DriverOff();
+
+    // Decode DRV_STATUS bits
+    bool otpw = drv_status & (1UL << 26);
+    bool ot   = drv_status & (1UL << 25);
+    bool s2ga = drv_status & (1UL << 24);
+    bool s2gb = drv_status & (1UL << 22);
+    bool ola  = drv_status & (1UL << 18);
+    bool olb  = drv_status & (1UL << 16);
+
+    Serial.printf("Warnings:\n");
+    Serial.printf(" - Overtemperature Warning:     %s\n", otpw ? "YES" : "NO");
+    Serial.printf(" - Overtemperature Shutdown:    %s\n", ot ? "YES" : "NO");
+    Serial.printf(" - Short to GND on A:           %s\n", s2ga ? "YES" : "NO");
+    Serial.printf(" - Short to GND on B:           %s\n", s2gb ? "YES" : "NO");
+    Serial.printf(" - Open Load on A:              %s\n", ola ? "YES" : "NO");
+    Serial.printf(" - Open Load on B:              %s\n", olb ? "YES" : "NO");
+
+    Serial.println("==================================\n");
 }

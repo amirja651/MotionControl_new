@@ -50,10 +50,7 @@ static int    historyIndex = -1;  // -1 means not navigating
 
 bool motorMoving[NUM_DRIVERS] = {false};
 
-// Backlash compensation variables
-static float  backlash_forward[NUM_DRIVERS]  = {7.0f, 0.0f, 0.0f, 0.0f};  // Forward direction (positive)
-static float  backlash_reverse[NUM_DRIVERS]  = {5.0f, 0.0f, 0.0f, 0.0f};  // Reverse direction (negative)
-static int8_t lastMoveDirection[NUM_DRIVERS] = {0};                       // -1: reverse, 1: forward, 0: unknown
+static float lastSpeed[NUM_DRIVERS] = {0.0f};
 
 void         setTargetPosition(String targetPosition);  // Target position is in um or degrees
 void         setMotorIndex(String motorIndex);          // Motor number is 1-4 (0-3)
@@ -113,7 +110,7 @@ void setup()
 
             // Configure motor parameters
             if (index == (uint8_t)MotorType::LINEAR)
-                driver[index]->configureDriver_Nema11_1004H();
+                driver[index]->configureDriver_Nema11_1004H(true);
             else
                 driver[index]->configureDriver_Pancake();
 
@@ -239,6 +236,11 @@ void setTargetPosition(String targetPos)
     }
 
     // ✅ The value is valid
+    if (currentIndex == (uint8_t)MotorType::LINEAR)
+        driver[currentIndex]->configureDriver_Nema11_1004H(true);
+    else
+        driver[currentIndex]->configureDriver_Pancake();
+
     targetPosition[currentIndex]            = value;
     newTargetpositionReceived[currentIndex] = true;
 
@@ -454,7 +456,8 @@ void MotorUpdate()
         Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d, isMotorEnabled = %d\n", (long)deltaPulse,
                       motCtx.error, moveSpeed, motor[currentIndex]->isMotorEnabled());
 
-        motor[currentIndex]->move(deltaPulse, moveSpeed);
+        motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
+        lastSpeed[currentIndex]   = moveSpeed;
         motorMoving[currentIndex] = true;
     }
 }
@@ -465,6 +468,9 @@ void motorStopAndSavePosition()
         return;
 
     motor[currentIndex]->stop();
+
+    lastSpeed[currentIndex] = 0.0f;
+
     newTargetpositionReceived[currentIndex] = false;
 
     Serial.print(F("[Motor] Reached target. Stopping...\r\n"));
@@ -594,7 +600,7 @@ void serialReadTask(void* pvParameters)
                 if (motor[currentIndex] != nullptr)
                 {
                     motor[currentIndex]->setDirection(true);
-                    motor[currentIndex]->move(10, 1000);
+                    motor[currentIndex]->move(10, 100, 0.0f);
                 }
                 else
                     Serial.print(F("[Error][SerialReadTask] Motor not connected\r\n"));
@@ -607,7 +613,7 @@ void serialReadTask(void* pvParameters)
                 if (motor[currentIndex] != nullptr)
                 {
                     motor[currentIndex]->setDirection(false);
-                    motor[currentIndex]->move(10, 1000);
+                    motor[currentIndex]->move(10, 100, 0.0f);
                 }
                 else
                     Serial.print(F("[Error][SerialReadTask] Motor not connected\r\n"));
@@ -687,6 +693,7 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdShow)
             {
                 printSerial();
+                driver[currentIndex]->logDriverStatus();
                 esp_task_wdt_reset();
                 continue;
             }

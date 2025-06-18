@@ -24,7 +24,7 @@ public:
     // Initialize the controller
     void begin();
     void stop();
-    void move(float position, float speed);  // position: steps, speed: steps/sec
+    void move(float position, float speed, float lastSpeed);  // position: steps, speed: steps/sec
 
     void setDirection(bool forward);
     void motorEnable(bool enable);
