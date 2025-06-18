@@ -411,7 +411,7 @@ void MotorUpdate()
     static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // حداکثر پالس اصلاحی
     static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // حداکثر پالس اصلاحی
     static const int     NORMAL_MOVE_SPEED             = 100;   // سرعت حرکت عادی
-    static const int     FINE_MOVE_SPEED               = 20;    // سرعت حرکت دقیق
+    static const int     FINE_MOVE_SPEED               = 15;    // سرعت حرکت دقیق
 
     if (!motorMoving[currentIndex])  // فقط وقتی موتور متوقف است
     {
