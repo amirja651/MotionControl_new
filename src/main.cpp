@@ -727,47 +727,47 @@ void printSerial()
     MotorType type = motor[currentIndex]->getMotorType();
     String    unit = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
 
-    if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
-    {
-        // Format all values into the buffer
-        Serial.print(F("MOT: "));
-        Serial.print((currentIndex));
-        Serial.print(F("   "));
-        Serial.print(F("DIR: "));
-        Serial.print(encCtx.direction);
-        Serial.print(F("   "));
-        Serial.print(F("LAP: "));
-        Serial.print(encCtx.lap_id);
-        // Serial.print(F("\t"));
-        // Serial.print(F("CUR PULSE: "));
-        // Serial.print(encCtx.current_pulse);
-        Serial.print(F("      "));
-        Serial.print(F("CUR POS "));
-        Serial.print(unit);
-        Serial.print(motCtx.currentPosition);
-        // Serial.print(F("\t"));
-        // Serial.print(F("CUR POS (p): "));
-        // Serial.print(motCtx.currentPositionPulses, 0);
-        Serial.print(F("      "));
-        Serial.print(F("TGT POS: "));
-        Serial.print(unit);
-        Serial.print(targetPosition[currentIndex]);
-        // Serial.print(F("\t"));
-        // Serial.print(F("TGT POS (p): "));
-        // Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
-        Serial.print(F("      "));
-        Serial.print(F("ERR: "));
-        Serial.print(firstTime ? 0 : motCtx.error, 0);
-        // Serial.print(F("\t"));
-        // Serial.print(F("newTargetpositionReceived: "));
-        // Serial.print(newTargetpositionReceived[currentIndex]);
-        // Serial.print(F("\t"));
-        // Serial.print(F("driverEnabled: "));
-        // Serial.print(driverEnabled[currentIndex]);
-        Serial.print(F("\r\n\r\n"));
+    // if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
+    //{
+    //  Format all values into the buffer
+    Serial.print(F("MOT: "));
+    Serial.print((currentIndex));
+    Serial.print(F("   "));
+    Serial.print(F("DIR: "));
+    Serial.print(encCtx.direction);
+    Serial.print(F("   "));
+    Serial.print(F("LAP: "));
+    Serial.print(encCtx.lap_id);
+    // Serial.print(F("\t"));
+    // Serial.print(F("CUR PULSE: "));
+    // Serial.print(encCtx.current_pulse);
+    Serial.print(F("      "));
+    Serial.print(F("CUR POS "));
+    Serial.print(unit);
+    Serial.print(motCtx.currentPosition);
+    // Serial.print(F("\t"));
+    // Serial.print(F("CUR POS (p): "));
+    // Serial.print(motCtx.currentPositionPulses, 0);
+    Serial.print(F("      "));
+    Serial.print(F("TGT POS: "));
+    Serial.print(unit);
+    Serial.print(targetPosition[currentIndex]);
+    // Serial.print(F("\t"));
+    // Serial.print(F("TGT POS (p): "));
+    // Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
+    Serial.print(F("      "));
+    Serial.print(F("ERR: "));
+    Serial.print(firstTime ? 0 : motCtx.error, 0);
+    // Serial.print(F("\t"));
+    // Serial.print(F("newTargetpositionReceived: "));
+    // Serial.print(newTargetpositionReceived[currentIndex]);
+    // Serial.print(F("\t"));
+    // Serial.print(F("driverEnabled: "));
+    // Serial.print(driverEnabled[currentIndex]);
+    Serial.print(F("\r\n\r\n"));
 
-        lastPulse[currentIndex] = encCtx.current_pulse;
-    }
+    lastPulse[currentIndex] = encCtx.current_pulse;
+    // }
 }
 
 void printMotorStatus()
