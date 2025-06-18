@@ -50,6 +50,10 @@ static int    historyIndex = -1;  // -1 means not navigating
 
 bool motorMoving[NUM_DRIVERS] = {false};
 
+// Backlash compensation variables
+static float  backlash_um[NUM_DRIVERS]       = {1.0f, 0.0f, 0.0f, 0.0f};  // Only linear motor (index 0) has backlash
+static int8_t lastMoveDirection[NUM_DRIVERS] = {0};                       // -1: reverse, 1: forward, 0: unknown
+
 void         setTargetPosition(String targetPosition);  // Target position is in um or degrees
 void         setMotorIndex(String motorIndex);          // Motor number is 1-4 (0-3)
 float        getMotorPosition();                        // Get current motor position
@@ -410,6 +414,20 @@ void MotorUpdate()
         {
             isVeryShortDistance = false;
 
+            // Determine move direction
+            int8_t moveDirection     = (motCtx.error > 0) ? 1 : (motCtx.error < 0 ? -1 : 0);
+            float  compensatedTarget = targetPosition[currentIndex];
+
+            // Only apply backlash compensation for linear motor (index 0)
+            if (currentIndex == 0 && moveDirection != 0 && lastMoveDirection[currentIndex] != 0 &&
+                moveDirection != lastMoveDirection[currentIndex])
+            {
+                // Direction reversal detected
+                compensatedTarget += (moveDirection == 1) ? backlash_um[currentIndex] : -backlash_um[currentIndex];
+            }
+
+            lastMoveDirection[currentIndex] = moveDirection;
+
             motor[currentIndex]->setDirection(motCtx.error > 0);
 
             if (!motor[currentIndex]->isMotorEnabled())
@@ -423,7 +441,7 @@ void MotorUpdate()
                     // Do not set newTargetpositionReceived to false yet, allow for micro-move correction
                     // Serial.println("[Motor] Movement complete!");
                 });
-            int32_t targetPulse  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
+            int32_t targetPulse  = encoder[currentIndex]->umToPulses(compensatedTarget);
             int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
             int32_t deltaPulse   = targetPulse - currentPulse;
             // For micro-move, limit the correction step
