@@ -4,7 +4,6 @@
 #include "Pins.h"
 #include "TMC5160Manager.h"
 #include <Arduino.h>
-#include <ESP32TimerInterrupt.h>
 
 enum class MotorType
 {

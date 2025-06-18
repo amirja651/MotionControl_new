@@ -1,5 +1,4 @@
 #include "MotorSpeedController.h"
-#include <ESP32TimerInterrupt.h>
 
 MotorSpeedController::MotorSpeedController(uint8_t motorIndex, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
                                            uint16_t EN_PIN)
