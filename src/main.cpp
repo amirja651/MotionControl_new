@@ -63,6 +63,32 @@ void MotorUpdate();
 void motorStopAndSavePosition();
 void printMotorStatus();
 
+// [Minimal Example] MotorSpeedController Timer/ISR Test
+// This code moves motor 0 for 200 steps at 1000 steps/sec and prints a message when done.
+// Place this in setup() after all initializations for testing.
+
+void onMotor0Complete()
+{
+    Serial.println("[Minimal Example] Motor 0 movement complete!");
+}
+
+void testMotorSpeedControllerMinimalExample()
+{
+    if (motor[0])
+    {
+        motor[0]->attachOnComplete(onMotor0Complete);
+        motor[0]->move(200, 1000);  // Move 200 steps at 1000 steps/sec
+        Serial.println("[Minimal Example] Motor 0 started moving 200 steps at 1000 steps/sec");
+    }
+    else
+    {
+        Serial.println("[Minimal Example] Motor 0 not initialized!");
+    }
+}
+
+// Call this at the end of setup()
+// testMotorSpeedControllerMinimalExample();
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
 {
@@ -150,6 +176,8 @@ void setup()
     esp_task_wdt_add(serialPrintTaskHandle);    // Register with WDT
 
     Serial.flush();
+
+    testMotorSpeedControllerMinimalExample();
 }
 
 void loop()
