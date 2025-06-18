@@ -177,16 +177,15 @@ void setup()
 
     Serial.flush();
 
-    testMotorSpeedControllerMinimalExample();
+    // testMotorSpeedControllerMinimalExample();
 }
 
 void loop()
 {
-    // Print motor status every 2 seconds
-    static uint32_t lastStatusTime = 0;
-    if (millis() - lastStatusTime >= 2000)
+    // Handle movement complete outside ISR
+    if (motor[0])
     {
-        lastStatusTime = millis();
+        motor[0]->handleMovementComplete();
     }
 
     esp_task_wdt_reset();
@@ -431,7 +430,9 @@ void MotorUpdate()
         if (!motor[currentIndex]->isMotorEnabled())
             motor[currentIndex]->motorEnable(true);
 
+        motor[currentIndex]->attachOnComplete(onMotor0Complete);
         motor[currentIndex]->move(targetPosition[currentIndex], 1000);
+        Serial.println("[Minimal Example] Motor 0 started moving 200 steps at 1000 steps/sec");
     }
     else
     {

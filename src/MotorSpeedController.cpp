@@ -46,6 +46,7 @@ MotorSpeedController::MotorSpeedController(uint8_t motorIndex, TMC5160Manager& d
     {
         motorInstances[_motorIndex] = this;
     }
+    _movementCompleteFlag = false;
 }
 
 void MotorSpeedController::begin()
@@ -165,12 +166,11 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()
         digitalWrite(_STEP_PIN, LOW);
         _stepsRemaining--;
     }
-    if (_stepsRemaining <= 0)
+    if (_stepsRemaining <= 0 && _moving)
     {
         timerAlarmDisable(_timer);
-        _moving = false;
-        if (_onComplete)
-            _onComplete();
+        _moving               = false;
+        _movementCompleteFlag = true;
     }
     portEXIT_CRITICAL_ISR(&_timerMux);
 }
@@ -201,4 +201,14 @@ float MotorSpeedController::calculateSignedPositionError(float targetPos, float 
 {
     float error = targetPos - currentPos;
     return error;
+}
+
+void MotorSpeedController::handleMovementComplete()
+{
+    if (_movementCompleteFlag)
+    {
+        _movementCompleteFlag = false;
+        if (_onComplete)
+            _onComplete();
+    }
 }

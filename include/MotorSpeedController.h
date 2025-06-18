@@ -37,6 +37,8 @@ public:
     float     wrapAngle180(float value);
     float     calculateSignedPositionError(float targetPos, float currentPos);
 
+    void handleMovementComplete();
+
 private:
     // Timer/ISR support
     static MotorSpeedController* motorInstances[MAX_MOTORS];
@@ -70,6 +72,8 @@ private:
 
     // Optional movement complete callback
     void (*_onComplete)();
+
+    volatile bool _movementCompleteFlag;
 };
 
 #endif  // MOTOR_SPEED_CONTROLLER_H
