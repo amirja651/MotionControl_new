@@ -421,11 +421,15 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
+    static const float   POSITION_THRESHOLD_UM = 1.0f;  // Acceptable error in um
+    static const int32_t MAX_MICRO_MOVE_PULSE  = 10;    // Max correction per micro-move
+
     if (!motorMoving[currentIndex])  // Only if the motor is not currently moving
     {
         MotorContext motCtx = getMotorContext();
 
-        if (isVeryShortDistance || fabs(motCtx.error) > 1)
+        float absError = fabs(motCtx.error);
+        if (isVeryShortDistance || absError > POSITION_THRESHOLD_UM)
         {
             isVeryShortDistance = false;
 
@@ -438,16 +442,28 @@ void MotorUpdate()
             motor[currentIndex]->attachOnComplete(
                 []()
                 {
-                    motorMoving[currentIndex]               = false;
-                    newTargetpositionReceived[currentIndex] = false;
+                    motorMoving[currentIndex] = false;
+                    // Do not set newTargetpositionReceived to false yet, allow for micro-move correction
                     Serial.println("[Motor] Movement complete!");
                 });
             int32_t targetPulse  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
             int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
             int32_t deltaPulse   = targetPulse - currentPulse;
+            // For micro-move, limit the correction step
+            if (absError <= POSITION_THRESHOLD_UM && abs(deltaPulse) < MAX_MICRO_MOVE_PULSE)
+            {
+                // Correction is small enough, finish
+                newTargetpositionReceived[currentIndex] = false;
+                Serial.println("[Motor] Final correction within threshold. Done.");
+                return;
+            }
+            if (abs(deltaPulse) > MAX_MICRO_MOVE_PULSE)
+            {
+                deltaPulse = (deltaPulse > 0) ? MAX_MICRO_MOVE_PULSE : -MAX_MICRO_MOVE_PULSE;
+            }
             motor[currentIndex]->move(deltaPulse, 1000);
             motorMoving[currentIndex] = true;
-            Serial.println("[Motor] Started moving...");
+            Serial.printf("[Motor] Started moving... (deltaPulse=%ld, error=%.2f um)\r\n", (long)deltaPulse, motCtx.error);
         }
         else
         {
