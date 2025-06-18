@@ -48,6 +48,8 @@ static String commandHistory[HISTORY_SIZE];
 static int    historyCount = 0;
 static int    historyIndex = -1;  // -1 means not navigating
 
+bool motorMoving[NUM_DRIVERS] = {false};
+
 void         setTargetPosition(String targetPosition);  // Target position is in um or degrees
 void         setMotorIndex(String motorIndex);          // Motor number is 1-4 (0-3)
 float        getMotorPosition();                        // Get current motor position
@@ -419,25 +421,36 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
-    MotorContext motCtx = getMotorContext();
-
-    if (isVeryShortDistance || fabs(motCtx.error) > 1)
+    if (!motorMoving[currentIndex])  // Only if the motor is not currently moving
     {
-        isVeryShortDistance = false;
+        MotorContext motCtx = getMotorContext();
 
-        motor[currentIndex]->setDirection(motCtx.error > 0);
+        if (isVeryShortDistance || fabs(motCtx.error) > 1)
+        {
+            isVeryShortDistance = false;
 
-        if (!motor[currentIndex]->isMotorEnabled())
-            motor[currentIndex]->motorEnable(true);
+            motor[currentIndex]->setDirection(motCtx.error > 0);
 
-        motor[currentIndex]->attachOnComplete(onMotor0Complete);
-        motor[currentIndex]->move(targetPosition[currentIndex], 1000);
-        Serial.println("[Minimal Example] Motor 0 started moving 200 steps at 1000 steps/sec");
-    }
-    else
-    {
-        motorStopAndSavePosition();
-        newTargetpositionReceived[currentIndex] = false;
+            if (!motor[currentIndex]->isMotorEnabled())
+                motor[currentIndex]->motorEnable(true);
+
+            // Define a callback specific to this motor
+            motor[currentIndex]->attachOnComplete(
+                []()
+                {
+                    motorMoving[currentIndex]               = false;
+                    newTargetpositionReceived[currentIndex] = false;
+                    Serial.println("[Motor] Movement complete!");
+                });
+            motor[currentIndex]->move(encoder[currentIndex]->umToPulses(targetPosition[currentIndex]), 1000);
+            motorMoving[currentIndex] = true;
+            Serial.println("[Motor] Started moving...");
+        }
+        else
+        {
+            motorStopAndSavePosition();
+            newTargetpositionReceived[currentIndex] = false;
+        }
     }
 }
 
