@@ -51,8 +51,8 @@ static int    historyIndex = -1;  // -1 means not navigating
 bool motorMoving[NUM_DRIVERS] = {false};
 
 // Backlash compensation variables
-static float  backlash_forward[NUM_DRIVERS]  = {0.0f, 0.0f, 0.0f, 0.0f};  // Forward direction (positive)
-static float  backlash_reverse[NUM_DRIVERS]  = {0.0f, 0.0f, 0.0f, 0.0f};  // Reverse direction (negative)
+static float  backlash_forward[NUM_DRIVERS]  = {7.0f, 0.0f, 0.0f, 0.0f};  // Forward direction (positive)
+static float  backlash_reverse[NUM_DRIVERS]  = {5.0f, 0.0f, 0.0f, 0.0f};  // Reverse direction (negative)
 static int8_t lastMoveDirection[NUM_DRIVERS] = {0};                       // -1: reverse, 1: forward, 0: unknown
 
 void         setTargetPosition(String targetPosition);  // Target position is in um or degrees
@@ -403,6 +403,69 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
+    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;  // محدوده خطای قابل قبول
+    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;  // محدوده خطای قابل قبول
+    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // شروع حرکت آهسته
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // حداکثر پالس اصلاحی
+    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // حداکثر پالس اصلاحی
+    static const int     NORMAL_MOVE_SPEED             = 100;   // سرعت حرکت عادی
+    static const int     FINE_MOVE_SPEED               = 20;    // سرعت حرکت دقیق
+
+    if (!motorMoving[currentIndex])  // فقط وقتی موتور متوقف است
+    {
+        MotorContext motCtx = getMotorContext();
+
+        float absError = fabs(motCtx.error);
+        float target   = targetPosition[currentIndex];
+
+        int32_t targetPulse  = encoder[currentIndex]->umToPulses(target);
+        int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
+        int32_t deltaPulse   = targetPulse - currentPulse;
+
+        float   positionThreshold = (motCtx.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
+        int32_t maxMicroMovePulse = (motCtx.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
+
+        // شرایط رسیدن به موقعیت نهایی
+        if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
+        {
+            newTargetpositionReceived[currentIndex] = false;
+            Serial.println("[Motor] Final correction within threshold. Done.");
+            motorStopAndSavePosition();
+            return;
+        }
+
+        // تنظیم جهت حرکت
+        motor[currentIndex]->setDirection(motCtx.error > 0);
+
+        if (!motor[currentIndex]->isMotorEnabled())
+            motor[currentIndex]->motorEnable(true);
+
+        // ثبت callback پس از اتمام حرکت
+        motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
+
+        // محدود کردن پالس در micro-move
+        if (abs(deltaPulse) > maxMicroMovePulse)
+            deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
+
+        // انتخاب سرعت بر اساس فاصله تا هدف
+        int moveSpeed = (absError <= FINE_MOVE_THRESHOLD_UM) ? FINE_MOVE_SPEED : NORMAL_MOVE_SPEED;
+
+        // اجرای حرکت
+        // Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d\n", (long)deltaPulse, motCtx.error, moveSpeed);
+
+        motor[currentIndex]->move(deltaPulse, moveSpeed);
+        motorMoving[currentIndex] = true;
+    }
+}
+
+void MotorUpdate2()
+{
+    if (!newTargetpositionReceived[currentIndex])
+        return;
+
+    if (motor[currentIndex] == nullptr)
+        return;
+
     static const float   POSITION_THRESHOLD_UM = 0.5f;  // Acceptable error in um
     static const int32_t MAX_MICRO_MOVE_PULSE  = 10;    // Max correction per micro-move
 
@@ -420,8 +483,8 @@ void MotorUpdate()
             float  compensatedTarget = targetPosition[currentIndex];
 
             // Only apply backlash compensation for linear motor (index 0)
-            if (currentIndex == 0 && moveDirection != 0 && lastMoveDirection[currentIndex] != 0 &&
-                moveDirection != lastMoveDirection[currentIndex])
+            if (currentIndex == 0 && moveDirection != 0/* && lastMoveDirection[currentIndex] != 0 &&
+                moveDirection != lastMoveDirection[currentIndex]*/)
             {
                 // Direction reversal detected
                 if (moveDirection == 1)
@@ -448,6 +511,7 @@ void MotorUpdate()
             int32_t targetPulse  = encoder[currentIndex]->umToPulses(compensatedTarget);
             int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
             int32_t deltaPulse   = targetPulse - currentPulse;
+
             // For micro-move, limit the correction step
             if (absError <= POSITION_THRESHOLD_UM && abs(deltaPulse) < MAX_MICRO_MOVE_PULSE)
             {
