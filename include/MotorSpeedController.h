@@ -4,16 +4,13 @@
 #include "Pins.h"
 #include "TMC5160Manager.h"
 #include <Arduino.h>
+#include <ESP32TimerInterrupt.h>
 
 enum class MotorType
 {
     LINEAR     = 0,
     ROTATIONAL = 1,
 };
-
-static constexpr uint8_t  LEDC_CHANNELS[NUM_DRIVERS] = {0, 1, 2, 3};
-static constexpr uint8_t  LEDC_TIMER_BITS            = 10;
-static constexpr uint32_t LEDC_BASE_FREQ             = 6000;  // 6kHz base frequency
 
 class MotorSpeedController
 {
@@ -23,11 +20,8 @@ public:
 
     // Initialize the controller
     void begin();
-
-    // Speed control methods
-    void setSpeed(int16_t speed);  // Speed range: -100 to 100
     void stop();
-    void emergencyStop();
+    void move(float position, float speed);
 
     inline MotorType getMotorType() const
     {
@@ -36,9 +30,6 @@ public:
         else
             return MotorType::ROTATIONAL;
     }
-
-    // Status methods
-    int16_t getCurrentSpeed() const;
 
     inline void setDirection(bool forward)
     {
@@ -56,33 +47,20 @@ public:
         return _motorEnabled;
     }
 
-    inline bool isMotorMoving() const
-    {
-        return _isRunning;
-    }
-
     inline float wrapAngle180(float value)
     {
         if (value > 180.0f)
             value -= 360.0f;
         else if (value < -180.0f)
             value += 360.0f;
-
         return value;
     }
 
-    inline float calculateSignedPositionError(float target_pos, float current_pos)
+    inline float calculateSignedPositionError(float targetPos, float currentPos)
     {
-        float error = target_pos - current_pos;
+        float error = targetPos - currentPos;
         return error;
     }
-
-    // Movement methods
-    void moveForward();
-    void moveBackward();
-    void stopMotor();
-    void setMotorDirection(bool direction);
-    void updateMotorFrequency(float error, float targetPos, float currentPos);
 
 private:
     TMC5160Manager& _driver;
@@ -92,16 +70,7 @@ private:
     uint16_t _EN_PIN;
 
     uint8_t _motorIndex;
-    int16_t _currentSpeed;
-    bool    _isRunning;
     bool    _motorEnabled;
-    uint8_t _channel;
-
-    // Helper methods
-    inline void updatePWM(float frequency);
-    float       calculateStoppingDistance(float currentFreq);
-    float       calculateFrequencyFromError(float error);
-    void        logging(float baseFreq, float error);
 };
 
 #endif  // MOTOR_SPEED_CONTROLLER_H

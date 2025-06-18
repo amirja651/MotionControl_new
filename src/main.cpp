@@ -398,12 +398,12 @@ void MotorUpdate()
     {
         isVeryShortDistance = false;
 
-        motor[currentIndex]->setMotorDirection(motCtx.error > 0);
+        motor[currentIndex]->setDirection(motCtx.error > 0);
 
         if (!motor[currentIndex]->isMotorEnabled())
             motor[currentIndex]->motorEnable(true);
 
-        motor[currentIndex]->updateMotorFrequency(motCtx.errorPulses, motCtx.targetPositionPulses, motCtx.currentPositionPulses);
+        motor[currentIndex]->move(targetPosition[currentIndex], 1000);
     }
     else
     {
@@ -417,7 +417,7 @@ void motorStopAndSavePosition()
     if (motor[currentIndex] == nullptr)
         return;
 
-    motor[currentIndex]->stopMotor();
+    motor[currentIndex]->stop();
     newTargetpositionReceived[currentIndex] = false;
 
     Serial.print(F("[Motor] Reached target. Stopping...\r\n"));
@@ -544,7 +544,10 @@ void serialReadTask(void* pvParameters)
             else if (c == 'i')
             {
                 if (motor[currentIndex] != nullptr)
-                    motor[currentIndex]->moveForward();
+                {
+                    motor[currentIndex]->setDirection(true);
+                    motor[currentIndex]->move(10, 1000);
+                }
                 else
                     Serial.print(F("[Error][SerialReadTask] Motor not connected\r\n"));
 
@@ -554,7 +557,10 @@ void serialReadTask(void* pvParameters)
             else if (c == 'k')
             {
                 if (motor[currentIndex] != nullptr)
-                    motor[currentIndex]->moveBackward();
+                {
+                    motor[currentIndex]->setDirection(false);
+                    motor[currentIndex]->move(10, 1000);
+                }
                 else
                     Serial.print(F("[Error][SerialReadTask] Motor not connected\r\n"));
 
@@ -617,7 +623,7 @@ void serialReadTask(void* pvParameters)
             {
                 newTargetpositionReceived[currentIndex] = false;
                 if (motor[currentIndex] != nullptr)
-                    motor[currentIndex]->stopMotor();
+                    motor[currentIndex]->stop();
 
                 Serial.print(F("Restarting...\r\n"));
                 vTaskDelay(pdMS_TO_TICKS(1000));
@@ -626,7 +632,7 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdStop)
             {
                 newTargetpositionReceived[currentIndex] = false;
-                motor[currentIndex]->stopMotor();
+                motor[currentIndex]->stop();
                 esp_task_wdt_reset();
                 continue;
             }
@@ -727,9 +733,5 @@ void printMotorStatus()
     auto status = driver[currentIndex]->getDriverStatus();
     Serial.printf("\r\n[MotorUpdateTask] Motor %d Status:\r\n", currentIndex);
     Serial.printf(" - Current: %d mA\r\n", status.current);
-    Serial.printf(" - Temperature: %d\r\n", status.temperature);
-
-    // Get current speed based on motor index
-    int16_t speed = motor[currentIndex]->getCurrentSpeed();
-    Serial.printf(" - Speed: %d\r\n\r\n", speed);
+    Serial.printf(" - Temperature: %d\r\n\r\n", status.temperature);
 }
