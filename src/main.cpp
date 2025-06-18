@@ -51,7 +51,8 @@ static int    historyIndex = -1;  // -1 means not navigating
 bool motorMoving[NUM_DRIVERS] = {false};
 
 // Backlash compensation variables
-static float  backlash_um[NUM_DRIVERS]       = {1.0f, 0.0f, 0.0f, 0.0f};  // Only linear motor (index 0) has backlash
+static float  backlash_forward[NUM_DRIVERS]  = {0.0f, 0.0f, 0.0f, 0.0f};  // Forward direction (positive)
+static float  backlash_reverse[NUM_DRIVERS]  = {0.0f, 0.0f, 0.0f, 0.0f};  // Reverse direction (negative)
 static int8_t lastMoveDirection[NUM_DRIVERS] = {0};                       // -1: reverse, 1: forward, 0: unknown
 
 void         setTargetPosition(String targetPosition);  // Target position is in um or degrees
@@ -402,7 +403,7 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
-    static const float   POSITION_THRESHOLD_UM = 1.0f;  // Acceptable error in um
+    static const float   POSITION_THRESHOLD_UM = 0.5f;  // Acceptable error in um
     static const int32_t MAX_MICRO_MOVE_PULSE  = 10;    // Max correction per micro-move
 
     if (!motorMoving[currentIndex])  // Only if the motor is not currently moving
@@ -423,7 +424,10 @@ void MotorUpdate()
                 moveDirection != lastMoveDirection[currentIndex])
             {
                 // Direction reversal detected
-                compensatedTarget += (moveDirection == 1) ? backlash_um[currentIndex] : -backlash_um[currentIndex];
+                if (moveDirection == 1)
+                    compensatedTarget += backlash_forward[currentIndex];
+                else
+                    compensatedTarget -= backlash_reverse[currentIndex];
             }
 
             lastMoveDirection[currentIndex] = moveDirection;
