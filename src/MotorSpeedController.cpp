@@ -74,16 +74,16 @@ void MotorSpeedController::begin()
         switch (_motorIndex)
         {
             case 0:
-                timerAttachInterrupt(_timer, &onTimerISR0, true);
+                timerAttachInterrupt(_timer, &onTimerISR0, false);
                 break;
             case 1:
-                timerAttachInterrupt(_timer, &onTimerISR1, true);
+                timerAttachInterrupt(_timer, &onTimerISR1, false);
                 break;
             case 2:
-                timerAttachInterrupt(_timer, &onTimerISR2, true);
+                timerAttachInterrupt(_timer, &onTimerISR2, false);
                 break;
             case 3:
-                timerAttachInterrupt(_timer, &onTimerISR3, true);
+                timerAttachInterrupt(_timer, &onTimerISR3, false);
                 break;
         }
         timerAlarmWrite(_timer, 1000000, true);  // Default 1Hz, will be set in move()

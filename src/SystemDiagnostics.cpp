@@ -10,7 +10,7 @@ void SystemDiagnostics::printSystemInfo()
     Serial.print(F("\r\n=== System Information ===\r\n"));
     printChipInfo();
     printMemoryInfo();
-    Serial.print(F("========================\r\n"));
+    Serial.print(F("========================\r\n\r\n"));
 }
 
 void SystemDiagnostics::printSystemStatus()
@@ -18,7 +18,7 @@ void SystemDiagnostics::printSystemStatus()
     Serial.print(F("=== System Status ===\r\n"));
     printResetReason();
     printTaskInfo();
-    Serial.print(F("====================\r\n"));
+    Serial.print(F("====================\r\n\r\n"));
 }
 
 void SystemDiagnostics::printChipInfo()

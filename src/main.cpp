@@ -65,32 +65,6 @@ void MotorUpdate();
 void motorStopAndSavePosition();
 void printMotorStatus();
 
-// [Minimal Example] MotorSpeedController Timer/ISR Test
-// This code moves motor 0 for 200 steps at 1000 steps/sec and prints a message when done.
-// Place this in setup() after all initializations for testing.
-
-void onMotor0Complete()
-{
-    Serial.println("[Minimal Example] Motor 0 movement complete!");
-}
-
-void testMotorSpeedControllerMinimalExample()
-{
-    if (motor[0])
-    {
-        motor[0]->attachOnComplete(onMotor0Complete);
-        motor[0]->move(200, 1000);  // Move 200 steps at 1000 steps/sec
-        Serial.println("[Minimal Example] Motor 0 started moving 200 steps at 1000 steps/sec");
-    }
-    else
-    {
-        Serial.println("[Minimal Example] Motor 0 not initialized!");
-    }
-}
-
-// Call this at the end of setup()
-// testMotorSpeedControllerMinimalExample();
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
 {
@@ -177,17 +151,16 @@ void setup()
     esp_task_wdt_add(serialReadTaskHandle);     // Register with WDT
     esp_task_wdt_add(serialPrintTaskHandle);    // Register with WDT
 
+    Serial.print(F("\r\n"));
     Serial.flush();
-
-    // testMotorSpeedControllerMinimalExample();
 }
 
 void loop()
 {
     // Handle movement complete outside ISR
-    if (motor[0])
+    if (motor[currentIndex])
     {
-        motor[0]->handleMovementComplete();
+        motor[currentIndex]->handleMovementComplete();
     }
 
     esp_task_wdt_reset();
@@ -263,6 +236,10 @@ void setTargetPosition(String targetPos)
     // ✅ The value is valid
     targetPosition[currentIndex]            = value;
     newTargetpositionReceived[currentIndex] = true;
+
+    if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
+        firstTime = false;
+
     Serial.printf("[OK][SetTargetPosition] Target position set to %.2f for motor %d.\r\n", value, currentIndex + 1);
 }
 
@@ -444,7 +421,7 @@ void MotorUpdate()
                 {
                     motorMoving[currentIndex] = false;
                     // Do not set newTargetpositionReceived to false yet, allow for micro-move correction
-                    Serial.println("[Motor] Movement complete!");
+                    // Serial.println("[Motor] Movement complete!");
                 });
             int32_t targetPulse  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
             int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
@@ -463,7 +440,7 @@ void MotorUpdate()
             }
             motor[currentIndex]->move(deltaPulse, 1000);
             motorMoving[currentIndex] = true;
-            Serial.printf("[Motor] Started moving... (deltaPulse=%ld, error=%.2f um)\r\n", (long)deltaPulse, motCtx.error);
+            // Serial.printf("[Motor] Started moving... (deltaPulse=%ld, error=%.2f um)\r\n", (long)deltaPulse, motCtx.error);
         }
         else
         {
@@ -748,42 +725,39 @@ void printSerial()
         // Format all values into the buffer
         Serial.print(F("MOT: "));
         Serial.print((currentIndex));
-        Serial.print(F("    "));
+        Serial.print(F("\t"));
         Serial.print(F("DIR: "));
         Serial.print(encCtx.direction);
-        Serial.print(F("    "));
+        Serial.print(F("\t"));
         Serial.print(F("LAP: "));
         Serial.print(encCtx.lap_id);
-        Serial.print(F("    "));
-        Serial.print(F("CUR PULSE: "));
-        Serial.print(encCtx.current_pulse);
-        Serial.print(F("    "));
+        // Serial.print(F("\t"));
+        // Serial.print(F("CUR PULSE: "));
+        // Serial.print(encCtx.current_pulse);
+        Serial.print(F("\t"));
         Serial.print(F("CUR POS "));
         Serial.print(unit);
         Serial.print(motCtx.currentPosition);
-        Serial.print(F("    "));
-        Serial.print(F("CUR POS (p): "));
-        Serial.print(motCtx.currentPositionPulses, 0);
-        Serial.print(F("    "));
+        // Serial.print(F("\t"));
+        // Serial.print(F("CUR POS (p): "));
+        // Serial.print(motCtx.currentPositionPulses, 0);
+        Serial.print(F("\t"));
         Serial.print(F("TGT POS: "));
         Serial.print(unit);
         Serial.print(targetPosition[currentIndex]);
-        Serial.print(F("    "));
-        Serial.print(F("TGT POS (p): "));
-        Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
-        Serial.print(F("    "));
+        // Serial.print(F("\t"));
+        // Serial.print(F("TGT POS (p): "));
+        // Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
+        Serial.print(F("\t"));
         Serial.print(F("ERR: "));
         Serial.print(firstTime ? 0 : motCtx.error, 0);
-        Serial.print(F("    "));
-        Serial.print(F("newTargetpositionReceived: "));
-        Serial.print(newTargetpositionReceived[currentIndex]);
-        Serial.print(F("    "));
-        Serial.print(F("driverEnabled: "));
-        Serial.print(driverEnabled[currentIndex]);
+        // Serial.print(F("\t"));
+        // Serial.print(F("newTargetpositionReceived: "));
+        // Serial.print(newTargetpositionReceived[currentIndex]);
+        // Serial.print(F("\t"));
+        // Serial.print(F("driverEnabled: "));
+        // Serial.print(driverEnabled[currentIndex]);
         Serial.print(F("\r\n\r\n"));
-
-        if (firstTime)
-            firstTime = false;
 
         lastPulse[currentIndex] = encCtx.current_pulse;
     }
@@ -791,6 +765,7 @@ void printSerial()
 
 void printMotorStatus()
 {
+    return;
     auto status = driver[currentIndex]->getDriverStatus();
     Serial.printf("\r\n[MotorUpdateTask] Motor %d Status:\r\n", currentIndex);
     Serial.printf(" - Current: %d mA\r\n", status.current);
