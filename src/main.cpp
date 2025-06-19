@@ -11,6 +11,9 @@
 #include <esp_task_wdt.h>
 #include <memory>
 
+#define _MIN_SPEED 12
+#define _MAX_SPEED 400
+
 struct MotorContext
 {
     float   currentPosition;
@@ -409,15 +412,15 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
-    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;  // Acceptable error range
-    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;  // Acceptable error range
-    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // Fine movement threshold
-    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // Maximum correction pulses
-    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // Maximum correction pulses
-    static const int     MIN_SPEED                     = 15;    // Start and end speed
-    static const int     MAX_SPEED                     = 200;   // Maximum speed
-    static const int     FINE_MOVE_SPEED               = 15;    // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;  // 5% segments for speed changes
+    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;        // Acceptable error range
+    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;        // Acceptable error range
+    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;        // Fine movement threshold
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;           // Maximum correction pulses
+    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;           // Maximum correction pulses
+    static const int     MIN_SPEED                     = _MIN_SPEED;  // Start and end speed
+    static const int     MAX_SPEED                     = _MAX_SPEED;  // Maximum speed
+    static const int     FINE_MOVE_SPEED               = _MIN_SPEED;  // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;        // 5% segments for speed changes
 
     // Static variable to store total distance for this movement
     static float initialTotalDistance[NUM_DRIVERS] = {0};
@@ -545,8 +548,8 @@ void demonstrateSpeedProfile()
     Serial.println(F("Progress% | Segment | Speed"));
     Serial.println(F("----------|---------|------"));
 
-    const int   minSpeed    = 20;
-    const int   maxSpeed    = 100;
+    const int   minSpeed    = _MIN_SPEED;
+    const int   maxSpeed    = _MAX_SPEED;
     const float segmentSize = 5.0f;
 
     for (int i = 0; i <= 100; i += 5)
