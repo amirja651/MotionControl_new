@@ -8,7 +8,9 @@ Command   cmdMotor;
 Command   cmdRestart;
 Command   cmdStop;
 Command   cmdShow;
+Command   cmdDrive;
 Command   cmdHelp;
+Command   cmdSpeedProfile;
 
 void initializeCLI()
 {
@@ -39,6 +41,12 @@ void initializeCLI()
 
     cmdShow = cli.addCmd("show");
     cmdShow.setDescription("Show the encoder and motor status");
+
+    cmdDrive = cli.addCmd("drv");
+    cmdDrive.setDescription("Show the drive status");
+
+    cmdSpeedProfile = cli.addCmd("speed");
+    cmdSpeedProfile.setDescription("Demonstrate the stepped speed profile");
 
     cmdHelp = cli.addCmd("help");
     cmdHelp.setDescription("Show help information");

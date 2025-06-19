@@ -66,6 +66,10 @@ void printSerial();
 void MotorUpdate();
 void motorStopAndSavePosition();
 void printMotorStatus();
+int  calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
+
+// Function to demonstrate speed profile (for testing)
+void demonstrateSpeedProfile();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -405,19 +409,20 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
-    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;  // محدوده خطای قابل قبول
-    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;  // محدوده خطای قابل قبول
-    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // شروع حرکت آهسته
-    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // حداکثر پالس اصلاحی
-    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // حداکثر پالس اصلاحی
-    static const int     LOW_SPEED                     = 20;    // سرعت شروع و پایان
-    static const int     HIGH_SPEED                    = 100;   // سرعت حداکثر
-    static const int     FINE_MOVE_SPEED               = 15;    // سرعت حرکت دقیق
+    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;  // Acceptable error range
+    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;  // Acceptable error range
+    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // Fine movement threshold
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // Maximum correction pulses
+    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // Maximum correction pulses
+    static const int     MIN_SPEED                     = 15;    // Start and end speed
+    static const int     MAX_SPEED                     = 200;   // Maximum speed
+    static const int     FINE_MOVE_SPEED               = 15;    // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;  // 5% segments for speed changes
 
-    // متغیر استاتیک برای ذخیره فاصله کل حرکت
+    // Static variable to store total distance for this movement
     static float initialTotalDistance[NUM_DRIVERS] = {0};
 
-    if (!motorMoving[currentIndex])  // فقط وقتی موتور متوقف است
+    if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
         MotorContext motCtx = getMotorContext();
 
@@ -431,7 +436,7 @@ void MotorUpdate()
         float   positionThreshold = (motCtx.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
         int32_t maxMicroMovePulse = (motCtx.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
 
-        // شرایط رسیدن به موقعیت نهایی
+        // Check if we've reached the target position
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
             newTargetpositionReceived[currentIndex] = false;
@@ -440,57 +445,45 @@ void MotorUpdate()
             return;
         }
 
-        // تنظیم جهت حرکت
+        // Set movement direction
         motor[currentIndex]->setDirection(motCtx.error > 0);
 
         if (!motor[currentIndex]->isMotorEnabled())
             motor[currentIndex]->motorEnable(true);
 
-        // ثبت callback پس از اتمام حرکت
+        // Register callback for movement completion
         motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
 
-        // محدود کردن پالس در micro-move
+        // Limit pulses for micro-movement
         if (abs(deltaPulse) > maxMicroMovePulse)
             deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
 
-        // انتخاب سرعت بر اساس الگوی trapezoidal
+        // Calculate speed based on smooth stepped profile
         int moveSpeed;
         if (absError <= FINE_MOVE_THRESHOLD_UM)
         {
-            // حرکت دقیق - سرعت کم
+            // Fine movement - low speed
             moveSpeed = FINE_MOVE_SPEED;
         }
         else
         {
-            // ذخیره فاصله کل حرکت در ابتدا
+            // Store total distance at the beginning of movement
             if (initialTotalDistance[currentIndex] == 0)
             {
                 initialTotalDistance[currentIndex] = absError;
             }
 
-            // محاسبه درصد پیشرفت
+            // Calculate progress percentage (0.0 to 1.0)
             float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
 
-            // اگر در 10% اول مسیر هستیم - سرعت کم
-            if (progressPercent <= 0.1f)
-            {
-                moveSpeed = LOW_SPEED;
-            }
-            // اگر در 10% آخر مسیر هستیم - سرعت کم
-            else if (progressPercent >= 0.9f)
-            {
-                moveSpeed = LOW_SPEED;
-            }
-            // در وسط مسیر - سرعت بالا
-            else
-            {
-                moveSpeed = HIGH_SPEED;
-            }
+            // Calculate speed based on stepped profile
+            moveSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
         }
 
-        // اجرای حرکت
-        Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d, isMotorEnabled = %d\n", (long)deltaPulse,
-                      motCtx.error, moveSpeed, motor[currentIndex]->isMotorEnabled());
+        // Execute movement
+        Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d, progress = %.1f%%, isMotorEnabled = %d\n",
+                      (long)deltaPulse, motCtx.error, moveSpeed,
+                      (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, motor[currentIndex]->isMotorEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -498,9 +491,73 @@ void MotorUpdate()
     }
     else
     {
-        // وقتی موتور در حال حرکت است، فاصله کل را ریست نکنیم
-        // فقط وقتی حرکت تمام شد، در motorStopAndSavePosition ریست می‌کنیم
+        // When motor is moving, don't reset the total distance
+        // Only reset when movement is complete in motorStopAndSavePosition
     }
+}
+
+// Helper function to calculate stepped speed profile
+int calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent)
+{
+    // Ensure progress is within bounds
+    if (progressPercent <= 0.0f)
+        return minSpeed;
+    if (progressPercent >= 1.0f)
+        return minSpeed;
+
+    // Calculate which segment we're in (0 to 19 for 5% segments)
+    int segment = static_cast<int>(progressPercent * 100.0f / segmentSizePercent);
+
+    // Calculate total number of segments
+    int totalSegments = static_cast<int>(100.0f / segmentSizePercent);
+
+    // Calculate speed range
+    int speedRange = maxSpeed - minSpeed;
+
+    // Calculate speed based on segment position
+    int speed;
+    if (segment <= totalSegments / 2)
+    {
+        // Ramp up phase (first half)
+        float rampUpProgress = static_cast<float>(segment) / (totalSegments / 2.0f);
+        speed                = minSpeed + static_cast<int>(speedRange * rampUpProgress);
+    }
+    else
+    {
+        // Ramp down phase (second half)
+        float rampDownProgress = static_cast<float>(segment - totalSegments / 2) / (totalSegments / 2.0f);
+        speed                  = maxSpeed - static_cast<int>(speedRange * rampDownProgress);
+    }
+
+    // Ensure speed is within bounds
+    if (speed < minSpeed)
+        speed = minSpeed;
+    if (speed > maxSpeed)
+        speed = maxSpeed;
+
+    return speed;
+}
+
+// Function to demonstrate speed profile (for testing)
+void demonstrateSpeedProfile()
+{
+    Serial.println(F("\r\n=== Speed Profile Demonstration ==="));
+    Serial.println(F("Progress% | Segment | Speed"));
+    Serial.println(F("----------|---------|------"));
+
+    const int   minSpeed    = 20;
+    const int   maxSpeed    = 100;
+    const float segmentSize = 5.0f;
+
+    for (int i = 0; i <= 100; i += 5)
+    {
+        float progress = i / 100.0f;
+        int   segment  = static_cast<int>(progress * 100.0f / segmentSize);
+        int   speed    = calculateSteppedSpeed(progress, minSpeed, maxSpeed, segmentSize);
+
+        Serial.printf("%8d%% | %7d | %5d\r\n", i, segment, speed);
+    }
+    Serial.println(F("=====================================\r\n"));
 }
 
 void motorStopAndSavePosition()
@@ -514,7 +571,7 @@ void motorStopAndSavePosition()
 
     newTargetpositionReceived[currentIndex] = false;
 
-    // ریست کردن فاصله کل حرکت برای حرکت بعدی
+    // Reset total distance for next movement
     static float initialTotalDistance[NUM_DRIVERS] = {0};
     initialTotalDistance[currentIndex]             = 0;
 
@@ -738,7 +795,18 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdShow)
             {
                 printSerial();
+                esp_task_wdt_reset();
+                continue;
+            }
+            else if (c == cmdDrive)
+            {
                 driver[currentIndex]->logDriverStatus();
+                esp_task_wdt_reset();
+                continue;
+            }
+            else if (c == cmdSpeedProfile)
+            {
+                demonstrateSpeedProfile();
                 esp_task_wdt_reset();
                 continue;
             }
@@ -791,6 +859,7 @@ void printSerial()
     // if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
     //{
     //  Format all values into the buffer
+    Serial.print(F("============================================================================================\r\n"));
     Serial.print(F("MOT: "));
     Serial.print((currentIndex));
     Serial.print(F("   "));
