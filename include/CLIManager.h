@@ -9,8 +9,9 @@ Command   cmdRestart;
 Command   cmdStop;
 Command   cmdShow;
 Command   cmdDrive;
-Command   cmdHelp;
 Command   cmdSpeedProfile;
+Command   cmdReset;
+Command   cmdHelp;
 
 void initializeCLI()
 {
@@ -47,6 +48,9 @@ void initializeCLI()
 
     cmdSpeedProfile = cli.addCmd("speed");
     cmdSpeedProfile.setDescription("Demonstrate the stepped speed profile");
+
+    cmdReset = cli.addCmd("reset");
+    cmdReset.setDescription("Reset the motor");
 
     cmdHelp = cli.addCmd("help");
     cmdHelp.setDescription("Show help information");

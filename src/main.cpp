@@ -55,6 +55,9 @@ bool motorMoving[NUM_DRIVERS] = {false};
 
 static float lastSpeed[NUM_DRIVERS] = {0.0f};
 
+// Static variable to store total distance for speed profile calculations
+static float initialTotalDistance[NUM_DRIVERS] = {0.0f};
+
 void encoderUpdateTask(void* pvParameters);
 void motorUpdateTask(void* pvParameters);
 void serialReadTask(void* pvParameters);
@@ -72,6 +75,7 @@ void         motorStopAndSavePosition(String callerFunctionName);
 void         clearLine();
 void         printSerial();
 void         printMotorStatus();
+void         resetMotorState(uint8_t motorIndex);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -421,8 +425,9 @@ void motorUpdate()
     static const int     FINE_MOVE_SPEED               = _FINE_MOVE_SPEED;  // Fine movement speed
     static const float   SEGMENT_SIZE_PERCENT          = 5.0f;              // 5% segments for speed changes
 
-    // Static variable to store total distance for this movement
-    static float initialTotalDistance[NUM_DRIVERS] = {0};
+    // Add debug logging for state variables
+    //Serial.printf("[Debug][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance: %.2f\r\n",
+                 // motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
@@ -572,9 +577,13 @@ void motorStopAndSavePosition(String callerFunctionName)
     if (callerFunctionName == "MotorUpdate")
         Serial.println(F(" - [Info][MotorStopAndSavePosition] Reached target. Stopping..."));
 
+    // Reset all state variables that prevent subsequent movements
     newTargetpositionReceived[currentIndex] = false;
+    motorMoving[currentIndex]               = false;  // ✅ CRITICAL: Reset motor moving flag
+    initialTotalDistance[currentIndex]      = 0.0f;   // ✅ Reset distance for speed profile
+    lastSpeed[currentIndex]                 = 0.0f;
+
     motor[currentIndex]->stop();
-    lastSpeed[currentIndex] = 0.0f;
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     if (callerFunctionName == "MotorUpdate")
@@ -582,6 +591,29 @@ void motorStopAndSavePosition(String callerFunctionName)
 
     printMotorStatus();
     printSerial();
+}
+
+// Emergency reset function to clear all motor state variables
+void resetMotorState(uint8_t motorIndex)
+{
+    if (motorIndex >= NUM_DRIVERS)
+        return;
+
+    Serial.printf("[Info][ResetMotorState] Resetting motor %d state variables\r\n", motorIndex + 1);
+
+    // Reset all state variables
+    newTargetpositionReceived[motorIndex] = false;
+    motorMoving[motorIndex]               = false;
+    lastSpeed[motorIndex]                 = 0.0f;
+
+    // Reset motor controller state
+    if (motor[motorIndex] != nullptr)
+    {
+        motor[motorIndex]->stop();
+        motor[motorIndex]->motorEnable(false);
+    }
+
+    Serial.printf("[Info][ResetMotorState] Motor %d state reset complete\r\n", motorIndex + 1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -804,6 +836,12 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdSpeedProfile)
             {
                 demonstrateSpeedProfile();
+                esp_task_wdt_reset();
+                continue;
+            }
+            else if (c == cmdReset)
+            {
+                resetMotorState(currentIndex);
                 esp_task_wdt_reset();
                 continue;
             }
