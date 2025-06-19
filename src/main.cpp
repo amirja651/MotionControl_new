@@ -55,24 +55,23 @@ bool motorMoving[NUM_DRIVERS] = {false};
 
 static float lastSpeed[NUM_DRIVERS] = {0.0f};
 
-void         setTargetPosition(String targetPosition);  // Target position is in um or degrees
-void         setMotorIndex(String motorIndex);          // Motor number is 1-4 (0-3)
-float        getMotorPosition();                        // Get current motor position
-MotorContext getMotorContext();                         // Get motor context
-
 void encoderUpdateTask(void* pvParameters);
 void motorUpdateTask(void* pvParameters);
 void serialReadTask(void* pvParameters);
 void serialPrintTask(void* pvParameters);
 
-void printSerial();
-void MotorUpdate();
-void motorStopAndSavePosition();
-void printMotorStatus();
-int  calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
-
-// Function to demonstrate speed profile (for testing)
-void demonstrateSpeedProfile();
+bool         isValidNumber(const String& str);
+void         setTargetPosition(String targetPos);
+void         setMotorIndex(String motorIndex);
+float        getMotorPosition();
+MotorContext getMotorContext();
+void         MotorUpdate();
+int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
+void         demonstrateSpeedProfile();
+void         motorStopAndSavePosition();
+void         clearLine();
+void         printSerial();
+void         printMotorStatus();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -106,11 +105,11 @@ void setup()
         if (driver[index]->testConnection())
         {
             driverEnabled[index] = true;
-            Serial.printf("[Setup] Driver %d connected successfully\r\n", index);
+            Serial.printf("[Info][Setup] Driver %d connected successfully\r\n", index);
 
             // Get and print driver status
             auto status = driver[index]->getDriverStatus();
-            Serial.printf("[Setup] Driver %d Status:\r\n", index);
+            Serial.printf("[Info][Setup] Driver %d Status:\r\n", index);
             Serial.printf(" - Version: 0x%08X\r\n", status.version);
             Serial.printf(" - Current: %d mA\r\n", status.current);
             Serial.printf(" - Temperature: %d\r\n\r\n", status.temperature);
@@ -254,7 +253,7 @@ void setTargetPosition(String targetPos)
     if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
         firstTime = false;
 
-    Serial.printf("[OK][SetTargetPosition] Target position set to %.2f for motor %d.\r\n", value, currentIndex + 1);
+    Serial.printf("[Info][SetTargetPosition] Target position set to %.2f for motor %d.\r\n", value, currentIndex + 1);
 }
 
 // Motor number is 1-4 (0-3)
@@ -286,7 +285,7 @@ void setMotorIndex(String motorIndex)
     }
 
     currentIndex = index - 1;
-    Serial.printf("[OK][SetMotorIndex] Motor %d selected.\r\n", index);
+    Serial.printf("[Info][SetMotorIndex] Motor %d selected.\r\n", index);
 }
 
 float getMotorPosition()
@@ -443,7 +442,7 @@ void MotorUpdate()
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
             newTargetpositionReceived[currentIndex] = false;
-            Serial.println("[Motor] Final correction within threshold. Done.");
+            Serial.println(F("[Info][MotorUpdate] Final correction within threshold. Done."));
             motorStopAndSavePosition();
             return;
         }
@@ -484,9 +483,10 @@ void MotorUpdate()
         }
 
         // Execute movement
-        Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d, progress = %.1f%%, isMotorEnabled = %d\n",
-                      (long)deltaPulse, motCtx.error, moveSpeed,
-                      (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, motor[currentIndex]->isMotorEnabled());
+        Serial.printf(
+            "[Info][MotorUpdate] deltaPulse = %ld, error = %.2f um, speed = %d, progress = %.1f%%, isMotorEnabled = %d\n",
+            (long)deltaPulse, motCtx.error, moveSpeed, (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f,
+            motor[currentIndex]->isMotorEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -574,12 +574,12 @@ void motorStopAndSavePosition()
 
     newTargetpositionReceived[currentIndex] = false;
 
-    Serial.print(F("[Motor] Reached target. Stopping...\r\n"));
+    Serial.print(F("[Info][MotorStopAndSavePosition] Reached target. Stopping...\r\n"));
 
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    printSerial();
     printMotorStatus();
+    printSerial();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -901,9 +901,8 @@ void printSerial()
 
 void printMotorStatus()
 {
-    return;
     auto status = driver[currentIndex]->getDriverStatus();
-    Serial.printf("\r\n[MotorUpdateTask] Motor %d Status:\r\n", currentIndex);
+    Serial.printf("\r\n[Info][PrintMotorStatus] Motor %d Status:\r\n", currentIndex);
     Serial.printf(" - Current: %d mA\r\n", status.current);
     Serial.printf(" - Temperature: %d\r\n\r\n", status.temperature);
 }
