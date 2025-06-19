@@ -52,6 +52,11 @@ public:
     void configureDriver_Pancake();
     void logDriverStatus();
 
+    // Driver Mode
+    void setStealthChopMode();
+    void setSpreadCycleMode();
+    bool isStealthChopEnabled();
+
 private:
     TMC5160StepperExtended* _driver;
 

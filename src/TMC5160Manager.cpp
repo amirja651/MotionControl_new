@@ -66,30 +66,33 @@ bool TMC5160Manager::configureDriver()
     // Basic configuration
     _driver->begin();
     delay(5);
-    _driver->toff(5);  // Enable driver
+
+    _driver->toff(5);  // Enable driver (0 = StealthChop) mode (5 = SpreadCycle)
     delay(5);
+
+    _driver->en_pwm_mode(true);    // Enable StealthChop
+    _driver->pwm_autoscale(true);  // Enable automatic current scaling (StealthChop)
+    _driver->pwm_autograd(true);
+    _driver->TPWMTHRS(0xFFFF);  // Prevent jumping to SpreadCycle
+    delay(5);
+
     _driver->rms_current(DEFAULT_CURRENT);  // Set current to 1A
+    _driver->microsteps(MICROSTEPS);        // Set microsteps to 16
+    _driver->intpol(true);                  // Enable microstep interpolation
     delay(5);
-    _driver->microsteps(MICROSTEPS);  // Set microsteps to 16
-    delay(5);
-    // Configure spreadCycle
-    _driver->en_pwm_mode(false);  // Disable stealthChop
-    delay(5);
-    _driver->pwm_autoscale(true);  // Enable automatic current scaling
-    delay(5);
+
     // StallGuard configuration
-    _driver->TCOOLTHRS(0xFFFFF);  // 20bit max
-    delay(5);
-    setSGTHRS(100);  // Stall threshold
-    delay(5);
+    _driver->TCOOLTHRS(0xFFFFF);  // 20bit max (0xFFFFF = 1023)
+    setSGTHRS(100);               // Stall threshold (100 = 100% of current)
 
     if (!testConnection())
         return false;
 
-    bool sdMode = _driver->sd_mode();
+    bool sd_mode = _driver->sd_mode();  // Check if driver is in STEP/DIR mode
     delay(5);
-    bool drvEnn = _driver->drv_enn();
+    bool drv_enn = _driver->drv_enn();  // Determines if the driver is enabled or not (from hardware perspective).
     delay(5);
+
     // Read and print important registers
     uint32_t drv_status = _driver->DRV_STATUS();
     delay(5);
@@ -101,8 +104,8 @@ bool TMC5160Manager::configureDriver()
     Serial.printf(" - Current: %d mA\r\n", DEFAULT_CURRENT);
     Serial.printf(" - Microsteps: %d\r\n", MICROSTEPS);
     Serial.printf(" - Mode: STEP/DIR with spreadCycle\r\n");
-    Serial.printf(" - Hardware configured for Step & Dir mode: %s\r\n", sdMode ? "true" : "false");
-    Serial.printf(" - Hardware enabled: %s\r\n", drvEnn ? "true" : "false");
+    Serial.printf(" - Hardware configured for Step & Dir mode: %s\r\n", sd_mode ? "true" : "false");
+    Serial.printf(" - Hardware enabled: %s\r\n", drv_enn ? "true" : "false");
     Serial.printf(" - DRV_STATUS: 0x%08X\r\n", drv_status);
     Serial.printf(" - GCONF: 0x%08X\r\n\r\n", gconf);
 
@@ -110,6 +113,62 @@ bool TMC5160Manager::configureDriver()
     DriverOff();
 
     return true;
+}
+
+void TMC5160Manager::setStealthChopMode()
+{
+    if (!_driver)
+        return;
+
+    _driver->toff(0);            // Disable SpreadCycle
+    _driver->en_pwm_mode(true);  // Enable StealthChop
+    _driver->pwm_autoscale(true);
+    _driver->pwm_autograd(true);
+    _driver->TPWMTHRS(0xFFFF);  // StealthChop active at all speeds
+    _driver->pwm_ofs(36);
+    _driver->pwm_grad(10);
+    _driver->pwm_freq(2);
+    delay(5);
+
+    _driver->intpol(true);            // Microstep interpolation
+    _driver->microsteps(MICROSTEPS);  // Optional: Adjust microsteps
+    delay(5);
+
+    // Turn off the driver
+    DriverOff();
+}
+
+void TMC5160Manager::setSpreadCycleMode()
+{
+    if (!_driver)
+        return;
+
+    _driver->toff(5);             // Enable SpreadCycle
+    _driver->en_pwm_mode(false);  // Disable StealthChop
+    delay(5);
+
+    _driver->blank_time(24);
+    _driver->hysteresis_start(3);
+    _driver->hysteresis_end(1);
+    delay(5);
+
+    _driver->intpol(true);  // Microstep interpolation
+    _driver->microsteps(MICROSTEPS);
+    delay(5);
+
+    _driver->TCOOLTHRS(0xFFFFF);  // Allow StallGuard if needed
+    delay(5);
+
+    // Turn off the driver
+    DriverOff();
+}
+
+bool TMC5160Manager::isStealthChopEnabled()
+{
+    if (!_driver)
+        return false;
+
+    return _driver->en_pwm_mode();  // returns true if StealthChop is enabled
 }
 
 void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
@@ -125,38 +184,43 @@ void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
     if (useStealth)
         gconf |= (1 << 2);  // Enable StealthChop
     _driver->GCONF(gconf);
+    delay(5);
 
     // ---- Current ----
-    _driver->rms_current(DEFAULT_CURRENT);
-    _driver->irun(16);
-    _driver->ihold(8);
-    _driver->iholddelay(8);
-    _driver->TPOWERDOWN(10);
+    _driver->rms_current(DEFAULT_CURRENT);  // Set current to 1A
+    _driver->irun(16);                      // Run current: ~0.16A
+    _driver->ihold(8);                      // Hold current: ~0.08A
+    _driver->iholddelay(8);                 // Short delay before switching to ihold
+    _driver->TPOWERDOWN(10);                // Power down delay
+    delay(5);
 
     // ---- Microstepping ----
-    _driver->microsteps(16);
-    _driver->intpol(true);
+    _driver->microsteps(MICROSTEPS);  // Set microsteps to 16
+    _driver->intpol(true);            // Enable microstep interpolation
+    delay(5);
 
     // ---- StealthChop Mode ----
-    _driver->en_pwm_mode(useStealth);
-    _driver->pwm_autoscale(true);
-    _driver->pwm_autograd(true);
-    _driver->TPWMTHRS(0xFFFF);
+    _driver->en_pwm_mode(useStealth);  // Enable StealthChop
+    _driver->pwm_autoscale(true);      // Enable automatic current scaling (StealthChop)
+    _driver->pwm_autograd(true);       // Enable automatic gradient (StealthChop)
+    _driver->TPWMTHRS(0xFFFF);         // StealthChop active at all speeds
     if (useStealth)
     {
-        _driver->pwm_ofs(36);
-        _driver->pwm_grad(10);
-        _driver->pwm_freq(2);
+        _driver->pwm_ofs(36);   // Offset
+        _driver->pwm_grad(10);  // Gradient
+        _driver->pwm_freq(2);   // Frequency
     }
+    delay(5);
 
     // ---- SpreadCycle config only if StealthChop OFF ----
     if (!useStealth)
     {
-        _driver->toff(4);
-        _driver->blank_time(24);
-        _driver->hysteresis_start(3);
-        _driver->hysteresis_end(1);
+        _driver->toff(4);              // Enable SpreadCycle
+        _driver->blank_time(24);       // Blank time
+        _driver->hysteresis_start(3);  // Hysteresis start
+        _driver->hysteresis_end(1);    // Hysteresis end
     }
+    delay(5);
 
     // Turn off the driver
     DriverOff();
@@ -177,6 +241,7 @@ void TMC5160Manager::configureDriver_Pancake()
     gconf |= (1 << 4);  // Double edge step
     gconf |= (1 << 6);  // Multistep filtering
     _driver->GCONF(gconf);
+    delay(5);
 
     // ---------------------------
     // 2. Current Settings (Low Power Mode)
@@ -186,12 +251,14 @@ void TMC5160Manager::configureDriver_Pancake()
     _driver->ihold(100);        // Hold current: ~0.15A (increased for stability)
     _driver->iholddelay(1);     // Short delay before switching to ihold
     _driver->TPOWERDOWN(10);    // Power down delay
+    delay(5);
 
     // ---------------------------
     // 3. Microstepping & Interpolation
     // ---------------------------
     _driver->microsteps(16);  // Increased microstepping for smoother holding
     _driver->intpol(true);    // Smooth motion
+    delay(5);
 
     // ---------------------------
     // 4. StealthChop Settings (Enable for holding/low speed)
@@ -203,6 +270,7 @@ void TMC5160Manager::configureDriver_Pancake()
     _driver->pwm_grad(10);
     _driver->pwm_freq(2);
     _driver->en_pwm_mode(true);  // Enable StealthChop (silent mode) for holding
+    delay(5);
 
     // ---------------------------
     // 5. SpreadCycle Chopper Settings (used only at higher speeds)
@@ -211,6 +279,7 @@ void TMC5160Manager::configureDriver_Pancake()
     _driver->blank_time(24);
     _driver->hysteresis_start(3);
     _driver->hysteresis_end(1);
+    delay(5);
 
     // ---------------------------
     // 6. StallGuard & CoolStep
@@ -218,6 +287,7 @@ void TMC5160Manager::configureDriver_Pancake()
     _driver->TCOOLTHRS(200);  // CoolStep threshold
     _driver->sgt(5);          // StallGuard threshold
     _driver->sfilt(true);
+    delay(5);
 
     // ---------------------------
     // 7. Motion Configuration (Soft Motion)
@@ -230,6 +300,7 @@ void TMC5160Manager::configureDriver_Pancake()
     _driver->DMAX(100);    // Deceleration limit
     _driver->a1(300);      // Start acceleration
     _driver->d1(300);      // Start deceleration
+    delay(5);
 
     // Turn off the driver
     DriverOff();
@@ -273,6 +344,7 @@ void TMC5160Manager::setSGTHRS(uint32_t threshold)
     if (!_driver)
         return;
     _driver->write(0x40, threshold);  // Direct register access
+    delay(5);
 
     // Turn off the driver
     DriverOff();

@@ -65,7 +65,7 @@ void         setTargetPosition(String targetPos);
 void         setMotorIndex(String motorIndex);
 float        getMotorPosition();
 MotorContext getMotorContext();
-void         MotorUpdate();
+void         motorUpdate();
 int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void         demonstrateSpeedProfile();
 void         motorStopAndSavePosition();
@@ -394,7 +394,7 @@ void motorUpdateTask(void* pvParameters)
                     lastReportedIndex = currentIndex;
                 }
 
-                MotorUpdate();
+                motorUpdate();
             }
         }
 
@@ -403,7 +403,7 @@ void motorUpdateTask(void* pvParameters)
     }
 }
 
-void MotorUpdate()
+void motorUpdate()
 {
     if (!newTargetpositionReceived[currentIndex])
         return;
