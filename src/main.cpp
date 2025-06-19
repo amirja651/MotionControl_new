@@ -68,7 +68,7 @@ void         setTargetPosition(String targetPos);
 void         setMotorIndex(String motorIndex);
 float        getMotorPosition();
 MotorContext getMotorContext();
-void         motorUpdate();
+void         linearMotorUpdate();
 int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void         demonstrateSpeedProfile();
 void         motorStopAndSavePosition(String callerFunctionName);
@@ -398,7 +398,7 @@ void motorUpdateTask(void* pvParameters)
                     lastReportedIndex = currentIndex;
                 }
 
-                motorUpdate();
+                linearMotorUpdate();
             }
         }
 
@@ -407,7 +407,7 @@ void motorUpdateTask(void* pvParameters)
     }
 }
 
-void motorUpdate()
+void linearMotorUpdate()
 {
     if (!newTargetpositionReceived[currentIndex])
         return;
@@ -426,8 +426,8 @@ void motorUpdate()
     static const float   SEGMENT_SIZE_PERCENT          = 5.0f;              // 5% segments for speed changes
 
     // Add debug logging for state variables
-    //Serial.printf("[Debug][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance: %.2f\r\n",
-                 // motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
+    // Serial.printf("[Debug][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance: %.2f\r\n",
+    // motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
