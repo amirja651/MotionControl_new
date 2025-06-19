@@ -13,18 +13,25 @@ bool TMC5160Manager::begin()
     // Configure driver
     bool success = configureDriver();
 
+    // Turn off the driver
+    DriverOff();
+
     return success;
 }
 
 bool TMC5160Manager::testConnection(bool print)
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return false;
+    }
 
     // Try to read the version register
     // uint32_t version = _driver->version();
-    // Turn off the driver
-    // DriverOff();
+
+    //
     // return (version != 0 && version != 0xFFFFFFFF);
     uint8_t  version  = 0;
     uint32_t gconf    = 0;
@@ -54,6 +61,10 @@ bool TMC5160Manager::testConnection(bool print)
             Serial.println(F(")"));
             Serial.println(F(" - connection failed!\r\n"));
         }
+
+        // Turn off the driver
+        DriverOff();
+
         return false;
     }
 
@@ -73,6 +84,10 @@ bool TMC5160Manager::testConnection(bool print)
             Serial.println(F(" - GCONF register read failed"));
             Serial.println(F(" - connection failed!\r\n"));
         }
+
+        // Turn off the driver
+        DriverOff();
+
         return false;
     }
 
@@ -92,6 +107,10 @@ bool TMC5160Manager::testConnection(bool print)
             Serial.println(F(" - DRV_STATUS register read failed"));
             Serial.println(F(" - connection failed!\r\n"));
         }
+
+        // Turn off the driver
+        DriverOff();
+
         return false;
     }
 
@@ -111,6 +130,10 @@ bool TMC5160Manager::testConnection(bool print)
             Serial.println(F(" - CHOPCONF register read failed"));
             Serial.println(F(" - connection failed!\r\n"));
         }
+
+        // Turn off the driver
+        DriverOff();
+
         return false;
     }
 
@@ -134,6 +157,10 @@ bool TMC5160Manager::testConnection(bool print)
             Serial.println(F(" - GCONF register write/read mismatch"));
             Serial.println(F(" - connection failed!\r\n"));
         }
+
+        // Turn off the driver
+        DriverOff();
+
         return false;
     }
 
@@ -154,6 +181,9 @@ bool TMC5160Manager::testConnection(bool print)
         Serial.print(F("✅  connected successfully\r\n\r\n"));
     }
 
+    // Turn off the driver
+    DriverOff();
+
     return true;
 }
 
@@ -162,7 +192,11 @@ TMC5160Manager::DriverStatus TMC5160Manager::getDriverStatus()
     DriverStatus status = {false, 0, 0, 0, 0, 0};
 
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return status;
+    }
 
     status.connected  = true;
     status.version    = _driver->version();
@@ -190,7 +224,11 @@ TMC5160Manager::DriverStatus TMC5160Manager::getDriverStatus()
 bool TMC5160Manager::configureDriver()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return false;
+    }
 
     // Basic configuration
     _driver->begin();
@@ -215,7 +253,12 @@ bool TMC5160Manager::configureDriver()
     setSGTHRS(100);               // Stall threshold (100 = 100% of current)
 
     if (!testConnection())
+    {
+        // Turn off the driver
+        DriverOff();
+
         return false;
+    }
 
     bool sd_mode = _driver->sd_mode();  // Check if driver is in STEP/DIR mode
     delay(5);
@@ -249,7 +292,11 @@ bool TMC5160Manager::configureDriver()
 void TMC5160Manager::setStealthChopMode()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
 
     _driver->toff(0);            // Disable SpreadCycle
     _driver->en_pwm_mode(true);  // Enable StealthChop
@@ -264,15 +311,16 @@ void TMC5160Manager::setStealthChopMode()
     _driver->intpol(true);            // Microstep interpolation
     _driver->microsteps(MICROSTEPS);  // Optional: Adjust microsteps
     delay(5);
-
-    // Turn off the driver
-    DriverOff();
 }
 
 void TMC5160Manager::setSpreadCycleMode()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
 
     _driver->toff(5);             // Enable SpreadCycle
     _driver->en_pwm_mode(false);  // Disable StealthChop
@@ -289,23 +337,34 @@ void TMC5160Manager::setSpreadCycleMode()
 
     _driver->TCOOLTHRS(0xFFFFF);  // Allow StallGuard if needed
     delay(5);
-
-    // Turn off the driver
-    DriverOff();
 }
 
 bool TMC5160Manager::isStealthChopEnabled()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return false;
+    }
 
-    return _driver->en_pwm_mode();  // returns true if StealthChop is enabled
+    bool stealthChop = _driver->en_pwm_mode();  // returns true if StealthChop is enabled
+    delay(5);
+
+    // Turn off the driver
+    DriverOff();
+
+    return stealthChop;
 }
 
 void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
 
     // ---- GCONF ----
     uint32_t gconf = 0;
@@ -352,15 +411,16 @@ void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
         _driver->hysteresis_end(1);    // Hysteresis end
     }
     delay(5);
-
-    // Turn off the driver
-    DriverOff();
 }
 
 void TMC5160Manager::configureDriver_Pancake()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
 
     // ---------------------------
     // 1. Basic Driver Configuration (GCONF)
@@ -432,20 +492,23 @@ void TMC5160Manager::configureDriver_Pancake()
     _driver->a1(300);      // Start acceleration
     _driver->d1(300);      // Start deceleration
     delay(5);
-
-    // Turn off the driver
-    DriverOff();
 }
 
 void TMC5160Manager::DriverOff()
 {
     digitalWrite(_pinCS, HIGH);
+    delay(5);
 }
 
 void TMC5160Manager::setCurrent(uint16_t current)
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
+
     _driver->rms_current(current);
 
     // Turn off the driver
@@ -455,25 +518,27 @@ void TMC5160Manager::setCurrent(uint16_t current)
 void TMC5160Manager::setMicrosteps(uint16_t microsteps)
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
+
     _driver->microsteps(microsteps);
 
     // Turn off the driver
     DriverOff();
 }
 
-void TMC5160Manager::stopMotor() {}
-
-void TMC5160Manager::emergencyStop()
-{
-    stopMotor();
-    DriverOff();
-}
-
 void TMC5160Manager::setSGTHRS(uint32_t threshold)
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
+
     _driver->write(0x40, threshold);  // Direct register access
     delay(5);
 
@@ -484,17 +549,28 @@ void TMC5160Manager::setSGTHRS(uint32_t threshold)
 uint32_t TMC5160Manager::getSG_RESULT()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return 0;
-    return _driver->sg_result();  // TMC5160 uses lowercase method names
+    }
+
+    uint32_t sg_result = _driver->sg_result();  // TMC5160 uses lowercase method names
 
     // Turn off the driver
     DriverOff();
+
+    return sg_result;
 }
 
 void TMC5160Manager::logDriverStatus()
 {
     if (!_driver)
+    {
+        // Turn off the driver
+        DriverOff();
         return;
+    }
 
     Serial.print(F("[LogDriverStatus] Driver "));
     Serial.print(_driverIndex + 1);
@@ -524,9 +600,6 @@ void TMC5160Manager::logDriverStatus()
 
     uint16_t tpwmthrs = _driver->TPWMTHRS();
     Serial.printf(" - TPWMTHRS (Stealth Threshold): %u\n", tpwmthrs);
-
-    // Turn off the driver
-    DriverOff();
 
     // Decode DRV_STATUS bits
     bool otpw = drv_status & (1UL << 26);

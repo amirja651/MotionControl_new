@@ -98,6 +98,13 @@ void setup()
     SystemDiagnostics::printSystemInfo();
     SystemDiagnostics::printSystemStatus();
 
+    // Initialize CS pins and turn them off
+    for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+    {
+        pinMode(DriverPins::CS[index], OUTPUT);
+        digitalWrite(DriverPins::CS[index], HIGH);
+    }
+
     // Initialize TMC5160 drivers
     for (uint8_t index = 0; index < NUM_DRIVERS; index++)
     {

@@ -43,10 +43,6 @@ public:
     void setCurrent(uint16_t current);
     void setMicrosteps(uint16_t microsteps);
 
-    // Motion Control
-    void stopMotor();
-    void emergencyStop();
-
     // Driver Configuration
     void configureDriver_Nema11_1004H(bool useStealth);
     void configureDriver_Pancake();
@@ -56,6 +52,7 @@ public:
     void setStealthChopMode();
     void setSpreadCycleMode();
     bool isStealthChopEnabled();
+    void DriverOff();
 
 private:
     TMC5160StepperExtended* _driver;
@@ -70,7 +67,6 @@ private:
     bool     configureDriver();
     void     setSGTHRS(uint32_t threshold);
     uint32_t getSG_RESULT();
-    void     DriverOff();
 };
 
 #endif  // TMC5160_MANAGER_H
