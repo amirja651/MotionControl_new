@@ -16,16 +16,145 @@ bool TMC5160Manager::begin()
     return success;
 }
 
-bool TMC5160Manager::testConnection()
+bool TMC5160Manager::testConnection(bool print)
 {
     if (!_driver)
         return false;
 
     // Try to read the version register
-    uint32_t version = _driver->version();
+    // uint32_t version = _driver->version();
     // Turn off the driver
-    DriverOff();
-    return (version != 0 && version != 0xFFFFFFFF);
+    // DriverOff();
+    // return (version != 0 && version != 0xFFFFFFFF);
+    uint8_t  version  = 0;
+    uint32_t gconf    = 0;
+    uint32_t status   = 0;
+    uint32_t chopconf = 0;
+
+    version = _driver->version();
+
+    delay(1);
+
+    if (print)
+    {
+        Serial.print(F("[TestConnection] Driver "));
+        Serial.print(_driverIndex + 1);
+        Serial.println(F(":"));
+
+        Serial.print(F(" - Version read attempt: 0x"));
+        Serial.println(version, HEX);
+    }
+
+    if (version == 0xFF || version == 0)
+    {
+        if (print)
+        {
+            Serial.print(F(" - Invalid version (0x"));
+            Serial.print(version, HEX);
+            Serial.println(F(")"));
+            Serial.println(F(" - connection failed!\r\n"));
+        }
+        return false;
+    }
+
+    // Test GCONF register
+    gconf = _driver->GCONF();
+
+    if (print)
+    {
+        Serial.print(F(" - GCONF read: 0x"));
+        Serial.println(gconf, HEX);
+    }
+
+    if (gconf == 0xFFFFFFFF)
+    {
+        if (print)
+        {
+            Serial.println(F(" - GCONF register read failed"));
+            Serial.println(F(" - connection failed!\r\n"));
+        }
+        return false;
+    }
+
+    // Test DRV_STATUS register
+    status = _driver->DRV_STATUS();
+
+    if (print)
+    {
+        Serial.print(F(" - DRV_STATUS read: 0x"));
+        Serial.println(status, HEX);
+    }
+
+    if (status == 0xFFFFFFFF)
+    {
+        if (print)
+        {
+            Serial.println(F(" - DRV_STATUS register read failed"));
+            Serial.println(F(" - connection failed!\r\n"));
+        }
+        return false;
+    }
+
+    // Test CHOPCONF register
+    chopconf = _driver->CHOPCONF();
+
+    if (print)
+    {
+        Serial.print(F(" - CHOPCONF read: 0x"));
+        Serial.println(chopconf, HEX);
+    }
+
+    if (chopconf == 0xFFFFFFFF)
+    {
+        if (print)
+        {
+            Serial.println(F(" - CHOPCONF register read failed"));
+            Serial.println(F(" - connection failed!\r\n"));
+        }
+        return false;
+    }
+
+    // Test if driver is responding to commands
+    _driver->GCONF(gconf);  // Write back the same value
+
+    uint32_t readback = _driver->GCONF();
+
+    if (print)
+    {
+        Serial.print(F(" - GCONF write/read test: Original = 0x"));
+        Serial.print(gconf, HEX);
+        Serial.print(F(", Readback = 0x"));
+        Serial.println(readback, HEX);
+    }
+
+    if (readback != gconf)
+    {
+        if (print)
+        {
+            Serial.println(F(" - GCONF register write/read mismatch"));
+            Serial.println(F(" - connection failed!\r\n"));
+        }
+        return false;
+    }
+
+    if (print)
+    {
+        Serial.print(F(" - Communication test passed (Version: 0x"));
+        Serial.print(version, HEX);
+        Serial.println(F(")"));
+    }
+
+    if (print)
+    {
+        // Get and print driver status
+        auto status = getDriverStatus();
+        Serial.printf("  - Version: 0x%08X\r\n", status.version);
+        Serial.printf("  - Current: %d mA\r\n", status.current);
+        Serial.printf("  - Temperature: %d\r\n", status.temperature);
+        Serial.print(F("✅  connected successfully\r\n\r\n"));
+    }
+
+    return true;
 }
 
 TMC5160Manager::DriverStatus TMC5160Manager::getDriverStatus()
@@ -100,7 +229,9 @@ bool TMC5160Manager::configureDriver()
     delay(5);
 
     // Print configuration
-    Serial.printf("[configureDriver] Driver %d configured:\r\n", _driverIndex);
+    Serial.print(F("\r\n[configureDriver] Driver "));
+    Serial.print(_driverIndex + 1);
+    Serial.println(F(" configured:"));
     Serial.printf(" - Current: %d mA\r\n", DEFAULT_CURRENT);
     Serial.printf(" - Microsteps: %d\r\n", MICROSTEPS);
     Serial.printf(" - Mode: STEP/DIR with spreadCycle\r\n");
@@ -365,32 +496,34 @@ void TMC5160Manager::logDriverStatus()
     if (!_driver)
         return;
 
-    Serial.println("\n=== [TMC5160] Driver Status Log ===");
+    Serial.print(F("[LogDriverStatus] Driver "));
+    Serial.print(_driverIndex + 1);
+    Serial.println(F(" status:"));
 
     uint32_t version = _driver->version();
-    Serial.printf("Version: 0x%08X\n", version);
+    Serial.printf(" - Version: 0x%08X\n", version);
 
     bool driverEnabled = !_driver->drv_enn();  // ENN pin: active LOW
-    Serial.printf("Driver Enabled (ENN pin LOW): %s\n", driverEnabled ? "YES" : "NO");
+    Serial.printf(" - Driver Enabled (ENN pin LOW): %s\n", driverEnabled ? "YES" : "NO");
 
     bool stealthChop = _driver->en_pwm_mode();
-    Serial.printf("StealthChop Mode Enabled: %s\n", stealthChop ? "YES" : "NO");
+    Serial.printf(" - StealthChop Mode Enabled: %s\n", stealthChop ? "YES" : "NO");
 
     uint32_t drv_status = _driver->DRV_STATUS();
-    Serial.printf("DRV_STATUS:  0x%08X\n", drv_status);
+    Serial.printf(" - DRV_STATUS:  0x%08X\n", drv_status);
 
     uint32_t gconf = _driver->GCONF();
-    Serial.printf("GCONF:       0x%08X\n", gconf);
+    Serial.printf(" - GCONF:       0x%08X\n", gconf);
 
     uint16_t current = _driver->rms_current();
-    Serial.printf("RMS Current: %d mA\n", current);
+    Serial.printf(" - RMS Current: %d mA\n", current);
 
     uint8_t irun  = _driver->irun();
     uint8_t ihold = _driver->ihold();
-    Serial.printf("IRUN: %d, IHOLD: %d\n", irun, ihold);
+    Serial.printf(" - IRUN: %d, IHOLD: %d\n", irun, ihold);
 
     uint16_t tpwmthrs = _driver->TPWMTHRS();
-    Serial.printf("TPWMTHRS (Stealth Threshold): %u\n", tpwmthrs);
+    Serial.printf(" - TPWMTHRS (Stealth Threshold): %u\n", tpwmthrs);
 
     // Turn off the driver
     DriverOff();
@@ -403,13 +536,13 @@ void TMC5160Manager::logDriverStatus()
     bool ola  = drv_status & (1UL << 18);
     bool olb  = drv_status & (1UL << 16);
 
-    Serial.printf("Warnings:\n");
-    Serial.printf(" - Overtemperature Warning:     %s\n", otpw ? "YES" : "NO");
-    Serial.printf(" - Overtemperature Shutdown:    %s\n", ot ? "YES" : "NO");
-    Serial.printf(" - Short to GND on A:           %s\n", s2ga ? "YES" : "NO");
-    Serial.printf(" - Short to GND on B:           %s\n", s2gb ? "YES" : "NO");
-    Serial.printf(" - Open Load on A:              %s\n", ola ? "YES" : "NO");
-    Serial.printf(" - Open Load on B:              %s\n", olb ? "YES" : "NO");
+    Serial.printf(" - Warnings:\n");
+    Serial.printf(" | - Overtemperature Warning:     %s\n", otpw ? "YES" : "NO");
+    Serial.printf(" | - Overtemperature Shutdown:    %s\n", ot ? "YES" : "NO");
+    Serial.printf(" | - Short to GND on A:           %s\n", s2ga ? "YES" : "NO");
+    Serial.printf(" | - Short to GND on B:           %s\n", s2gb ? "YES" : "NO");
+    Serial.printf(" | - Open Load on A:              %s\n", ola ? "YES" : "NO");
+    Serial.printf(" | - Open Load on B:              %s\n", olb ? "YES" : "NO");
 
     Serial.println("==================================\n");
 }

@@ -24,7 +24,7 @@ public:
 
     // Initialization
     bool begin();
-    bool testConnection();
+    bool testConnection(bool print = false);
 
     // Driver Status
     struct DriverStatus

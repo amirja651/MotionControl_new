@@ -106,18 +106,9 @@ void setup()
         driver[index]->begin();
 
         // Test connection for each driver
-        if (driver[index]->testConnection())
+        if (driver[index]->testConnection(true))
         {
             driverEnabled[index] = true;
-            Serial.printf("[Info][Setup] Driver %d connected successfully\r\n", index);
-
-            // Get and print driver status
-            auto status = driver[index]->getDriverStatus();
-            Serial.printf("[Info][Setup] Driver %d Status:\r\n", index);
-            Serial.printf(" - Version: 0x%08X\r\n", status.version);
-            Serial.printf(" - Current: %d mA\r\n", status.current);
-            Serial.printf(" - Temperature: %d\r\n\r\n", status.temperature);
-
             // Configure motor parameters
             if (index == (uint8_t)MotorType::LINEAR)
                 driver[index]->configureDriver_Nema11_1004H(true);
@@ -137,20 +128,15 @@ void setup()
             // Initialize all encoders
             encoder[index]->begin();
         }
-        else
-        {
-            Serial.printf("[Warning][Setup] Driver %d connection failed!\r\n", index);
-        }
+    }
 
-        if (!driverEnabled[0] && !driverEnabled[1] && !driverEnabled[2] && !driverEnabled[3])
-        {
-            Serial.printf(
-                "[Error][Setup] All drivers are disabled and the system is not operational. After powering on the system, "
-                "please reset it.\r\n");
+    if (!driverEnabled[0] && !driverEnabled[1] && !driverEnabled[2] && !driverEnabled[3])
+    {
+        Serial.printf("[Error][Setup] All drivers are disabled and the system is not operational. After powering on the system, "
+                      "please reset it.\r\n");
 
-            for (;;)
-                delay(1000);
-        }
+        for (;;)
+            delay(1000);
     }
 
     xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 2048, NULL, 5, &encoderUpdateTaskHandle, 1);  // Core 1
@@ -938,7 +924,7 @@ void printSerial()
 void printMotorStatus()
 {
     auto status = driver[currentIndex]->getDriverStatus();
-    Serial.printf("\r\n[Info][PrintMotorStatus] Motor %d Status:\r\n", currentIndex);
+    Serial.printf("\r\n[Info][PrintMotorStatus] Motor %d Status:\r\n", currentIndex + 1);
     Serial.printf(" - Current: %d mA\r\n", status.current);
     Serial.printf(" - Temperature: %d\r\n\r\n", status.temperature);
 }
