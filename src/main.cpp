@@ -410,8 +410,12 @@ void MotorUpdate()
     static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // شروع حرکت آهسته
     static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // حداکثر پالس اصلاحی
     static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // حداکثر پالس اصلاحی
-    static const int     NORMAL_MOVE_SPEED             = 100;   // سرعت حرکت عادی
+    static const int     LOW_SPEED                     = 20;    // سرعت شروع و پایان
+    static const int     HIGH_SPEED                    = 100;   // سرعت حداکثر
     static const int     FINE_MOVE_SPEED               = 15;    // سرعت حرکت دقیق
+
+    // متغیر استاتیک برای ذخیره فاصله کل حرکت
+    static float initialTotalDistance[NUM_DRIVERS] = {0};
 
     if (!motorMoving[currentIndex])  // فقط وقتی موتور متوقف است
     {
@@ -449,8 +453,40 @@ void MotorUpdate()
         if (abs(deltaPulse) > maxMicroMovePulse)
             deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
 
-        // انتخاب سرعت بر اساس فاصله تا هدف
-        int moveSpeed = (absError <= FINE_MOVE_THRESHOLD_UM) ? FINE_MOVE_SPEED : NORMAL_MOVE_SPEED;
+        // انتخاب سرعت بر اساس الگوی trapezoidal
+        int moveSpeed;
+        if (absError <= FINE_MOVE_THRESHOLD_UM)
+        {
+            // حرکت دقیق - سرعت کم
+            moveSpeed = FINE_MOVE_SPEED;
+        }
+        else
+        {
+            // ذخیره فاصله کل حرکت در ابتدا
+            if (initialTotalDistance[currentIndex] == 0)
+            {
+                initialTotalDistance[currentIndex] = absError;
+            }
+
+            // محاسبه درصد پیشرفت
+            float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+
+            // اگر در 10% اول مسیر هستیم - سرعت کم
+            if (progressPercent <= 0.1f)
+            {
+                moveSpeed = LOW_SPEED;
+            }
+            // اگر در 10% آخر مسیر هستیم - سرعت کم
+            else if (progressPercent >= 0.9f)
+            {
+                moveSpeed = LOW_SPEED;
+            }
+            // در وسط مسیر - سرعت بالا
+            else
+            {
+                moveSpeed = HIGH_SPEED;
+            }
+        }
 
         // اجرای حرکت
         Serial.printf("[Motor] deltaPulse = %ld, error = %.2f um, speed = %d, isMotorEnabled = %d\n", (long)deltaPulse,
@@ -459,6 +495,11 @@ void MotorUpdate()
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
         motorMoving[currentIndex] = true;
+    }
+    else
+    {
+        // وقتی موتور در حال حرکت است، فاصله کل را ریست نکنیم
+        // فقط وقتی حرکت تمام شد، در motorStopAndSavePosition ریست می‌کنیم
     }
 }
 
@@ -472,6 +513,10 @@ void motorStopAndSavePosition()
     lastSpeed[currentIndex] = 0.0f;
 
     newTargetpositionReceived[currentIndex] = false;
+
+    // ریست کردن فاصله کل حرکت برای حرکت بعدی
+    static float initialTotalDistance[NUM_DRIVERS] = {0};
+    initialTotalDistance[currentIndex]             = 0;
 
     Serial.print(F("[Motor] Reached target. Stopping...\r\n"));
 
