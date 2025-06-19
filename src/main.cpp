@@ -68,7 +68,7 @@ MotorContext getMotorContext();
 void         motorUpdate();
 int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void         demonstrateSpeedProfile();
-void         motorStopAndSavePosition();
+void         motorStopAndSavePosition(String callerFunctionName);
 void         clearLine();
 void         printSerial();
 void         printMotorStatus();
@@ -441,9 +441,7 @@ void motorUpdate()
         // Check if we've reached the target position
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
-            newTargetpositionReceived[currentIndex] = false;
-            Serial.println(F("[Info][MotorUpdate] Final correction within threshold. Done."));
-            motorStopAndSavePosition();
+            motorStopAndSavePosition("MotorUpdate");
             return;
         }
 
@@ -563,20 +561,24 @@ void demonstrateSpeedProfile()
     Serial.println(F("=====================================\r\n"));
 }
 
-void motorStopAndSavePosition()
+void motorStopAndSavePosition(String callerFunctionName)
 {
     if (motor[currentIndex] == nullptr)
         return;
 
-    motor[currentIndex]->stop();
+    callerFunctionName = "[" + callerFunctionName + "]";
+    Serial.println(callerFunctionName);
 
-    lastSpeed[currentIndex] = 0.0f;
+    if (callerFunctionName == "MotorUpdate")
+        Serial.println(F(" - [Info][MotorStopAndSavePosition] Reached target. Stopping..."));
 
     newTargetpositionReceived[currentIndex] = false;
-
-    Serial.print(F("[Info][MotorStopAndSavePosition] Reached target. Stopping...\r\n"));
-
+    motor[currentIndex]->stop();
+    lastSpeed[currentIndex] = 0.0f;
     vTaskDelay(pdMS_TO_TICKS(1000));
+
+    if (callerFunctionName == "MotorUpdate")
+        Serial.println(F(" - [Info][MotorStopAndSavePosition] Final correction within threshold. Done."));
 
     printMotorStatus();
     printSerial();
@@ -776,18 +778,14 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdRestart)
             {
-                newTargetpositionReceived[currentIndex] = false;
-                if (motor[currentIndex] != nullptr)
-                    motor[currentIndex]->stop();
-
+                motorStopAndSavePosition("CmdRestart");
                 Serial.print(F("Restarting...\r\n"));
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 ESP.restart();
             }
             else if (c == cmdStop)
             {
-                newTargetpositionReceived[currentIndex] = false;
-                motor[currentIndex]->stop();
+                motorStopAndSavePosition("CmdStop");
                 esp_task_wdt_reset();
                 continue;
             }
