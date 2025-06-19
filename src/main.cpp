@@ -11,8 +11,9 @@
 #include <esp_task_wdt.h>
 #include <memory>
 
-#define _MIN_SPEED 12
-#define _MAX_SPEED 400
+#define _MIN_SPEED       20
+#define _FINE_MOVE_SPEED 12
+#define _MAX_SPEED       200
 
 struct MotorContext
 {
@@ -42,7 +43,6 @@ static float targetPosition[NUM_DRIVERS] = {0};
 
 static bool driverEnabled[NUM_DRIVERS]             = {false};
 static bool newTargetpositionReceived[NUM_DRIVERS] = {false};
-static bool isVeryShortDistance                    = false;
 static bool firstTime                              = true;
 
 // Command history support
@@ -412,15 +412,15 @@ void MotorUpdate()
     if (motor[currentIndex] == nullptr)
         return;
 
-    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;        // Acceptable error range
-    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;        // Acceptable error range
-    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;        // Fine movement threshold
-    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;           // Maximum correction pulses
-    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;           // Maximum correction pulses
-    static const int     MIN_SPEED                     = _MIN_SPEED;  // Start and end speed
-    static const int     MAX_SPEED                     = _MAX_SPEED;  // Maximum speed
-    static const int     FINE_MOVE_SPEED               = _MIN_SPEED;  // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;        // 5% segments for speed changes
+    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;              // Acceptable error range
+    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;              // Acceptable error range
+    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;              // Fine movement threshold
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;                 // Maximum correction pulses
+    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;                 // Maximum correction pulses
+    static const int     MIN_SPEED                     = _MIN_SPEED;        // Start and end speed
+    static const int     MAX_SPEED                     = _MAX_SPEED;        // Maximum speed
+    static const int     FINE_MOVE_SPEED               = _FINE_MOVE_SPEED;  // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;              // 5% segments for speed changes
 
     // Static variable to store total distance for this movement
     static float initialTotalDistance[NUM_DRIVERS] = {0};
@@ -573,10 +573,6 @@ void motorStopAndSavePosition()
     lastSpeed[currentIndex] = 0.0f;
 
     newTargetpositionReceived[currentIndex] = false;
-
-    // Reset total distance for next movement
-    static float initialTotalDistance[NUM_DRIVERS] = {0};
-    initialTotalDistance[currentIndex]             = 0;
 
     Serial.print(F("[Motor] Reached target. Stopping...\r\n"));
 
