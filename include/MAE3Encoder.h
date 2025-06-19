@@ -119,6 +119,13 @@ public:
         return static_cast<int32_t>(mm * pulses_per_mm);
     }
 
+    // Converts degrees to pulses for rotary motors
+    inline int32_t degreesToPulses(float degrees)
+    {
+        float pulses_per_degree = FULL_SCALE / 360.0f;
+        return static_cast<int32_t>(degrees * pulses_per_degree);
+    }
+
     // Converts pulses to um
     inline float pulsesToUm(float pulses)
     {

@@ -69,6 +69,7 @@ void         setMotorIndex(String motorIndex);
 float        getMotorPosition();
 MotorContext getMotorContext();
 void         linearMotorUpdate();
+void         rotaryMotorUpdate();
 int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void         demonstrateSpeedProfile();
 void         motorStopAndSavePosition(String callerFunctionName);
@@ -225,10 +226,10 @@ void setTargetPosition(String targetPos)
     }
     else if (type == MotorType::ROTATIONAL)
     {
-        if (value < 0.1f || value > 359.9f)
+        if (value < 0.01f || value > 359.9f)
         {
             Serial.print(
-                F("[Error][SetTargetPosition] Target position must be between 0.1 and 359.9 (deg) for rotary motor.\r\n"));
+                F("[Error][SetTargetPosition] Target position must be between 0.01 and 359.9 (deg) for rotary motor.\r\n"));
             return;
         }
     }
@@ -281,12 +282,32 @@ void setMotorIndex(String motorIndex)
         return;
     }
 
+    // 4. Check if motor and encoder objects exist
+    if (motor[index - 1] == nullptr)
+    {
+        Serial.printf("[Error][SetMotorIndex] Motor %d object is null.\r\n", index);
+        return;
+    }
+
+    if (encoder[index - 1] == nullptr)
+    {
+        Serial.printf("[Error][SetMotorIndex] Encoder %d object is null.\r\n", index);
+        return;
+    }
+
     currentIndex = index - 1;
     Serial.printf("[Info][SetMotorIndex] Motor %d selected.\r\n", index);
 }
 
 float getMotorPosition()
 {
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr || encoder[currentIndex] == nullptr)
+    {
+        Serial.printf("[Error][GetMotorPosition] Null pointer detected: motor[%d], encoder[%d]\r\n", currentIndex, currentIndex);
+        return 0.0f;  // Return 0 if null pointers
+    }
+
     MotorType      type   = motor[currentIndex]->getMotorType();
     EncoderContext encCtx = encoder[currentIndex]->getEncoderContext();
     return (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
@@ -294,9 +315,17 @@ float getMotorPosition()
 
 MotorContext getMotorContext()
 {
+    MotorContext motCtx = {};  // Zero-initialize all members
+
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr || motor[currentIndex] == nullptr)
+    {
+        Serial.printf("[Error][GetMotorContext] Null pointer detected for motor %d\r\n", currentIndex + 1);
+        return motCtx;  // Return zero-initialized context
+    }
+
     EncoderContext encCtx = encoder[currentIndex]->getEncoderContext();
-    MotorContext   motCtx;
-    MotorType      type = motor[currentIndex]->getMotorType();
+    MotorType      type   = motor[currentIndex]->getMotorType();
 
     motCtx.currentPosition = (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
     motCtx.error = motor[currentIndex]->calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
@@ -304,9 +333,19 @@ MotorContext getMotorContext()
     if (type == MotorType::ROTATIONAL)
         motCtx.error = motor[currentIndex]->wrapAngle180(motCtx.error);
 
-    motCtx.currentPositionPulses = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
-    motCtx.targetPositionPulses  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
-    motCtx.errorPulses           = encoder[currentIndex]->umToPulses(motCtx.error);
+    // Use appropriate pulse conversion based on motor type
+    if (type == MotorType::LINEAR)
+    {
+        motCtx.currentPositionPulses = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
+        motCtx.targetPositionPulses  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
+        motCtx.errorPulses           = encoder[currentIndex]->umToPulses(motCtx.error);
+    }
+    else  // ROTATIONAL
+    {
+        motCtx.currentPositionPulses = encoder[currentIndex]->degreesToPulses(motCtx.currentPosition);
+        motCtx.targetPositionPulses  = encoder[currentIndex]->degreesToPulses(targetPosition[currentIndex]);
+        motCtx.errorPulses           = encoder[currentIndex]->degreesToPulses(motCtx.error);
+    }
 
     return motCtx;
 }
@@ -336,7 +375,10 @@ void encoderUpdateTask(void* pvParameters)
         for (uint8_t ei = 0; ei < NUM_DRIVERS; ei++)
         {
             if (encoder[ei] == nullptr)
+            {
+                esp_task_wdt_reset();
                 continue;
+            }
 
             if (ei == currentIndex)
             {
@@ -387,11 +429,23 @@ void motorUpdateTask(void* pvParameters)
             {
                 if (lastReportedIndex != currentIndex)
                 {
-                    printMotorStatus();
+                    // Only print status if driver is not null
+                    if (driver[currentIndex] != nullptr)
+                    {
+                        printMotorStatus();
+                    }
                     lastReportedIndex = currentIndex;
                 }
 
-                linearMotorUpdate();
+                // Call appropriate motor update function based on motor type
+                if (currentIndex == 0)  // Linear motor (index 0)
+                {
+                    linearMotorUpdate();
+                }
+                else  // Rotary motors (indices 1-3)
+                {
+                    rotaryMotorUpdate();
+                }
             }
         }
 
@@ -483,6 +537,113 @@ void linearMotorUpdate()
             "[Info][MotorUpdate] deltaPulse = %ld, error = %.2f um, speed = %d, progress = %.1f%%, isMotorEnabled = %d\n",
             (long)deltaPulse, motCtx.error, moveSpeed, (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f,
             motor[currentIndex]->isMotorEnabled());
+
+        motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
+        lastSpeed[currentIndex]   = moveSpeed;
+        motorMoving[currentIndex] = true;
+    }
+    else
+    {
+        // When motor is moving, don't reset the total distance
+        // Only reset when movement is complete in motorStopAndSavePosition
+    }
+}
+
+void rotaryMotorUpdate()
+{
+    if (!newTargetpositionReceived[currentIndex])
+        return;
+
+    if (motor[currentIndex] == nullptr)
+        return;
+
+    // Rotary motor specific constants
+    static const float   POSITION_THRESHOLD_DEG_FORWARD = 0.01f;  // Acceptable error range for rotary motors
+    static const float   FINE_MOVE_THRESHOLD_DEG        = 1.0f;   // Fine movement threshold for rotary motors
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD   = 3;      // Maximum correction pulses for rotary
+    static const int     MIN_SPEED                      = 10;     // Start and end speed
+    static const int     MAX_SPEED                      = 10;     // Maximum speed
+    static const int     FINE_MOVE_SPEED                = 10;     // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT           = 5.0f;   // 5% segments for speed changes
+
+    // Validate target position is within rotary motor limits (0.01 to 359.9 degrees)
+    float target = targetPosition[currentIndex];
+    if (target < 0.01f || target > 359.9f)
+    {
+        Serial.printf("[Error][RotaryMotorUpdate] Target position %.2f degrees is out of range (0.01-359.9)\r\n", target);
+        newTargetpositionReceived[currentIndex] = false;
+        return;
+    }
+
+    if (!motorMoving[currentIndex])  // Only when motor is stopped
+    {
+        // Additional null pointer check for encoder
+        if (encoder[currentIndex] == nullptr)
+        {
+            Serial.printf("[Error][RotaryMotorUpdate] Encoder[%d] is null\r\n", currentIndex);
+            return;
+        }
+
+        MotorContext motCtx = getMotorContext();
+
+        float absError = fabs(motCtx.error);
+
+        // Convert degrees to pulses for rotary motor
+        int32_t targetPulse  = encoder[currentIndex]->degreesToPulses(target);
+        int32_t currentPulse = encoder[currentIndex]->degreesToPulses(motCtx.currentPosition);
+        int32_t deltaPulse   = targetPulse - currentPulse;
+
+        // Use symmetric thresholds for rotary motors
+        float   positionThreshold = POSITION_THRESHOLD_DEG_FORWARD;
+        int32_t maxMicroMovePulse = MAX_MICRO_MOVE_PULSE_FORWARD;
+
+        // Check if we've reached the target position
+        if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
+        {
+            motorStopAndSavePosition("MotorUpdate");
+            return;
+        }
+
+        // Set movement direction
+        motor[currentIndex]->setDirection(motCtx.error > 0);
+
+        if (!motor[currentIndex]->isMotorEnabled())
+            motor[currentIndex]->motorEnable(true);
+
+        // Register callback for movement completion
+        motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
+
+        // Limit pulses for micro-movement
+        if (abs(deltaPulse) > maxMicroMovePulse)
+            deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
+
+        // Calculate speed based on smooth stepped profile
+        int moveSpeed;
+        if (absError <= FINE_MOVE_THRESHOLD_DEG)
+        {
+            // Fine movement - low speed
+            moveSpeed = FINE_MOVE_SPEED;
+        }
+        else
+        {
+            // Store total distance at the beginning of movement
+            if (initialTotalDistance[currentIndex] == 0)
+            {
+                initialTotalDistance[currentIndex] = absError;
+            }
+
+            // Calculate progress percentage (0.0 to 1.0)
+            float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+
+            // Calculate speed based on stepped profile
+            moveSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+        }
+
+        // Execute movement
+        Serial.printf("[Info][RotaryMotorUpdate] Motor %d: deltaPulse = %ld, error = %.2f deg, speed = %d, progress = %.1f%%, "
+                      "isMotorEnabled = %d\n",
+                      currentIndex + 1, (long)deltaPulse, motCtx.error, moveSpeed,
+                      (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, motor[currentIndex]->isMotorEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -875,7 +1036,7 @@ void serialPrintTask(void* pvParameters)
 
 void printSerial()
 {
-    if (!driverEnabled[currentIndex] || encoder[currentIndex] == nullptr || (!Serial))
+    if (!driverEnabled[currentIndex] || encoder[currentIndex] == nullptr || motor[currentIndex] == nullptr || (!Serial))
         return;
 
     EncoderContext encCtx = encoder[currentIndex]->getEncoderContext();
@@ -889,7 +1050,7 @@ void printSerial()
     //  Format all values into the buffer
     Serial.print(F("============================================================================================\r\n"));
     Serial.print(F("MOT: "));
-    Serial.print((currentIndex));
+    Serial.print((currentIndex + 1));
     Serial.print(F("   "));
     Serial.print(F("DIR: "));
     Serial.print(encCtx.direction);
@@ -930,6 +1091,13 @@ void printSerial()
 
 void printMotorStatus()
 {
+    // Check for null pointer
+    if (driver[currentIndex] == nullptr)
+    {
+        Serial.printf("[Error][PrintMotorStatus] Driver[%d] is null\r\n", currentIndex);
+        return;
+    }
+
     auto status = driver[currentIndex]->getDriverStatus();
     Serial.printf("\r\n[Info][PrintMotorStatus] Motor %d Status:\r\n", currentIndex + 1);
     Serial.printf(" - Current: %d mA\r\n", status.current);
