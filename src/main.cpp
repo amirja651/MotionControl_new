@@ -88,16 +88,19 @@ void setup()
     Serial.begin(115200);
 
 #if DEBUG
-    esp_task_wdt_init(3, true);
+    esp_task_wdt_init(5, true);
 #else
-    esp_task_wdt_init(3, false);
+    esp_task_wdt_init(5, false);
 #endif
     esp_task_wdt_add(NULL);  // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     delay(1000);
     while (!Serial)
+    {
+        esp_task_wdt_reset();
         delay(10);
+    }
 
     // Initialize CLI
     initializeCLI();
@@ -157,12 +160,15 @@ void setup()
         Serial.printf("[Error][Setup] All drivers are disabled and the system is not operational. After powering on the system, "
                       "please reset it.\r\n");
         for (;;)
-            delay(1000);
+        {
+            esp_task_wdt_reset();
+            delay(10);
+        }
     }
 
     // Core 1 - For time-sensitive tasks (precise control)
-    xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 2048, NULL, 5, &encoderUpdateTaskHandle, 1);
-    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 2048, NULL, 3, &motorUpdateTaskHandle, 1);
+    xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
+    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
 
     // Core 0 - For less time-sensitive tasks (such as I/O)
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 2048, NULL, 2, &serialReadTaskHandle, 0);
@@ -374,46 +380,46 @@ void encoderUpdateTask(void* pvParameters)
 
     while (true)
     {
-        if (currentIndex >= NUM_DRIVERS)
+        if (currentIndex >= NUM_DRIVERS || encoder[currentIndex] == nullptr)
         {
             Serial.printf("[Error][EncoderUpdateTask] Invalid currentIndex: %d\r\n", currentIndex);
+            esp_task_wdt_reset();
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
+        // if driver is not connected, show the message
         bool isEnabled = driverEnabled[currentIndex];
-
         if (!isEnabled && !isDriverConnectedMessageShown)
         {
             isDriverConnectedMessageShown = true;
             Serial.printf("[Error][EncoderUpdateTask] Motor %d connection failed!\r\n", currentIndex + 1);
-        }
-        else if (isEnabled && isDriverConnectedMessageShown)
-        {
-            isDriverConnectedMessageShown = false;
+            esp_task_wdt_reset();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
         }
 
-        for (uint8_t ei = 0; ei < NUM_DRIVERS; ei++)
+        // if driver is connected, don't show the message again
+        isDriverConnectedMessageShown = isEnabled && isDriverConnectedMessageShown;
+
+        for (uint8_t index = 0; index < NUM_DRIVERS; index++)
         {
-            if (encoder[ei] == nullptr)
-            {
-                esp_task_wdt_reset();
+            if (encoder[index] == nullptr)
                 continue;
-            }
 
-            if (ei == currentIndex)
+            if (index == currentIndex)
             {
-                if (encoder[ei]->isDisabled())
-                    encoder[ei]->enable();
+                if (encoder[index]->isDisabled())
+                    encoder[index]->enable();
             }
             else
             {
-                if (encoder[ei]->isEnabled())
-                    encoder[ei]->disable();
+                if (encoder[index]->isEnabled())
+                    encoder[index]->disable();
             }
         }
 
-        if (currentIndex < NUM_DRIVERS && encoder[currentIndex] != nullptr && isEnabled)
+        if (currentIndex < NUM_DRIVERS && isEnabled)
         {
             encoder[currentIndex]->processPWM();
         }
@@ -582,9 +588,9 @@ void rotaryMotorUpdate()
     static const float   POSITION_THRESHOLD_DEG_FORWARD = 0.01f;  // Acceptable error range for rotary motors
     static const float   FINE_MOVE_THRESHOLD_DEG        = 1.0f;   // Fine movement threshold for rotary motors
     static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD   = 3;      // Maximum correction pulses for rotary
-    static const int     MIN_SPEED                      = 10;     // Start and end speed
-    static const int     MAX_SPEED                      = 10;     // Maximum speed
-    static const int     FINE_MOVE_SPEED                = 10;     // Fine movement speed
+    static const int     MIN_SPEED                      = 8;      // Start and end speed
+    static const int     MAX_SPEED                      = 8;      // Maximum speed
+    static const int     FINE_MOVE_SPEED                = 8;      // Fine movement speed
     static const float   SEGMENT_SIZE_PERCENT           = 5.0f;   // 5% segments for speed changes
 
     // Validate target position is within rotary motor limits (0.01 to 359.9 degrees)
