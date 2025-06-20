@@ -11,6 +11,8 @@
 #include <esp_task_wdt.h>
 #include <memory>
 
+#define DEBUG 1
+
 #define _MIN_SPEED       20
 #define _FINE_MOVE_SPEED 12
 #define _MAX_SPEED       200
@@ -32,7 +34,6 @@ std::unique_ptr<MAE3Encoder>          encoder[NUM_DRIVERS] = {nullptr};
 TaskHandle_t encoderUpdateTaskHandle = NULL;
 TaskHandle_t motorUpdateTaskHandle   = NULL;
 TaskHandle_t serialReadTaskHandle    = NULL;
-TaskHandle_t serialPrintTaskHandle   = NULL;
 
 static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
@@ -61,7 +62,6 @@ static float initialTotalDistance[NUM_DRIVERS] = {0.0f};
 void encoderUpdateTask(void* pvParameters);
 void motorUpdateTask(void* pvParameters);
 void serialReadTask(void* pvParameters);
-void serialPrintTask(void* pvParameters);
 
 bool         isValidNumber(const String& str);
 void         setTargetPosition(String targetPos);
@@ -85,8 +85,16 @@ void setup()
     SPI.begin(SPIPins::SCK, SPIPins::MISO, SPIPins::MOSI);
     SPI.setFrequency(SPI_CLOCK);
     SPI.setDataMode(SPI_MODE3);
-
     Serial.begin(115200);
+
+#if DEBUG
+    esp_task_wdt_init(3, true);
+#else
+    esp_task_wdt_init(3, false);
+#endif
+    esp_task_wdt_add(NULL);  // Add the current task (setup)
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
+
     delay(1000);
     while (!Serial)
         delay(10);
@@ -99,8 +107,9 @@ void setup()
     SystemDiagnostics::printSystemInfo();
     SystemDiagnostics::printSystemStatus();
 
+    // for disable all drivers pins - for avoid conflict in SPI bus
     // Initialize CS pins and turn them off
-    for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+    for (uint8_t index = 0; index < 4; index++)
     {
         pinMode(DriverPins::CS[index], OUTPUT);
         digitalWrite(DriverPins::CS[index], HIGH);
@@ -138,24 +147,29 @@ void setup()
         }
     }
 
-    if (!driverEnabled[0] && !driverEnabled[1] && !driverEnabled[2] && !driverEnabled[3])
+    // Check if any driver is enabled
+    bool anyDriverEnabled = false;
+    for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+        anyDriverEnabled = anyDriverEnabled || driverEnabled[index];
+
+    if (!anyDriverEnabled)
     {
         Serial.printf("[Error][Setup] All drivers are disabled and the system is not operational. After powering on the system, "
                       "please reset it.\r\n");
-
         for (;;)
             delay(1000);
     }
 
-    xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 2048, NULL, 5, &encoderUpdateTaskHandle, 1);  // Core 1
-    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 2048, NULL, 3, &motorUpdateTaskHandle, 1);        // Core 0
-    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 2048, NULL, 2, &serialReadTaskHandle, 0);           // Core 0
-    xTaskCreatePinnedToCore(serialPrintTask, "SerialPrintTask", 2048, NULL, 1, &serialPrintTaskHandle, 0);        // Core 0
+    // Core 1 - For time-sensitive tasks (precise control)
+    xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 2048, NULL, 5, &encoderUpdateTaskHandle, 1);
+    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 2048, NULL, 3, &motorUpdateTaskHandle, 1);
+
+    // Core 0 - For less time-sensitive tasks (such as I/O)
+    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 2048, NULL, 2, &serialReadTaskHandle, 0);
 
     esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
     esp_task_wdt_add(motorUpdateTaskHandle);    // Register with WDT
     esp_task_wdt_add(serialReadTaskHandle);     // Register with WDT
-    esp_task_wdt_add(serialPrintTaskHandle);    // Register with WDT
 
     Serial.print(F("\r\n"));
     Serial.flush();
@@ -360,6 +374,13 @@ void encoderUpdateTask(void* pvParameters)
 
     while (true)
     {
+        if (currentIndex >= NUM_DRIVERS)
+        {
+            Serial.printf("[Error][EncoderUpdateTask] Invalid currentIndex: %d\r\n", currentIndex);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
         bool isEnabled = driverEnabled[currentIndex];
 
         if (!isEnabled && !isDriverConnectedMessageShown)
@@ -392,7 +413,7 @@ void encoderUpdateTask(void* pvParameters)
             }
         }
 
-        if (isEnabled && encoder[currentIndex] != nullptr)
+        if (currentIndex < NUM_DRIVERS && encoder[currentIndex] != nullptr && isEnabled)
         {
             encoder[currentIndex]->processPWM();
         }
@@ -1021,19 +1042,6 @@ void serialReadTask(void* pvParameters)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void serialPrintTask(void* pvParameters)
-{
-    const TickType_t xFrequency    = pdMS_TO_TICKS(300);
-    TickType_t       xLastWakeTime = xTaskGetTickCount();
-
-    for (;;)
-    {
-        // printSerial();
-        esp_task_wdt_reset();
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-    }
-}
-
 void printSerial()
 {
     if (!driverEnabled[currentIndex] || encoder[currentIndex] == nullptr || motor[currentIndex] == nullptr || (!Serial))
