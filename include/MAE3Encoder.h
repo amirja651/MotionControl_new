@@ -2,6 +2,7 @@
 #define MAE3_ENCODER2_H
 
 #include <Arduino.h>
+#include <algorithm>
 #include <array>
 #include <bitset>
 #include <cstdlib>  // For abs with uint32_t
@@ -85,30 +86,30 @@ public:
 
     inline bool isEnabled() const
     {
-        return enabled;
+        return _enabled;
     }
 
     inline bool isDisabled() const
     {
-        return !enabled;
+        return !_enabled;
     }
 
     EncoderContext& getEncoderContext() const
     {
-        portENTER_CRITICAL(&mux);
-        encoderContext.current_pulse = state.current_pulse;
-        encoderContext.direction     = state.direction == Direction::UNKNOWN     ? "   "
-                                       : state.direction == Direction::CLOCKWISE ? " CW"
-                                                                                 : "CCW";
-        encoderContext.lap_id        = lap.id;
-        encoderContext.lap_period    = lap.period[lap.id + LAPS_OFFSET];
+        portENTER_CRITICAL(&_mux);
+        _encoderContext.current_pulse = _state.current_pulse;
+        _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
+                                        : _state.direction == Direction::CLOCKWISE ? " CW"
+                                                                                   : "CCW";
+        _encoderContext.lap_id        = _lap.id;
+        _encoderContext.lap_period    = _lap.period[_lap.id + LAPS_OFFSET];
 
-        encoderContext.position_degrees = state.current_pulse * (360.0f / FULL_SCALE);
-        encoderContext.position_mm      = encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / FULL_SCALE);
-        encoderContext.total_travel_mm  = (lap.id * LEAD_SCREW_PITCH_MM) + encoderContext.position_mm;
-        encoderContext.total_travel_um  = encoderContext.total_travel_mm * 1000.0f;
-        portEXIT_CRITICAL(&mux);
-        return encoderContext;
+        _encoderContext.position_degrees = _state.current_pulse * (360.0f / FULL_SCALE);
+        _encoderContext.position_mm      = _encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / FULL_SCALE);
+        _encoderContext.total_travel_mm  = (_lap.id * LEAD_SCREW_PITCH_MM) + _encoderContext.position_mm;
+        _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
+        portEXIT_CRITICAL(&_mux);
+        return _encoderContext;
     }
 
     // Converts um to pulses
@@ -135,7 +136,7 @@ public:
 
     bool isStopped(int64_t threshold_us = 500000 /* 500ms */) const
     {
-        return (esp_timer_get_time() - lastPulseTime) > threshold_us;
+        return (esp_timer_get_time() - _lastPulseTime) > threshold_us;
     }
 
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb)
@@ -145,46 +146,46 @@ public:
 
 private:
     // Pin assignments
-    const uint8_t signalPin;
-    const uint8_t encoderId;
+    const uint8_t _signalPin;
+    const uint8_t _encoderId;
 
     // State management
-    EncoderState           state;
-    LapState               lap;
-    mutable EncoderContext encoderContext;
+    EncoderState           _state;
+    LapState               _lap;
+    mutable EncoderContext _encoderContext;
 
-    volatile bool enabled = false;
+    volatile bool _enabled = false;
 
-    RPulse r_pulse;
+    RPulse _r_pulse;
 
     // Filtering and timing
-    int64_t          lastPulseTime       = 0;
-    volatile int64_t lastFallingEdgeTime = 0;
-    volatile int64_t lastRisingEdgeTime  = 0;
+    int64_t          _lastPulseTime       = 0;
+    volatile int64_t _lastFallingEdgeTime = 0;
+    volatile int64_t _lastRisingEdgeTime  = 0;
 
     // Interrupt handling
-    volatile bool newPulseAvailable = false;
+    volatile bool _newPulseAvailable = false;
 
     // Flag to indicate buffer was updated (set in processInterrupt, cleared after processPWM)
-    volatile bool bufferUpdated = false;
+    volatile bool _bufferUpdated = false;
 
     // Static array to store encoder instances for interrupt handling
-    static MAE3Encoder* encoderInstances[MAX_ENCODERS];
+    static MAE3Encoder* _encoderInstances[MAX_ENCODERS];
 
     // --- Pulse width ring buffers ---
-    static constexpr size_t PULSE_BUFFER_SIZE = 5;
+    static constexpr size_t _PULSE_BUFFER_SIZE = 5;
 
-    std::array<int64_t, PULSE_BUFFER_SIZE> width_l_buffer{};
-    std::array<int64_t, PULSE_BUFFER_SIZE> width_h_buffer{};
+    std::array<int64_t, _PULSE_BUFFER_SIZE> _width_l_buffer{};
+    std::array<int64_t, _PULSE_BUFFER_SIZE> _width_h_buffer{};
 
-    size_t pulseBufferIndex = 0;
+    size_t _pulseBufferIndex = 0;
 
-    mutable portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    mutable portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
 
     std::function<void(const EncoderState&)> onPulseUpdated;  // NEW: callback support
 
-    int32_t last_pulse;
-    bool    initialized;
+    int32_t _last_pulse;
+    bool    _initialized;
 
     void processInterrupt();
     void attachInterruptHandler();
@@ -200,26 +201,26 @@ private:
 
     inline void setPeriod(int32_t lapIndex, int64_t period, bool reset_count = false)
     {
-        lap.period[lapIndex + LAPS_OFFSET] = static_cast<int32_t>(period);
+        _lap.period[lapIndex + LAPS_OFFSET] = static_cast<int32_t>(period);
 
         if (reset_count)
         {
-            lap.period_sum[lap.id + LAPS_OFFSET]   = static_cast<int32_t>(period);
-            lap.period_count[lap.id + LAPS_OFFSET] = 1;
+            _lap.period_sum[_lap.id + LAPS_OFFSET]   = static_cast<int32_t>(period);
+            _lap.period_count[_lap.id + LAPS_OFFSET] = 1;
         }
         else
         {
-            lap.period_sum[lap.id + LAPS_OFFSET] += static_cast<int32_t>(period);
-            lap.period_count[lap.id + LAPS_OFFSET]++;
+            _lap.period_sum[_lap.id + LAPS_OFFSET] += static_cast<int32_t>(period);
+            _lap.period_count[_lap.id + LAPS_OFFSET]++;
         }
     }
 
     void resetAllPeriods()
     {
-        lap.id = 0;
-        memset(lap.period, 0, sizeof(lap.period));
-        memset(lap.period_sum, 0, sizeof(lap.period_sum));
-        memset(lap.period_count, 0, sizeof(lap.period_count));
+        _lap.id = 0;
+        memset(_lap.period, 0, sizeof(_lap.period));
+        memset(_lap.period_sum, 0, sizeof(_lap.period_sum));
+        memset(_lap.period_count, 0, sizeof(_lap.period_count));
     }
 };
 

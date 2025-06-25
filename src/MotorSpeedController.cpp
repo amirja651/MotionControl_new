@@ -1,58 +1,68 @@
 #include "MotorSpeedController.h"
 
-// Static array for ISR access
-MotorSpeedController* MotorSpeedController::motorInstances[MAX_MOTORS] = {nullptr, nullptr, nullptr, nullptr};
+// Initialize static member
+MotorSpeedController* MotorSpeedController::_motorInstances[MAX_MOTORS] = {nullptr};
 
 // Static ISR handlers
 void IRAM_ATTR MotorSpeedController::onTimerISR0()
 {
-    if (motorInstances[0])
-        motorInstances[0]->onTimerISR();
-}
-void IRAM_ATTR MotorSpeedController::onTimerISR1()
-{
-    if (motorInstances[1])
-        motorInstances[1]->onTimerISR();
-}
-void IRAM_ATTR MotorSpeedController::onTimerISR2()
-{
-    if (motorInstances[2])
-        motorInstances[2]->onTimerISR();
-}
-void IRAM_ATTR MotorSpeedController::onTimerISR3()
-{
-    if (motorInstances[3])
-        motorInstances[3]->onTimerISR();
+    if (_motorInstances[0] && _motorInstances[0]->_enabled)
+        _motorInstances[0]->onTimerISR();
 }
 
-MotorSpeedController::MotorSpeedController(uint8_t motorIndex, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
+void IRAM_ATTR MotorSpeedController::onTimerISR1()
+{
+    if (_motorInstances[1] && _motorInstances[1]->_enabled)
+        _motorInstances[1]->onTimerISR();
+}
+
+void IRAM_ATTR MotorSpeedController::onTimerISR2()
+{
+    if (_motorInstances[2] && _motorInstances[2]->_enabled)
+        _motorInstances[2]->onTimerISR();
+}
+
+void IRAM_ATTR MotorSpeedController::onTimerISR3()
+{
+    if (_motorInstances[3] && _motorInstances[3]->_enabled)
+        _motorInstances[3]->onTimerISR();
+}
+
+MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
                                            uint16_t EN_PIN)
     : _driver(driver),
       _DIR_PIN(DIR_PIN),
       _STEP_PIN(STEP_PIN),
       _EN_PIN(EN_PIN),
-      _motorIndex(motorIndex),
-      _motorEnabled(false),
+      _motorId(motorId),
       _stepsRemaining(0),
       _moving(false),
       _speed(0),
       _targetPosition(0),
       _currentPosition(0),
       _timer(nullptr),
+      _enabled(false),
       _onComplete(nullptr)
 {
-    _timerMux = portMUX_INITIALIZER_UNLOCKED;
-    if (_motorIndex < MAX_MOTORS)
+    _mux = portMUX_INITIALIZER_UNLOCKED;
+    if (_motorId < MAX_MOTORS)
     {
-        motorInstances[_motorIndex] = this;
+        _motorInstances[_motorId] = this;
     }
     _movementCompleteFlag = false;
 }
 
-void MotorSpeedController::begin()
+MotorSpeedController::~MotorSpeedController()
 {
-    if (_motorIndex >= NUM_DRIVERS)
-        return;
+    disable();
+    if (_motorId < MAX_MOTORS)
+        _motorInstances[_motorId] = nullptr;
+}
+
+bool MotorSpeedController::begin()
+{
+    if (_motorId >= NUM_DRIVERS)
+        return false;
 
     // Configure pins
     pinMode(_DIR_PIN, OUTPUT);
@@ -65,13 +75,44 @@ void MotorSpeedController::begin()
     digitalWrite(_STEP_PIN, LOW);
 
     // Initialize motor
-    motorEnable(false);
+    disable();
+
+    // Store instance for interrupt handling
+    _motorInstances[_motorId] = this;
 
     // Allocate timer
-    if (_timer == nullptr && _motorIndex < MAX_MOTORS)
+    attachInterruptHandler();
+
+    return true;
+}
+
+void MotorSpeedController::enable()
+{
+    if (_enabled)
+        return;
+
+    _enabled = true;
+    digitalWrite(_EN_PIN, LOW);
+    attachInterruptHandler();
+}
+
+void MotorSpeedController::disable()
+{
+    if (!_enabled)
+        return;
+
+    _enabled = false;
+    digitalWrite(_EN_PIN, HIGH);
+    detachInterruptHandler();
+}
+
+void MotorSpeedController::attachInterruptHandler()
+{
+    // Allocate timer
+    if (_timer == nullptr && _motorId < MAX_MOTORS)
     {
-        _timer = timerBegin(_motorIndex, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
-        switch (_motorIndex)
+        _timer = timerBegin(_motorId, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
+        switch (_motorId)
         {
             case 0:
                 timerAttachInterrupt(_timer, &onTimerISR0, false);
@@ -91,20 +132,16 @@ void MotorSpeedController::begin()
     }
 }
 
+void MotorSpeedController::detachInterruptHandler()
+{
+    if (_timer)
+        timerDetachInterrupt(_timer);
+    _timer = nullptr;
+}
+
 void MotorSpeedController::setDirection(bool forward)
 {
     digitalWrite(_DIR_PIN, forward ? HIGH : LOW);
-}
-
-void MotorSpeedController::motorEnable(bool enable)
-{
-    _motorEnabled = enable;
-    digitalWrite(_EN_PIN, enable ? LOW : HIGH);
-}
-
-bool MotorSpeedController::isMotorEnabled() const
-{
-    return _motorEnabled;
 }
 
 void MotorSpeedController::move(float position, float speed, float lastSpeed)
@@ -115,15 +152,15 @@ void MotorSpeedController::move(float position, float speed, float lastSpeed)
     if (steps == 0)
         return;
 
-    portENTER_CRITICAL(&_timerMux);
+    portENTER_CRITICAL(&_mux);
     _stepsRemaining = abs(steps);
     _moving         = true;
     _speed          = speed;
     _targetPosition = position;
-    portEXIT_CRITICAL(&_timerMux);
+    portEXIT_CRITICAL(&_mux);
 
     setDirection(steps > 0);
-    motorEnable(true);
+    enable();
 
     if (lastSpeed != speed)
     {
@@ -139,12 +176,12 @@ void MotorSpeedController::stop()
 {
     stopTimer();
     if (getMotorType() == MotorType::ROTATIONAL)
-        motorEnable(false);
+        disable();
 
-    portENTER_CRITICAL(&_timerMux);
+    portENTER_CRITICAL(&_mux);
     _moving         = false;
     _stepsRemaining = 0;
-    portEXIT_CRITICAL(&_timerMux);
+    portEXIT_CRITICAL(&_mux);
 }
 
 void MotorSpeedController::stopTimer()
@@ -164,7 +201,7 @@ void MotorSpeedController::startTimer(uint32_t interval_us)
 
 void IRAM_ATTR MotorSpeedController::onTimerISR()
 {
-    portENTER_CRITICAL_ISR(&_timerMux);
+    portENTER_CRITICAL_ISR(&_mux);
     if (_stepsRemaining > 0)
     {
         digitalWrite(_STEP_PIN, HIGH);
@@ -179,7 +216,7 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()
         _moving               = false;
         _movementCompleteFlag = true;
     }
-    portEXIT_CRITICAL_ISR(&_timerMux);
+    portEXIT_CRITICAL_ISR(&_mux);
 }
 
 void MotorSpeedController::attachOnComplete(void (*callback)())
@@ -189,7 +226,7 @@ void MotorSpeedController::attachOnComplete(void (*callback)())
 
 MotorType MotorSpeedController::getMotorType() const
 {
-    if (_motorIndex == 0)
+    if (_motorId == 0)
         return MotorType::LINEAR;
     else
         return MotorType::ROTATIONAL;

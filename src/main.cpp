@@ -376,7 +376,72 @@ void encoderUpdateTask(void* pvParameters)
     const TickType_t xFrequency    = pdMS_TO_TICKS(1);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
-    static bool isDriverConnectedMessageShown = false;
+    static bool isDriverConnectedMessageShown2 = false;
+
+    while (true)
+    {
+        if (0)
+        {
+            if (currentIndex >= NUM_DRIVERS || encoder[currentIndex] == nullptr)
+            {
+                Serial.printf("[Error][EncoderUpdateTask] Invalid currentIndex: %d\r\n", currentIndex);
+                esp_task_wdt_reset();
+                vTaskDelay(pdMS_TO_TICKS(100));
+                continue;
+            }
+
+            // if driver is not connected, show the message
+            bool isEnabled = driverEnabled[currentIndex];
+            if (!isEnabled && !isDriverConnectedMessageShown2)
+            {
+                isDriverConnectedMessageShown2 = true;
+                Serial.printf("[Error][EncoderUpdateTask] Motor %d connection failed!\r\n", currentIndex + 1);
+                esp_task_wdt_reset();
+                vTaskDelay(pdMS_TO_TICKS(100));
+                continue;
+            }
+
+            // if driver is connected, don't show the message again
+            isDriverConnectedMessageShown2 = isEnabled && isDriverConnectedMessageShown2;
+
+            for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+            {
+                if (encoder[index] == nullptr)
+                    continue;
+
+                if (index == currentIndex)
+                {
+                    if (encoder[index]->isDisabled())
+                        encoder[index]->enable();
+                }
+                else
+                {
+                    if (encoder[index]->isEnabled())
+                        encoder[index]->disable();
+                }
+            }
+
+            if (currentIndex < NUM_DRIVERS && isEnabled)
+            {
+                encoder[currentIndex]->processPWM();
+            }
+        }
+
+        esp_task_wdt_reset();
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void motorUpdateTask(void* pvParameters)
+{
+    const uint8_t    MOTOR_UPDATE_TIME = 4;
+    const TickType_t xFrequency        = pdMS_TO_TICKS(MOTOR_UPDATE_TIME);
+    TickType_t       xLastWakeTime     = xTaskGetTickCount();
+
+    static bool isDriverConnectedMessageShown2 = false;
+    static bool isDriverConnectedMessageShown1 = false;
+    static int  lastReportedIndex              = -1;
 
     while (true)
     {
@@ -390,9 +455,9 @@ void encoderUpdateTask(void* pvParameters)
 
         // if driver is not connected, show the message
         bool isEnabled = driverEnabled[currentIndex];
-        if (!isEnabled && !isDriverConnectedMessageShown)
+        if (!isEnabled && !isDriverConnectedMessageShown2)
         {
-            isDriverConnectedMessageShown = true;
+            isDriverConnectedMessageShown2 = true;
             Serial.printf("[Error][EncoderUpdateTask] Motor %d connection failed!\r\n", currentIndex + 1);
             esp_task_wdt_reset();
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -400,7 +465,7 @@ void encoderUpdateTask(void* pvParameters)
         }
 
         // if driver is connected, don't show the message again
-        isDriverConnectedMessageShown = isEnabled && isDriverConnectedMessageShown;
+        isDriverConnectedMessageShown2 = isEnabled && isDriverConnectedMessageShown2;
 
         for (uint8_t index = 0; index < NUM_DRIVERS; index++)
         {
@@ -424,33 +489,16 @@ void encoderUpdateTask(void* pvParameters)
             encoder[currentIndex]->processPWM();
         }
 
-        esp_task_wdt_reset();
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-    }
-}
+        isEnabled = driverEnabled[currentIndex];
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void motorUpdateTask(void* pvParameters)
-{
-    const uint8_t    MOTOR_UPDATE_TIME = 4;
-    const TickType_t xFrequency        = pdMS_TO_TICKS(MOTOR_UPDATE_TIME);
-    TickType_t       xLastWakeTime     = xTaskGetTickCount();
-
-    static bool isDriverConnectedMessageShown = false;
-    static int  lastReportedIndex             = -1;
-
-    while (true)
-    {
-        bool isEnabled = driverEnabled[currentIndex];
-
-        if (!isEnabled && !isDriverConnectedMessageShown)
+        if (!isEnabled && !isDriverConnectedMessageShown1)
         {
-            isDriverConnectedMessageShown = true;
+            isDriverConnectedMessageShown1 = true;
             Serial.printf("[Error][MotorUpdateTask] Motor %d connection failed!\r\n", currentIndex + 1);
         }
         else if (isEnabled)
         {
-            isDriverConnectedMessageShown = false;
+            isDriverConnectedMessageShown1 = false;
 
             if (motor[currentIndex] != nullptr)
             {
@@ -527,8 +575,8 @@ void linearMotorUpdate()
         // Set movement direction
         motor[currentIndex]->setDirection(motCtx.error > 0);
 
-        if (!motor[currentIndex]->isMotorEnabled())
-            motor[currentIndex]->motorEnable(true);
+        if (!motor[currentIndex]->isEnabled())
+            motor[currentIndex]->enable();
 
         // Register callback for movement completion
         motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
@@ -563,7 +611,7 @@ void linearMotorUpdate()
         Serial.printf(
             "[Info][MotorUpdate] deltaPulse = %ld, error = %.2f um, speed = %d, progress = %.1f%%, isMotorEnabled = %d\n",
             (long)deltaPulse, motCtx.error, moveSpeed, (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f,
-            motor[currentIndex]->isMotorEnabled());
+            motor[currentIndex]->isEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -634,8 +682,8 @@ void rotaryMotorUpdate()
         // Set movement direction
         motor[currentIndex]->setDirection(motCtx.error > 0);
 
-        if (!motor[currentIndex]->isMotorEnabled())
-            motor[currentIndex]->motorEnable(true);
+        if (!motor[currentIndex]->isEnabled())
+            motor[currentIndex]->enable();
 
         // Register callback for movement completion
         motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
@@ -670,7 +718,7 @@ void rotaryMotorUpdate()
         Serial.printf("[Info][RotaryMotorUpdate] Motor %d: deltaPulse = %ld, error = %.2f deg, speed = %d, progress = %.1f%%, "
                       "isMotorEnabled = %d\n",
                       currentIndex + 1, (long)deltaPulse, motCtx.error, moveSpeed,
-                      (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, motor[currentIndex]->isMotorEnabled());
+                      (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, motor[currentIndex]->isEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -775,26 +823,26 @@ void motorStopAndSavePosition(String callerFunctionName)
 }
 
 // Emergency reset function to clear all motor state variables
-void resetMotorState(uint8_t motorIndex)
+void resetMotorState(uint8_t id)
 {
-    if (motorIndex >= NUM_DRIVERS)
+    if (id >= NUM_DRIVERS)
         return;
 
-    Serial.printf("[Info][ResetMotorState] Resetting motor %d state variables\r\n", motorIndex + 1);
+    Serial.printf("[Info][ResetMotorState] Resetting motor %d state variables\r\n", id + 1);
 
     // Reset all state variables
-    newTargetpositionReceived[motorIndex] = false;
-    motorMoving[motorIndex]               = false;
-    lastSpeed[motorIndex]                 = 0.0f;
+    newTargetpositionReceived[id] = false;
+    motorMoving[id]               = false;
+    lastSpeed[id]                 = 0.0f;
 
     // Reset motor controller state
-    if (motor[motorIndex] != nullptr)
+    if (motor[id] != nullptr)
     {
-        motor[motorIndex]->stop();
-        motor[motorIndex]->motorEnable(false);
+        motor[id]->stop();
+        motor[id]->disable();
     }
 
-    Serial.printf("[Info][ResetMotorState] Motor %d state reset complete\r\n", motorIndex + 1);
+    Serial.printf("[Info][ResetMotorState] Motor %d state reset complete\r\n", id + 1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
