@@ -96,7 +96,7 @@ public:
 
     EncoderContext& getEncoderContext() const
     {
-        portENTER_CRITICAL(&_mux);
+        portENTER_CRITICAL(&classMux);
         _encoderContext.current_pulse = _state.current_pulse;
         _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
                                         : _state.direction == Direction::CLOCKWISE ? " CW"
@@ -108,7 +108,7 @@ public:
         _encoderContext.position_mm      = _encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / FULL_SCALE);
         _encoderContext.total_travel_mm  = (_lap.id * LEAD_SCREW_PITCH_MM) + _encoderContext.position_mm;
         _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
-        portEXIT_CRITICAL(&_mux);
+        portEXIT_CRITICAL(&classMux);
         return _encoderContext;
     }
 
@@ -180,7 +180,8 @@ private:
 
     size_t _pulseBufferIndex = 0;
 
-    mutable portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
+    // mutable portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
+    static portMUX_TYPE classMux;
 
     std::function<void(const EncoderState&)> onPulseUpdated;  // NEW: callback support
 

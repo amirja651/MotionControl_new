@@ -450,6 +450,8 @@ void encoderUpdateTask(void* pvParameters)
 */
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+unsigned int highWaterMark = 0;
+
 void motorUpdateTask(void* pvParameters)
 {
     const uint8_t    MOTOR_UPDATE_TIME = 4;
@@ -547,8 +549,7 @@ void motorUpdateTask(void* pvParameters)
         // Only check and print once every 1000
         if (++counter % 1000 == 0)
         {
-            unsigned int highWater = uxTaskGetStackHighWaterMark(NULL);
-            Serial.printf("[MotorUpdateTask] HighWaterMark: %u words (%u bytes)\n", highWater, highWater * 4);
+            highWaterMark = uxTaskGetStackHighWaterMark(NULL);
         }
 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -1124,6 +1125,8 @@ void serialReadTask(void* pvParameters)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void printSerial()
 {
+    Serial.printf("[MotorUpdateTask] HighWaterMark: %u words (%u bytes)\n", highWaterMark, highWaterMark * 4);
+
     if (!driverEnabled[currentIndex] || encoder[currentIndex] == nullptr || motor[currentIndex] == nullptr || (!Serial))
         return;
 

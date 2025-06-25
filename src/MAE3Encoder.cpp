@@ -6,6 +6,8 @@
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
 
+portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
+
 // Individual interrupt handlers for each encoder
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
@@ -156,7 +158,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         return;
 
     int64_t currentTime = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&_mux);
+    portENTER_CRITICAL_ISR(&classMux);
 
     if (READ_FAST(_signalPin))
     {
@@ -169,7 +171,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
 
             if (pulse_width < 1 || pulse_width > 4097)
             {
-                portEXIT_CRITICAL_ISR(&_mux);
+                portEXIT_CRITICAL_ISR(&classMux);
                 return;
             }
 
@@ -187,7 +189,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
 
             if (pulse_width < 1 || pulse_width > 4097)
             {
-                portEXIT_CRITICAL_ISR(&_mux);
+                portEXIT_CRITICAL_ISR(&classMux);
                 return;
             }
 
@@ -200,7 +202,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         {
             _r_pulse.high = 0;
             _r_pulse.low  = 0;
-            portEXIT_CRITICAL_ISR(&_mux);
+            portEXIT_CRITICAL_ISR(&classMux);
             return;
         }
 
@@ -211,7 +213,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         _bufferUpdated    = true;
     }
 
-    portEXIT_CRITICAL_ISR(&_mux);
+    portEXIT_CRITICAL_ISR(&classMux);
 }
 
 // New method for processing PWM signal
@@ -219,9 +221,9 @@ void MAE3Encoder::processPWM()
 {
     bool updated;
 
-    portENTER_CRITICAL(&_mux);
+    portENTER_CRITICAL(&classMux);
     updated = _bufferUpdated;
-    portEXIT_CRITICAL(&_mux);
+    portEXIT_CRITICAL(&classMux);
 
     if (!_enabled || !updated)
         return;
@@ -283,9 +285,9 @@ void MAE3Encoder::processPWM()
     _last_pulse = _state.current_pulse;
 
     _newPulseAvailable = true;
-    portENTER_CRITICAL(&_mux);
+    portENTER_CRITICAL(&classMux);
     _bufferUpdated = false;
-    portEXIT_CRITICAL(&_mux);
+    portEXIT_CRITICAL(&classMux);
     _lastPulseTime = esp_timer_get_time();
 
     // NEW: invoke callback if set
@@ -299,10 +301,10 @@ int64_t MAE3Encoder::get_median_width_high() const
 {
     std::array<int64_t, _PULSE_BUFFER_SIZE> temp;
 
-    portENTER_CRITICAL(&_mux);
+    portENTER_CRITICAL(&classMux);
     // Use memcpy for faster copy inside critical section
     memcpy(temp.data(), _width_h_buffer.data(), sizeof(int64_t) * _PULSE_BUFFER_SIZE);
-    portEXIT_CRITICAL(&_mux);
+    portEXIT_CRITICAL(&classMux);
 
     std::sort(temp.begin(), temp.end());
     return temp[_PULSE_BUFFER_SIZE / 2];
@@ -312,10 +314,10 @@ int64_t MAE3Encoder::get_median_width_low() const
 {
     std::array<int64_t, _PULSE_BUFFER_SIZE> temp;
 
-    portENTER_CRITICAL(&_mux);
+    portENTER_CRITICAL(&classMux);
     // Use memcpy for faster copy inside critical section
     memcpy(temp.data(), _width_l_buffer.data(), sizeof(int64_t) * _PULSE_BUFFER_SIZE);
-    portEXIT_CRITICAL(&_mux);
+    portEXIT_CRITICAL(&classMux);
 
     std::sort(temp.begin(), temp.end());
     return temp[_PULSE_BUFFER_SIZE / 2];
