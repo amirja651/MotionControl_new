@@ -102,6 +102,12 @@ void setup()
         delay(10);
     }
 
+#ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
+    Serial.printf("Stack overflow checking enabled: %d\n", CONFIG_FREERTOS_CHECK_STACKOVERFLOW);
+#else
+    Serial.println("Stack overflow checking NOT enabled");
+#endif
+
     // Initialize CLI
     initializeCLI();
 
@@ -167,15 +173,15 @@ void setup()
     }
 
     // Core 1 - For time-sensitive tasks (precise control)
-    xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
-    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
+    // xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
+    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 3072, NULL, 3, &motorUpdateTaskHandle, 1);
 
     // Core 0 - For less time-sensitive tasks (such as I/O)
-    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 2048, NULL, 2, &serialReadTaskHandle, 0);
+    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 1024, NULL, 2, &serialReadTaskHandle, 0);
 
-    esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
-    esp_task_wdt_add(motorUpdateTaskHandle);    // Register with WDT
-    esp_task_wdt_add(serialReadTaskHandle);     // Register with WDT
+    // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
+    esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
+    esp_task_wdt_add(serialReadTaskHandle);   // Register with WDT
 
     Serial.print(F("\r\n"));
     Serial.flush();
@@ -371,12 +377,14 @@ MotorContext getMotorContext()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
 void encoderUpdateTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(1);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
-    static bool isDriverConnectedMessageShown2 = false;
+    static bool     isDriverConnectedMessageShown2 = false;
+    static uint32_t counter                        = 0;
 
     while (true)
     {
@@ -428,9 +436,18 @@ void encoderUpdateTask(void* pvParameters)
         }
 
         esp_task_wdt_reset();
+
+        // Only check and print once every 1000
+        if (++counter % 1000 == 0)
+        {
+            unsigned int highWater = uxTaskGetStackHighWaterMark(NULL);
+            Serial.printf("[EncoderTask] HighWaterMark: %u words (%u bytes)\n", highWater, highWater * 4);
+        }
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
+*/
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void motorUpdateTask(void* pvParameters)
@@ -439,9 +456,10 @@ void motorUpdateTask(void* pvParameters)
     const TickType_t xFrequency        = pdMS_TO_TICKS(MOTOR_UPDATE_TIME);
     TickType_t       xLastWakeTime     = xTaskGetTickCount();
 
-    static bool isDriverConnectedMessageShown2 = false;
-    static bool isDriverConnectedMessageShown1 = false;
-    static int  lastReportedIndex              = -1;
+    static bool     isDriverConnectedMessageShown2 = false;
+    static bool     isDriverConnectedMessageShown1 = false;
+    static int      lastReportedIndex              = -1;
+    static uint32_t counter                        = 0;
 
     while (true)
     {
@@ -525,6 +543,14 @@ void motorUpdateTask(void* pvParameters)
         }
 
         esp_task_wdt_reset();
+
+        // Only check and print once every 1000
+        if (++counter % 1000 == 0)
+        {
+            unsigned int highWater = uxTaskGetStackHighWaterMark(NULL);
+            Serial.printf("[MotorUpdateTask] HighWaterMark: %u words (%u bytes)\n", highWater, highWater * 4);
+        }
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
