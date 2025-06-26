@@ -68,7 +68,7 @@ void serialReadTask(void* pvParameters);
 
 bool         isValidNumber(const String& str);
 void         setTargetPosition(String targetPos);
-void         setMotorIndex(String motorIndex);
+void         setmotorId(String motorId);
 float        getMotorPosition();
 MotorContext getMotorContext();
 void         linearMotorUpdate();
@@ -79,7 +79,7 @@ void         motorStopAndSavePosition(String callerFunctionName);
 void         clearLine();
 void         printSerial();
 void         printMotorStatus();
-void         resetMotorState(uint8_t motorIndex);
+void         resetMotorState(uint8_t motorId);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -106,9 +106,9 @@ void setup()
     }
 
 #ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
-    Serial.printf("Stack overflow checking enabled: %d\n", CONFIG_FREERTOS_CHECK_STACKOVERFLOW);
+    Serial.println(F("Stack overflow checking enabled"));
 #else
-    Serial.println("Stack overflow checking NOT enabled");
+    Serial.println(F("Stack overflow checking **NOT** enabled"));
 #endif
 
     // Initialize CLI
@@ -166,8 +166,7 @@ void setup()
 
     if (!anyDriverEnabled)
     {
-        Serial.printf("[Error][Setup] All drivers are disabled and the system is not operational. After powering on the system, "
-                      "please reset it.\r\n");
+        Serial.println(F("[Error][Setup] All drivers are disabled. Please reset the system."));
         for (;;)
         {
             esp_task_wdt_reset();
@@ -186,7 +185,7 @@ void setup()
     esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
     esp_task_wdt_add(serialReadTaskHandle);   // Register with WDT
 
-    Serial.print(F("\r\n"));
+    Serial.println();
     Serial.flush();
 }
 
@@ -227,13 +226,13 @@ bool isValidNumber(const String& str)
     return true;
 }
 
-// Target position is in um or degrees
+// Target P. is in um or degrees (M100)
 void setTargetPosition(String targetPos)
 {
     // 1. Validate the string
     if (!isValidNumber(targetPos))
     {
-        Serial.print(F("[Error][SetTargetPosition] Target position must be a valid number.\r\n"));
+        Serial.println(F("[Error][M100] Target P. invalid."));
         return;
     }
 
@@ -246,8 +245,7 @@ void setTargetPosition(String targetPos)
     {
         if (value < -2000.0f || value > 2000.0f)
         {
-            Serial.print(
-                F("[Error][SetTargetPosition] Target position must be between -2000.0 and 2000.0 (um) for linear motor.\r\n"));
+            Serial.println(F("[Error][M100] Target P. limit (-/+)2000 (um) for linear motor."));
             return;
         }
     }
@@ -255,14 +253,13 @@ void setTargetPosition(String targetPos)
     {
         if (value < 0.01f || value > 359.9f)
         {
-            Serial.print(
-                F("[Error][SetTargetPosition] Target position must be between 0.01 and 359.9 (deg) for rotary motor.\r\n"));
+            Serial.println(F("[Error][M100] Target P. limit 0.01/359.9 (deg) for rotary motor."));
             return;
         }
     }
     else
     {
-        Serial.print(F("[Error][SetTargetPosition] Invalid motor number. Must be between 1 and 4.\r\n"));
+        Serial.println(F("[Error][M100] Invalid Motor Id. limit: 1-4"));
         return;
     }
 
@@ -278,61 +275,94 @@ void setTargetPosition(String targetPos)
     if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
         firstTime = false;
 
-    Serial.printf("[Info][SetTargetPosition] Target position set to %.2f for motor %d.\r\n", value, currentIndex + 1);
+    Serial.print(F("[Info][M100] Target P. set to motor "));
+    Serial.println(currentIndex + 1);
 }
 
-// Motor number is 1-4 (0-3)
-void setMotorIndex(String motorIndex)
+// Motor Id is 1-4 (0-3) (M101)
+void setmotorId(String motorId)
 {
     // 1. Check that it contains only numbers
-    for (size_t i = 0; i < motorIndex.length(); i++)
+    for (size_t i = 0; i < motorId.length(); i++)
     {
-        if (!isDigit(motorIndex[i]))
+        if (!isDigit(motorId[i]))
         {
-            Serial.print(F("[Error][SetMotorIndex] Motor index must be a number between 1 and 4.\r\n"));
+            Serial.println(F("[Error][M101] Invalid Motor Id. limit: 1-4"));
             return;
         }
     }
 
     // 2. Convert to integer
-    int index = motorIndex.toInt();
+    int index = motorId.toInt();
     if (index < 1 || index > 4)
     {
-        Serial.print(F("[Error][setMotorIndex] Motor index must be between 1 and 4.\r\n"));
+        Serial.println(F("[Error][M101] Invalid Motor Id. limit: 1-4"));
         return;
     }
 
     // 3. Check if the motor is enabled (assuming: we have an array or function to check the status)
     if (!driverEnabled[index - 1])
     {
-        Serial.printf("[Warning][SetMotorIndex] Motor %d is currently disabled.\r\n", index);
+        Serial.print(F("[Error][M101] Driver is disabled: "));
+        Serial.println(index);
         return;
     }
 
     // 4. Check if motor and encoder objects exist
-    if (motor[index - 1] == nullptr)
+    // Check for null pointers
+    if (driver[currentIndex] == nullptr)
     {
-        Serial.printf("[Error][SetMotorIndex] Motor %d object is null.\r\n", index);
+        Serial.print(F("[Error][M101] Driver object is null: "));
+        Serial.println(currentIndex + 1);
         return;
     }
 
+    // Check for null pointers
+    if (motor[index - 1] == nullptr)
+    {
+        Serial.print(F("[Error][M101] Motor object is null: "));
+        Serial.println(index);
+        return;
+    }
+
+    // Check for null pointers
     if (encoder[index - 1] == nullptr)
     {
-        Serial.printf("[Error][SetMotorIndex] Encoder %d object is null.\r\n", index);
+        Serial.print(F("[Error][M101] Encoder object is null: "));
+        Serial.println(index);
         return;
     }
 
     currentIndex = index - 1;
-    Serial.printf("[Info][SetMotorIndex] Motor %d selected.\r\n", index);
+    Serial.print(F("[Info][M101] Motor is selected: "));
+    Serial.println(index);
 }
 
+// Get motor position (M102)
 float getMotorPosition()
 {
     // Check for null pointers
-    if (motor[currentIndex] == nullptr || encoder[currentIndex] == nullptr)
+    if (driver[currentIndex] == nullptr)
     {
-        Serial.printf("[Error][GetMotorPosition] Null pointer detected: motor[%d], encoder[%d]\r\n", currentIndex, currentIndex);
-        return 0.0f;  // Return 0 if null pointers
+        Serial.print(F("[Error][M102] Driver object is null: "));
+        Serial.println(currentIndex + 1);
+        return 0.000999f;  // Return 0.000999f if null pointers
+    }
+
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M102] Motor object is null: "));
+        Serial.println(currentIndex + 1);
+        return 0.000999f;  // Return 0.000999f if null pointers
+    }
+
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M102] Encoder object is null: "));
+        Serial.println(currentIndex + 1);
+        return 0.000999f;  // Return 0.000999f if null pointers
     }
 
     MotorType      type   = motor[currentIndex]->getMotorType();
@@ -340,14 +370,32 @@ float getMotorPosition()
     return (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
 }
 
+// Get motor context (M103)
 MotorContext getMotorContext()
 {
     MotorContext motCtx = {};  // Zero-initialize all members
 
     // Check for null pointers
-    if (encoder[currentIndex] == nullptr || motor[currentIndex] == nullptr)
+    if (driver[currentIndex] == nullptr)
     {
-        Serial.printf("[Error][GetMotorContext] Null pointer detected for motor %d\r\n", currentIndex + 1);
+        Serial.print(F("[Error][M103] Driver object is null: "));
+        Serial.println(currentIndex + 1);
+        return motCtx;  // Return zero-initialized context
+    }
+
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M103] Motor object is null: "));
+        Serial.println(currentIndex + 1);
+        return motCtx;  // Return zero-initialized context
+    }
+
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M103] Encoder object is null: "));
+        Serial.println(currentIndex + 1);
         return motCtx;  // Return zero-initialized context
     }
 
@@ -360,7 +408,8 @@ MotorContext getMotorContext()
     if (type == MotorType::ROTATIONAL)
         motCtx.error = motor[currentIndex]->wrapAngle180(motCtx.error);
 
-    // Use appropriate pulse conversion based on motor type
+    // amir
+    //  Use appropriate pulse conversion based on motor type
     if (type == MotorType::LINEAR)
     {
         motCtx.currentPositionPulses = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
@@ -378,22 +427,45 @@ MotorContext getMotorContext()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
     const uint8_t    MOTOR_UPDATE_TIME = 4;
     const TickType_t xFrequency        = pdMS_TO_TICKS(MOTOR_UPDATE_TIME);
     TickType_t       xLastWakeTime     = xTaskGetTickCount();
 
-    static bool     isDriverConnectedMessageShown2 = false;
-    static bool     isDriverConnectedMessageShown1 = false;
-    static int      lastReportedIndex              = -1;
-    static uint32_t counter                        = 0;
+    static bool     isDriverConnectedMessageShown_enc = false;
+    static bool     isDriverConnectedMessageShown_mtr = false;
+    static int      lastReportedIndex                 = -1;
+    static uint32_t counter                           = 0;
 
-    while (true)
+    for (;;)
     {
-        if (currentIndex >= NUM_DRIVERS || encoder[currentIndex] == nullptr)
+        // Check for null pointers
+        if (driver[currentIndex] == nullptr)
         {
-            Serial.printf("[Error][EncoderUpdateTask] Invalid currentIndex: %d\r\n", currentIndex);
+            Serial.print(F("[Error][M104] Driver object is null: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // Check for null pointers
+        if (motor[currentIndex] == nullptr)
+        {
+            Serial.print(F("[Error][M104] Motor object is null: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // Check for null pointers
+        if (encoder[currentIndex] == nullptr)
+        {
+            Serial.print(F("[Error][M104] Encoder object is null: "));
+            Serial.println(currentIndex + 1);
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
@@ -401,27 +473,32 @@ void motorUpdateTask(void* pvParameters)
 
         // if driver is not connected, show the message
         bool isEnabled = driverEnabled[currentIndex];
-        if (!isEnabled && !isDriverConnectedMessageShown2)
+        if (!isEnabled && !isDriverConnectedMessageShown_enc)
         {
-            isDriverConnectedMessageShown2 = true;
-            Serial.printf("[Error][EncoderUpdateTask] Motor %d connection failed!\r\n", currentIndex + 1);
+            isDriverConnectedMessageShown_enc = true;
+            Serial.print(F("[Error][M104] Driver's connection failed!: "));
+            Serial.println(currentIndex + 1);
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
 
         // if driver is connected, don't show the message again
-        isDriverConnectedMessageShown2 = isEnabled && isDriverConnectedMessageShown2;
+        isDriverConnectedMessageShown_enc = isEnabled && isDriverConnectedMessageShown_enc;
 
         for (uint8_t index = 0; index < NUM_DRIVERS; index++)
         {
+            // Check for null pointers
             if (encoder[index] == nullptr)
             {
+                Serial.print(F("[Error][M104] Encoder object is null: "));
+                Serial.println(index + 1);
                 esp_task_wdt_reset();
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
 
+            // Enable/Disable encoder based on currentIndex
             if (index == currentIndex)
             {
                 if (encoder[index]->isDisabled())
@@ -434,6 +511,7 @@ void motorUpdateTask(void* pvParameters)
             }
         }
 
+        // Process PWM if the driver is enabled
         if (currentIndex < NUM_DRIVERS && isEnabled)
         {
             encoder[currentIndex]->processPWM();
@@ -441,35 +519,35 @@ void motorUpdateTask(void* pvParameters)
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
 
-        isEnabled = driverEnabled[currentIndex];
-
-        if (!isEnabled && !isDriverConnectedMessageShown1)
+        if (!isEnabled && !isDriverConnectedMessageShown_mtr)
         {
-            isDriverConnectedMessageShown1 = true;
-            Serial.printf("[Error][MotorUpdateTask] Motor %d connection failed!\r\n", currentIndex + 1);
+            isDriverConnectedMessageShown_mtr = true;
+            Serial.print(F("[Error][M104] Driver's connection failed!: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
         }
-        else if (isEnabled)
+
+        // if driver is connected, don't show the message again
+        isDriverConnectedMessageShown_mtr = isEnabled && isDriverConnectedMessageShown_mtr;
+
+        if (isEnabled)
         {
-            isDriverConnectedMessageShown1 = false;
+            isDriverConnectedMessageShown_mtr = false;
 
-            if (motor[currentIndex] != nullptr)
+            if (lastReportedIndex != currentIndex)
             {
-                if (lastReportedIndex != currentIndex)
-                {
-                    // Only print status if driver is not null
-                    if (driver[currentIndex] != nullptr)
-                        printMotorStatus();
-
-                    lastReportedIndex = currentIndex;
-                }
-
-                // Call appropriate motor update function based on motor type
-                if (currentIndex == 0)  // Linear motor (index 0)
-                    linearMotorUpdate();
-
-                else  // Rotary motors (indices 1-3)
-                    rotaryMotorUpdate();
+                printMotorStatus();
+                lastReportedIndex = currentIndex;
             }
+
+            // Call appropriate motor update function based on motor type
+            if (currentIndex == 0)  // Linear motor (index 0)
+                linearMotorUpdate();
+
+            else  // Rotary motors (indices 1-3)
+                rotaryMotorUpdate();
         }
 
         esp_task_wdt_reset();
@@ -479,11 +557,13 @@ void motorUpdateTask(void* pvParameters)
     }
 }
 
+// Linear Motor Update (M105)
 void linearMotorUpdate()
 {
     if (!newTargetpositionReceived[currentIndex])
         return;
 
+    // Check for null pointers
     if (motor[currentIndex] == nullptr)
         return;
 
@@ -498,7 +578,7 @@ void linearMotorUpdate()
     static const float   SEGMENT_SIZE_PERCENT          = 5.0f;              // 5% segments for speed changes
 
     // Add debug logging for state variables
-    // Serial.printf("[Debug][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance: %.2f\r\n",
+    // Serial.println(F("[Debug][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance: %.2f\r\n",
     // motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
@@ -515,10 +595,10 @@ void linearMotorUpdate()
         float   positionThreshold = (motCtx.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
         int32_t maxMicroMovePulse = (motCtx.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
 
-        // Check if we've reached the target position
+        // Check if we've reached the Target P.
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
-            motorStopAndSavePosition("MotorUpdate");
+            motorStopAndSavePosition("M105");
             return;
         }
 
@@ -558,10 +638,16 @@ void linearMotorUpdate()
         }
 
         // Execute movement
-        Serial.printf(
-            "[Info][MotorUpdate] deltaPulse = %ld, error = %.2f um, speed = %d, progress = %.1f%%, isMotorEnabled = %d\n",
-            (long)deltaPulse, motCtx.error, moveSpeed, (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f,
-            motor[currentIndex]->isEnabled());
+        Serial.print(F("[Info][M105] deltaPulse = "));
+        Serial.print((long)deltaPulse);
+        Serial.print(F(", error = "));
+        Serial.print(motCtx.error, 2);
+        Serial.print(F(" um, speed = "));
+        Serial.print(moveSpeed);
+        Serial.print(F(", progress = "));
+        Serial.print((1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, 1);
+        Serial.print(F("%, isMotorEnabled = "));
+        Serial.println(motor[currentIndex]->isEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -574,11 +660,13 @@ void linearMotorUpdate()
     }
 }
 
+// Rotary Motor Update (M106)
 void rotaryMotorUpdate()
 {
     if (!newTargetpositionReceived[currentIndex])
         return;
 
+    // Check for null pointers
     if (motor[currentIndex] == nullptr)
         return;
 
@@ -591,24 +679,18 @@ void rotaryMotorUpdate()
     static const int     FINE_MOVE_SPEED                = 8;      // Fine movement speed
     static const float   SEGMENT_SIZE_PERCENT           = 5.0f;   // 5% segments for speed changes
 
-    // Validate target position is within rotary motor limits (0.01 to 359.9 degrees)
+    // Validate Target P. is within rotary motor limits (0.01 to 359.9 degrees)
     float target = targetPosition[currentIndex];
     if (target < 0.01f || target > 359.9f)
     {
-        Serial.printf("[Error][RotaryMotorUpdate] Target position %.2f degrees is out of range (0.01-359.9)\r\n", target);
+        Serial.print(F("[Error][M106] Target P. is out of range 0.01/359.9 (deg): "));
+        Serial.println(target);
         newTargetpositionReceived[currentIndex] = false;
         return;
     }
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        // Additional null pointer check for encoder
-        if (encoder[currentIndex] == nullptr)
-        {
-            Serial.printf("[Error][RotaryMotorUpdate] Encoder[%d] is null\r\n", currentIndex);
-            return;
-        }
-
         MotorContext motCtx = getMotorContext();
 
         float absError = fabs(motCtx.error);
@@ -622,10 +704,10 @@ void rotaryMotorUpdate()
         float   positionThreshold = POSITION_THRESHOLD_DEG_FORWARD;
         int32_t maxMicroMovePulse = MAX_MICRO_MOVE_PULSE_FORWARD;
 
-        // Check if we've reached the target position
+        // Check if we've reached the Target P.
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
-            motorStopAndSavePosition("MotorUpdate");
+            motorStopAndSavePosition("M106");
             return;
         }
 
@@ -665,10 +747,18 @@ void rotaryMotorUpdate()
         }
 
         // Execute movement
-        Serial.printf("[Info][RotaryMotorUpdate] Motor %d: deltaPulse = %ld, error = %.2f deg, speed = %d, progress = %.1f%%, "
-                      "isMotorEnabled = %d\n",
-                      currentIndex + 1, (long)deltaPulse, motCtx.error, moveSpeed,
-                      (1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, motor[currentIndex]->isEnabled());
+        Serial.print(F("[Info][M106] Motor "));
+        Serial.print(currentIndex + 1);
+        Serial.print(F(": deltaPulse = "));
+        Serial.print((long)deltaPulse);
+        Serial.print(F(", error = "));
+        Serial.print(motCtx.error, 2);
+        Serial.print(F(" deg, speed = "));
+        Serial.print(moveSpeed);
+        Serial.print(F(", progress = "));
+        Serial.print((1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, 1);
+        Serial.print(F("%, isMotorEnabled = "));
+        Serial.println(motor[currentIndex]->isEnabled());
 
         motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -745,16 +835,18 @@ void demonstrateSpeedProfile()
     Serial.println(F("=====================================\r\n"));
 }
 
+// Motor Stop and Save Position (M107)
 void motorStopAndSavePosition(String callerFunctionName)
 {
+    // Check for null pointers
     if (motor[currentIndex] == nullptr)
         return;
 
     callerFunctionName = "[" + callerFunctionName + "]";
     Serial.println(callerFunctionName);
 
-    if (callerFunctionName == "MotorUpdate")
-        Serial.println(F(" - [Info][MotorStopAndSavePosition] Reached target. Stopping..."));
+    if (callerFunctionName == "M105" || callerFunctionName == "M106")
+        Serial.println(F(" - [Info][M107] Reached target. Stopping..."));
 
     // Reset all state variables that prevent subsequent movements
     newTargetpositionReceived[currentIndex] = false;
@@ -765,20 +857,21 @@ void motorStopAndSavePosition(String callerFunctionName)
     motor[currentIndex]->stop();
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    if (callerFunctionName == "MotorUpdate")
-        Serial.println(F(" - [Info][MotorStopAndSavePosition] Final correction within threshold. Done."));
+    if (callerFunctionName == "M105" || callerFunctionName == "M106")
+        Serial.println(F(" - [Info][M107] Final correction within threshold. Done."));
 
     printMotorStatus();
     printSerial();
 }
 
-// Emergency reset function to clear all motor state variables
+// Emergency reset function to clear all motor state variables (M108)
 void resetMotorState(uint8_t id)
 {
     if (id >= NUM_DRIVERS)
         return;
 
-    Serial.printf("[Info][ResetMotorState] Resetting motor %d state variables\r\n", id + 1);
+    Serial.print(F("[Info][M108] Resetting motor state variables: "));
+    Serial.println(id + 1);
 
     // Reset all state variables
     newTargetpositionReceived[id] = false;
@@ -792,7 +885,8 @@ void resetMotorState(uint8_t id)
         motor[id]->disable();
     }
 
-    Serial.printf("[Info][ResetMotorState] Motor %d state reset complete\r\n", id + 1);
+    Serial.print(F("[Info][M108] Motor state reset complete: "));
+    Serial.println(id + 1);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -805,6 +899,7 @@ void clearLine()
     Serial.print(F("\r> "));
 }
 
+// Serial Read Task (M109)
 void serialReadTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(100);
@@ -922,7 +1017,7 @@ void serialReadTask(void* pvParameters)
                     motor[currentIndex]->move(10, 100, 0.0f);
                 }
                 else
-                    Serial.print(F("[Error][SerialReadTask] Motor not connected\r\n"));
+                    Serial.println(F("[Error][M109] Motor not connected"));
 
                 esp_task_wdt_reset();
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -936,7 +1031,7 @@ void serialReadTask(void* pvParameters)
                     motor[currentIndex]->move(10, 100, 0.0f);
                 }
                 else
-                    Serial.print(F("[Error][SerialReadTask] Motor not connected\r\n"));
+                    Serial.println(F("[Error][M109] Motor not connected"));
 
                 esp_task_wdt_reset();
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -960,15 +1055,15 @@ void serialReadTask(void* pvParameters)
             // Handle motor commands
             if (c == cmdMotor)
             {
-                // Get motor number
+                // Get Motor Id
                 if (c.getArgument("n").isSet())
                 {
-                    String motorIndexStr = c.getArgument("n").getValue();
-                    setMotorIndex(motorIndexStr);
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setmotorId(motorIdStr);
                 }
                 else
                 {
-                    Serial.print(F("ERROR: Motor number (-n) requires a value\r\n"));
+                    Serial.println(F("ERROR: Motor Id (-n) requires a value"));
                     esp_task_wdt_reset();
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
@@ -1001,7 +1096,7 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdRestart)
             {
                 motorStopAndSavePosition("CmdRestart");
-                Serial.print(F("Restarting...\r\n"));
+                Serial.println(F("Restarting..."));
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 ESP.restart();
             }
@@ -1062,9 +1157,10 @@ void serialReadTask(void* pvParameters)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Print Serial (M110)
 void printSerial()
 {
-    Serial.print(F("[MotorUpdateTask] HighWaterMark: "));
+    Serial.print(F("[M110] HighWaterMark: "));
     Serial.print(highWaterMark);
     Serial.print(F(" words ("));
     Serial.print(highWaterMark * 4);
@@ -1123,17 +1219,41 @@ void printSerial()
     // }
 }
 
+// Print Motor Status (M111)
 void printMotorStatus()
 {
-    // Check for null pointer
+    // Check for null pointers
     if (driver[currentIndex] == nullptr)
     {
-        Serial.printf("[Error][PrintMotorStatus] Driver[%d] is null\r\n", currentIndex);
+        Serial.print(F("[Error][M111] Driver object is null: "));
+        Serial.println(currentIndex + 1);
         return;
     }
 
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M111] Motor object is null: "));
+        Serial.println(currentIndex + 1);
+        return;
+    }
+
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M111] Encoder object is null: "));
+        Serial.println(currentIndex + 1);
+        return;  // Return 0.000999f if null pointers
+    }
+
     auto status = driver[currentIndex]->getDriverStatus();
-    Serial.printf("\r\n[Info][PrintMotorStatus] Motor %d Status:\r\n", currentIndex + 1);
-    Serial.printf(" - Current: %d mA\r\n", status.current);
-    Serial.printf(" - Temperature: %d\r\n\r\n", status.temperature);
+    Serial.print(F("\r\n[Info][M111] Motor "));
+    Serial.print(currentIndex + 1);
+    Serial.print(F(" Status:\r\n"));
+    Serial.print(F(" - Current: "));
+    Serial.print(status.current);
+    Serial.print(F(" mA\r\n"));
+    Serial.print(F(" - Temperature: "));
+    Serial.print(status.temperature);
+    Serial.println(F("\r\n"));
 }
