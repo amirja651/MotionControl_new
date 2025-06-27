@@ -1,9 +1,8 @@
 #ifndef PINS_H
 #define PINS_H
 
+#include "Defines.h"
 #include <Arduino.h>
-
-#define NUM_DRIVERS 2
 
 struct DriverPins
 {

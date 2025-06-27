@@ -1,5 +1,4 @@
 #include "MAE3Encoder.h"
-#include "Debug.h"
 
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
@@ -289,7 +288,9 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
+#if NUM_DRIVERS > 0
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler0, CHANGE);
+#endif
             break;
         case 1:
 #if DEBUG_ENCODER
@@ -297,7 +298,9 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
+#if NUM_DRIVERS > 1
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler1, CHANGE);
+#endif
             break;
         case 2:
 #if DEBUG_ENCODER
@@ -305,8 +308,9 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
-
+#if NUM_DRIVERS > 2
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler2, CHANGE);
+#endif
             break;
         case 3:
 #if DEBUG_ENCODER
@@ -314,7 +318,9 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
+#if NUM_DRIVERS > 3
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler3, CHANGE);
+#endif
             break;
     }
 }
@@ -422,71 +428,78 @@ int64_t MAE3Encoder::get_median_width_low() const
 }
 
 // Individual interrupt handlers for each encoder
+#if NUM_DRIVERS > 0
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.print(F("Encoder interruptHandler: "));
-#endif
+    #endif
     if (_encoderInstances[0] && _encoderInstances[0]->_enabled)
     {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
         Serial.print(_encoderInstances[0]->_encoderId + 1);
-#endif
+    #endif
         _encoderInstances[0]->processInterrupt();
     }
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.println();
-#endif
+    #endif
 }
+#endif
+#if NUM_DRIVERS > 1
 void IRAM_ATTR MAE3Encoder::interruptHandler1()
 {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.print(F("Encoder interruptHandler: "));
-#endif
+    #endif
     if (_encoderInstances[1] && _encoderInstances[1]->_enabled)
     {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
         Serial.print(_encoderInstances[1]->_encoderId + 1);
-#endif
+    #endif
         _encoderInstances[1]->processInterrupt();
     }
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.println();
-#endif
+    #endif
 }
+#endif
+#if NUM_DRIVERS > 2
 void IRAM_ATTR MAE3Encoder::interruptHandler2()
 {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.print(F("Encoder interruptHandler: "));
-#endif
+    #endif
     if (_encoderInstances[2] && _encoderInstances[2]->_enabled)
     {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
         Serial.print(_encoderInstances[2]->_encoderId + 1);
-#endif
+    #endif
         _encoderInstances[2]->processInterrupt();
     }
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.println();
-#endif
+    #endif
 }
+#endif
+#if NUM_DRIVERS > 3
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.print(F("Encoder interruptHandler: "));
-#endif
+    #endif
     if (_encoderInstances[3] && _encoderInstances[3]->_enabled)
     {
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
         Serial.print(_encoderInstances[3]->_encoderId + 1);
-#endif
+    #endif
         _encoderInstances[3]->processInterrupt();
     }
-#if DEBUG_ENCODER
+    #if DEBUG_ENCODER
     Serial.println();
-#endif
+    #endif
 }
-
+#endif
 void MAE3Encoder::setPeriod(int32_t lapIndex, int64_t period, bool reset_count)
 {
     _lap.period[lapIndex + LAPS_OFFSET] = static_cast<int32_t>(period);

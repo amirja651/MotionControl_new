@@ -1,13 +1,11 @@
 #ifndef MOTOR_SPEED_CONTROLLER_H
 #define MOTOR_SPEED_CONTROLLER_H
 
+#include "Defines.h"
 #include "Pins.h"
 #include "TMC5160Manager.h"
 #include <Arduino.h>
 #include <driver/timer.h>
-
-// Maximum number of supported motors
-constexpr uint8_t MAX_MOTORS = 4;
 
 enum class MotorType
 {
@@ -51,9 +49,6 @@ public:
     void handleMovementComplete();
 
 private:
-    // Timer/ISR support
-    static MotorSpeedController* _motorInstances[MAX_MOTORS];
-
     // Hardware driver and pins
     TMC5160Manager& _driver;
     uint16_t        _DIR_PIN;
@@ -74,6 +69,11 @@ private:
 
     volatile bool _enabled;
 
+    // Maximum number of supported motors
+    static constexpr uint8_t MAX_MOTORS = NUM_DRIVERS;
+
+    static MotorSpeedController* _motorInstances[MAX_MOTORS];  // Timer/ISR support
+
     // Optional movement complete callback
     void          (*_onComplete)();
     volatile bool _movementCompleteFlag;
@@ -81,11 +81,20 @@ private:
     void attachInterruptHandler();
     void detachInterruptHandler();
 
+#if NUM_DRIVERS > 0
     static void IRAM_ATTR onTimerISR0();
+#endif
+#if NUM_DRIVERS > 1
     static void IRAM_ATTR onTimerISR1();
+#endif
+#if NUM_DRIVERS > 2
     static void IRAM_ATTR onTimerISR2();
+#endif
+#if NUM_DRIVERS > 3
     static void IRAM_ATTR onTimerISR3();
-    void IRAM_ATTR        onTimerISR();
+#endif
+
+    void IRAM_ATTR onTimerISR();
 
     void startTimer(uint32_t interval_us);
     void stopTimer();

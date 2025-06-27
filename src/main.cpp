@@ -1,4 +1,4 @@
-#include "Debug.h"
+#include "Defines.h"
 #include "MAE3Encoder.h"
 #include "MotorSpeedController.h"
 #include "Pins.h"
@@ -194,11 +194,12 @@ void loop()
     if (motor[currentIndex])
         motor[currentIndex]->handleMovementComplete();
     currentIndex = 0;
+    encoder[currentIndex]->enable();
     encoder[currentIndex]->processPWM();
-    printSerial();
-    delay(800);
-    currentIndex = 1;
-    encoder[currentIndex]->processPWM();
+    Serial.print(F("Encoder "));
+    Serial.print(currentIndex + 1);
+    Serial.print(F(" isEnabled: "));
+    Serial.println(encoder[currentIndex]->isEnabled());
     printSerial();
     delay(800);
     esp_task_wdt_reset();
