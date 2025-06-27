@@ -76,6 +76,15 @@ public:
     void reset();
     void processPWM();
 
+    static int getNumberOfInterruptsAttached(uint8_t encoderId)
+    {
+        return (encoderId < NUM_ENCODERS) ? _interruptsAttached[encoderId] : -1;
+    }
+    static int getNumberOfInterruptsDetached(uint8_t encoderId)
+    {
+        return (encoderId < NUM_ENCODERS) ? _interruptsDetached[encoderId] : -1;
+    }
+
     EncoderContext& getEncoderContext() const;
 
     int32_t umToPulses(float um);
@@ -84,6 +93,10 @@ public:
 
     bool isStopped(int64_t threshold_us = 500000 /* 500ms */) const;
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
+
+protected:
+    static int _interruptsAttached[NUM_ENCODERS];
+    static int _interruptsDetached[NUM_ENCODERS];
 
 private:
     // Pin assignments

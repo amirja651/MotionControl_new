@@ -44,6 +44,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
+        Serial.println();
         Serial.print(F("[TestConnection] Driver "));
         Serial.print(_driverIndex + 1);
         Serial.println(F(":"));

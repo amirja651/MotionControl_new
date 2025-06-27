@@ -9,25 +9,34 @@ void setup()
     SPI.setDataMode(SPI_MODE3);
     Serial.begin(115200);
 
-#if DEBUG_MAIN
+#if ENABLE_WDT
+    #if DEBUG_MAIN
     esp_task_wdt_init(10, true);
-#else
+    #else
     esp_task_wdt_init(10, false);
-#endif
+    #endif
     esp_task_wdt_add(NULL);  // Add the current task (setup)
+#endif
+
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     delay(1000);
     while (!Serial)
     {
+#if ENABLE_WDT
         esp_task_wdt_reset();
+#endif
         delay(10);
     }
 
 #ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
+    Serial.println(F("--------------------------------"));
     Serial.println(F("Stack overflow checking enabled"));
+    Serial.println(F("--------------------------------"));
 #else
+    Serial.println(F("--------------------------------"));
     Serial.println(F("Stack overflow checking **NOT** enabled"));
+    Serial.println(F("--------------------------------"));
 #endif
 
     // Initialize CLI
@@ -60,38 +69,45 @@ void setup()
         if (driver[index]->testConnection(true))
         {
             driverEnabled[index] = true;
+
             // Configure motor parameters
             if (index == (uint8_t)MotorType::LINEAR)
                 driver[index]->configureDriver_Nema11_1004H(true);
             else
                 driver[index]->configureDriver_Pancake();
-
-            // Create motor controller
-            motor[index] = std::unique_ptr<MotorSpeedController>(new MotorSpeedController(
-                index, *driver[index], DriverPins::DIR[index], DriverPins::STEP[index], DriverPins::EN[index]));
-            delay(100);
-            // Initialize all motor controllers
-            motor[index]->begin();
-
-            // Create pwm encoder
-            encoder[index] = std::unique_ptr<MAE3Encoder>(new MAE3Encoder(EncoderPins::SIGNAL[index], index));
-            delay(100);
-            // Initialize all encoders
-            encoder[index]->begin();
         }
+    }
+
+    // Initialize TMC5160 drivers
+    for (uint8_t index = 0; index < NUM_MOTORS; index++)
+    {
+        motor[index] = std::unique_ptr<MotorSpeedController>(new MotorSpeedController(
+            index, *driver[index], DriverPins::DIR[index], DriverPins::STEP[index], DriverPins::EN[index]));
+        motor[index]->begin();
+    }
+
+    // Initialize TMC5160 drivers
+    for (uint8_t index = 0; index < NUM_ENCODERS; index++)
+    {
+        encoder[index] = std::unique_ptr<MAE3Encoder>(new MAE3Encoder(EncoderPins::SIGNAL[index], index));
+        encoder[index]->begin();
     }
 
     // Check if any driver is enabled
     bool anyDriverEnabled = false;
     for (uint8_t index = 0; index < NUM_MOTORS; index++)
+    {
         anyDriverEnabled = anyDriverEnabled || driverEnabled[index];
+    }
 
     if (!anyDriverEnabled)
     {
         Serial.println(F("[Error][Setup] All drivers are disabled. Please reset the system."));
         for (;;)
         {
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             delay(10);
         }
     }
@@ -103,9 +119,11 @@ void setup()
     // Core 0 - For less time-sensitive tasks (such as I/O)
     // xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
 
+#if ENABLE_WDT
     // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
     esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
     esp_task_wdt_add(serialReadTaskHandle);   // Register with WDT
+#endif
 
     Serial.println();
     Serial.flush();
@@ -114,21 +132,38 @@ void setup()
 void loop()
 {
     // Handle movement complete outside ISR
-    if (motor[currentIndex])
-        motor[currentIndex]->handleMovementComplete();
+    // if (motor[currentIndex])
+    //    motor[currentIndex]->handleMovementComplete();
+
     if (currentIndex == 0)
-        currentIndex = 1;
+    {
+        encoder[1]->disable();
+        delay(100);
+        encoder[0]->enable();
+    }
     else
-        currentIndex = 0;
-    encoder[currentIndex]->enable();
+    {
+        encoder[0]->disable();
+        delay(100);
+        encoder[1]->enable();
+    }
+
     encoder[currentIndex]->processPWM();
-    Serial.print(F("Encoder "));
+
+    Serial.print(F("Encoder\t\tEnabled\t\tAttached\tDetached\n"));
     Serial.print(currentIndex + 1);
-    Serial.print(F(" isEnabled: "));
-    Serial.println(encoder[currentIndex]->isEnabled());
+    Serial.print(F("\t\t"));
+    Serial.print(encoder[currentIndex]->isEnabled());
+    Serial.print(F("\t\t"));
+    Serial.print(MAE3Encoder::getNumberOfInterruptsAttached(currentIndex));
+    Serial.print(F("\t\t"));
+    Serial.println(MAE3Encoder::getNumberOfInterruptsDetached(currentIndex));
+    Serial.println(F("--------------------------------"));
     printSerial();
+#if ENABLE_WDT
     esp_task_wdt_reset();
-    vTaskDelay(800);
+#endif
+    vTaskDelay(1000);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -380,7 +415,9 @@ void motorUpdateTask(void* pvParameters)
         {
             Serial.print(F("[Error][M104] Driver object is null: "));
             Serial.println(currentIndex + 1);
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
@@ -390,7 +427,9 @@ void motorUpdateTask(void* pvParameters)
         {
             Serial.print(F("[Error][M104] Motor object is null: "));
             Serial.println(currentIndex + 1);
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
@@ -400,7 +439,9 @@ void motorUpdateTask(void* pvParameters)
         {
             Serial.print(F("[Error][M104] Encoder object is null: "));
             Serial.println(currentIndex + 1);
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
@@ -412,7 +453,9 @@ void motorUpdateTask(void* pvParameters)
             isDriverConnectedMessageShown_enc = true;
             Serial.print(F("[Error][M104] Driver's connection failed!: "));
             Serial.println(currentIndex + 1);
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
@@ -427,7 +470,9 @@ void motorUpdateTask(void* pvParameters)
             {
                 Serial.print(F("[Error][M104] Encoder object is null: "));
                 Serial.println(index + 1);
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
@@ -449,7 +494,9 @@ void motorUpdateTask(void* pvParameters)
         if (currentIndex < NUM_MOTORS && isEnabled)
         {
             encoder[currentIndex]->processPWM();
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
 
@@ -458,7 +505,9 @@ void motorUpdateTask(void* pvParameters)
             isDriverConnectedMessageShown_mtr = true;
             Serial.print(F("[Error][M104] Driver's connection failed!: "));
             Serial.println(currentIndex + 1);
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
@@ -484,7 +533,9 @@ void motorUpdateTask(void* pvParameters)
                 rotaryMotorUpdate();
         }
 
+#if ENABLE_WDT
         esp_task_wdt_reset();
+#endif
         if (++counter % 1000 == 0)  // Only check and print once every 1000
             highWaterMark = uxTaskGetStackHighWaterMark(NULL);
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -852,14 +903,18 @@ void serialReadTask(void* pvParameters)
             if (escState == 0 && c == '\x1b')
             {
                 escState = 1;
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
             if (escState == 1 && c == '[')
             {
                 escState = 2;
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
@@ -877,7 +932,9 @@ void serialReadTask(void* pvParameters)
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
+#if ENABLE_WDT
                     esp_task_wdt_reset();
+#endif
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
                 }
@@ -902,12 +959,16 @@ void serialReadTask(void* pvParameters)
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
+#if ENABLE_WDT
                     esp_task_wdt_reset();
+#endif
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
                 }
                 escState = 0;
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
@@ -953,7 +1014,9 @@ void serialReadTask(void* pvParameters)
                 else
                     Serial.println(F("[Error][M109] Motor not connected"));
 
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
@@ -967,7 +1030,9 @@ void serialReadTask(void* pvParameters)
                 else
                     Serial.println(F("[Error][M109] Motor not connected"));
 
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
@@ -978,7 +1043,9 @@ void serialReadTask(void* pvParameters)
                 if (historyIndex == -1)
                     lastInput = inputBuffer;
             }
+#if ENABLE_WDT
             esp_task_wdt_reset();
+#endif
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
 
@@ -998,7 +1065,9 @@ void serialReadTask(void* pvParameters)
                 else
                 {
                     Serial.println(F("ERROR: Motor Id (-n) requires a value"));
+#if ENABLE_WDT
                     esp_task_wdt_reset();
+#endif
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
                 }
@@ -1012,7 +1081,9 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("#"));
                     Serial.print(position, 2);
                     Serial.print(F("#\r\n"));
+#if ENABLE_WDT
                     esp_task_wdt_reset();
+#endif
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
                 }
@@ -1022,7 +1093,9 @@ void serialReadTask(void* pvParameters)
                 {
                     String targetPosition = c.getArgument("p").getValue();
                     setTargetPosition(targetPosition);
+#if ENABLE_WDT
                     esp_task_wdt_reset();
+#endif
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
                 }
@@ -1037,35 +1110,45 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdStop)
             {
                 motorStopAndSavePosition("CmdStop");
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
             else if (c == cmdShow)
             {
                 printSerial();
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
             else if (c == cmdDrive)
             {
                 driver[currentIndex]->logDriverStatus();
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
             else if (c == cmdSpeedProfile)
             {
                 demonstrateSpeedProfile();
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
             else if (c == cmdReset)
             {
                 resetMotorState(currentIndex);
+#if ENABLE_WDT
                 esp_task_wdt_reset();
+#endif
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
@@ -1085,7 +1168,9 @@ void serialReadTask(void* pvParameters)
             Serial.print(F("\r\n"));
         }
 
+#if ENABLE_WDT
         esp_task_wdt_reset();
+#endif
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }

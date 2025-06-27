@@ -3,6 +3,8 @@
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
 
+int MAE3Encoder::_interruptsAttached[NUM_ENCODERS] = {0};
+int MAE3Encoder::_interruptsDetached[NUM_ENCODERS] = {0};
 // Initialize static member
 portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -71,6 +73,7 @@ bool MAE3Encoder::begin()
     Serial.print(F("Encoder "));
     Serial.print(_encoderId + 1);
     Serial.println(F(" initialized"));
+    Serial.println();
 #endif
 
     return true;
@@ -81,16 +84,16 @@ void MAE3Encoder::enable()
     if (_enabled)
         return;
 
-    _enabled = true;
     attachInterruptHandler();
+    _enabled = true;
 }
 void MAE3Encoder::disable()
 {
     if (!_enabled)
         return;
 
-    _enabled = false;
     detachInterruptHandler();
+    _enabled = false;
 }
 
 bool MAE3Encoder::isEnabled() const
@@ -277,62 +280,50 @@ void MAE3Encoder::setOnPulseUpdatedCallback(std::function<void(const EncoderStat
 
 void MAE3Encoder::attachInterruptHandler()
 {
-#if DEBUG_ENCODER
-    Serial.print(F("Encoder attach Interrupt Handler: "));
-#endif
     switch (_encoderId)
     {
         case 0:
-#if DEBUG_ENCODER
-            Serial.print(_encoderId + 1);
-            Serial.print(F(" |  pin: "));
-            Serial.println(_signalPin);
-#endif
 #if NUM_ENCODERS > 0
+    #if DEBUG_ENCODER
+            _interruptsAttached[_encoderId]++;
+    #endif
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler0, CHANGE);
 #endif
             break;
-        case 1:
-#if DEBUG_ENCODER
-            Serial.print(_encoderId + 1);
-            Serial.print(F(" |  pin: "));
-            Serial.println(_signalPin);
-#endif
 #if NUM_ENCODERS > 1
+        case 1:
+    #if DEBUG_ENCODER
+            _interruptsAttached[_encoderId]++;
+    #endif
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler1, CHANGE);
-#endif
+
             break;
-        case 2:
-#if DEBUG_ENCODER
-            Serial.print(_encoderId + 1);
-            Serial.print(F(" |  pin: "));
-            Serial.println(_signalPin);
 #endif
 #if NUM_ENCODERS > 2
+        case 2:
+    #if DEBUG_ENCODER
+            _interruptsAttached[_encoderId]++;
+    #endif
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler2, CHANGE);
-#endif
+
             break;
-        case 3:
-#if DEBUG_ENCODER
-            Serial.print(_encoderId + 1);
-            Serial.print(F(" |  pin: "));
-            Serial.println(_signalPin);
 #endif
 #if NUM_ENCODERS > 3
+        case 3:
+    #if DEBUG_ENCODER
+            _interruptsAttached[_encoderId]++;
+    #endif
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler3, CHANGE);
-#endif
+
             break;
+#endif
     }
 }
 void MAE3Encoder::detachInterruptHandler()
 {
 #if DEBUG_ENCODER
-    Serial.print(F("Encoder detach Interrupt Handler: "));
-    Serial.print(_encoderId + 1);
-    Serial.print(F(" | pin: "));
-    Serial.println(_signalPin);
+    _interruptsDetached[_encoderId]++;
 #endif
-
     detachInterrupt(digitalPinToInterrupt(_signalPin));
 }
 

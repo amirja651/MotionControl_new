@@ -6,10 +6,12 @@
 #define NUM_MOTORS   2
 #define NUM_ENCODERS 2
 
+#define ENABLE_WDT 0
+
 // Debug flags
 #define DEBUG_MAIN    1
 #define DEBUG_DRIVER  0
-#define DEBUG_ENCODER 0
+#define DEBUG_ENCODER 1
 #define DEBUG_MOTOR   0
 
 #endif
