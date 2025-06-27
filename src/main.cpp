@@ -90,9 +90,9 @@ void setup()
     Serial.begin(115200);
 
 #if DEBUG_MAIN
-    esp_task_wdt_init(5, true);
+    esp_task_wdt_init(10, true);
 #else
-    esp_task_wdt_init(5, false);
+    esp_task_wdt_init(10, false);
 #endif
     esp_task_wdt_add(NULL);  // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
@@ -201,9 +201,8 @@ void loop()
     Serial.print(F(" isEnabled: "));
     Serial.println(encoder[currentIndex]->isEnabled());
     printSerial();
-    delay(800);
     esp_task_wdt_reset();
-    vTaskDelay(10);
+    vTaskDelay(800);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

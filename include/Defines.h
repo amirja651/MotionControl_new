@@ -5,8 +5,8 @@
 #define NUM_DRIVERS 2
 
 // Debug flags
-#define DEBUG_MAIN    1
-#define DEBUG_ENCODER 1
-#define DEBUG_MOTOR   1
+#define DEBUG_MAIN    0
+#define DEBUG_ENCODER 0
+#define DEBUG_MOTOR   0
 
 #endif
