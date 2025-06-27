@@ -138,13 +138,13 @@ void loop()
     if (currentIndex == 0)
     {
         encoder[1]->disable();
-        delay(100);
+        delay(10);
         encoder[0]->enable();
     }
     else
     {
         encoder[0]->disable();
-        delay(100);
+        delay(10);
         encoder[1]->enable();
     }
 
@@ -160,6 +160,7 @@ void loop()
     Serial.println(MAE3Encoder::getNumberOfInterruptsDetached(currentIndex));
     Serial.println(F("--------------------------------"));
     printSerial();
+
 #if ENABLE_WDT
     esp_task_wdt_reset();
 #endif

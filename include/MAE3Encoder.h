@@ -133,10 +133,13 @@ private:
     static constexpr int64_t FULL_SCALE    = 4096;  // 0..4095
     static constexpr int64_t HIGH_WRAP_THRESHOLD = 1000;
     static constexpr int64_t LOW_WRAP_THRESHOLD  = -1000;
-    static constexpr float   LEAD_SCREW_PITCH_MM = 0.2f;       // Lead screw pitch in mm
-    static constexpr size_t  PULSE_BUFFER_SIZE   = 5;          // Pulse width ring buffers
-    static portMUX_TYPE      classMux;                         // mutable portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
-    static MAE3Encoder*      _encoderInstances[MAX_ENCODERS];  // Static array to store encoder instances for interrupt handling
+    static constexpr float   LEAD_SCREW_PITCH_MM = 0.2f;  // Lead screw pitch in mm
+    static constexpr size_t  PULSE_BUFFER_SIZE   = 5;     // Pulse width ring buffers
+
+    // static portMUX_TYPE      classMux;
+    mutable portMUX_TYPE classMux = portMUX_INITIALIZER_UNLOCKED;
+
+    static MAE3Encoder* _encoderInstances[MAX_ENCODERS];  // Static array to store encoder instances for interrupt handling
 
     std::array<int64_t, PULSE_BUFFER_SIZE> _width_l_buffer{};
     std::array<int64_t, PULSE_BUFFER_SIZE> _width_h_buffer{};

@@ -6,7 +6,7 @@ MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
 int MAE3Encoder::_interruptsAttached[NUM_ENCODERS] = {0};
 int MAE3Encoder::_interruptsDetached[NUM_ENCODERS] = {0};
 // Initialize static member
-portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
+// portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
 
 MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
     : _signalPin(signalPin),
@@ -284,40 +284,32 @@ void MAE3Encoder::attachInterruptHandler()
     {
         case 0:
 #if NUM_ENCODERS > 0
-    #if DEBUG_ENCODER
-            _interruptsAttached[_encoderId]++;
-    #endif
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler0, CHANGE);
 #endif
             break;
-#if NUM_ENCODERS > 1
+
         case 1:
-    #if DEBUG_ENCODER
-            _interruptsAttached[_encoderId]++;
-    #endif
+#if NUM_ENCODERS > 1
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler1, CHANGE);
-
-            break;
 #endif
-#if NUM_ENCODERS > 2
+            break;
+
         case 2:
-    #if DEBUG_ENCODER
-            _interruptsAttached[_encoderId]++;
-    #endif
+#if NUM_ENCODERS > 2
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler2, CHANGE);
-
-            break;
 #endif
-#if NUM_ENCODERS > 3
+            break;
+
         case 3:
-    #if DEBUG_ENCODER
-            _interruptsAttached[_encoderId]++;
-    #endif
+#if NUM_ENCODERS > 3
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler3, CHANGE);
-
-            break;
 #endif
+            break;
     }
+
+#if DEBUG_ENCODER
+    _interruptsAttached[_encoderId]++;
+#endif
 }
 void MAE3Encoder::detachInterruptHandler()
 {
@@ -422,73 +414,29 @@ int64_t MAE3Encoder::get_median_width_low() const
 #if NUM_ENCODERS > 0
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
-    #if DEBUG_ENCODER
-    Serial.print(F("Encoder interruptHandler: "));
-    #endif
     if (_encoderInstances[0] && _encoderInstances[0]->_enabled)
-    {
-    #if DEBUG_ENCODER
-        Serial.print(_encoderInstances[0]->_encoderId + 1);
-    #endif
         _encoderInstances[0]->processInterrupt();
-    }
-    #if DEBUG_ENCODER
-    Serial.println();
-    #endif
 }
 #endif
 #if NUM_ENCODERS > 1
 void IRAM_ATTR MAE3Encoder::interruptHandler1()
 {
-    #if DEBUG_ENCODER
-    Serial.print(F("Encoder interruptHandler: "));
-    #endif
     if (_encoderInstances[1] && _encoderInstances[1]->_enabled)
-    {
-    #if DEBUG_ENCODER
-        Serial.print(_encoderInstances[1]->_encoderId + 1);
-    #endif
         _encoderInstances[1]->processInterrupt();
-    }
-    #if DEBUG_ENCODER
-    Serial.println();
-    #endif
 }
 #endif
 #if NUM_ENCODERS > 2
 void IRAM_ATTR MAE3Encoder::interruptHandler2()
 {
-    #if DEBUG_ENCODER
-    Serial.print(F("Encoder interruptHandler: "));
-    #endif
     if (_encoderInstances[2] && _encoderInstances[2]->_enabled)
-    {
-    #if DEBUG_ENCODER
-        Serial.print(_encoderInstances[2]->_encoderId + 1);
-    #endif
         _encoderInstances[2]->processInterrupt();
-    }
-    #if DEBUG_ENCODER
-    Serial.println();
-    #endif
 }
 #endif
 #if NUM_ENCODERS > 3
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
-    #if DEBUG_ENCODER
-    Serial.print(F("Encoder interruptHandler: "));
-    #endif
     if (_encoderInstances[3] && _encoderInstances[3]->_enabled)
-    {
-    #if DEBUG_ENCODER
-        Serial.print(_encoderInstances[3]->_encoderId + 1);
-    #endif
         _encoderInstances[3]->processInterrupt();
-    }
-    #if DEBUG_ENCODER
-    Serial.println();
-    #endif
 }
 #endif
 void MAE3Encoder::setPeriod(int32_t lapIndex, int64_t period, bool reset_count)
