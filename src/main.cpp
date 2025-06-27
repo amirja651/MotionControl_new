@@ -114,10 +114,10 @@ void setup()
 
     // Core 1 - For time-sensitive tasks (precise control)
     // xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
-    // xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
+    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
 
     // Core 0 - For less time-sensitive tasks (such as I/O)
-    // xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
+    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
 
 #if ENABLE_WDT
     // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
@@ -134,36 +134,37 @@ void loop()
     // Handle movement complete outside ISR
     // if (motor[currentIndex])
     //    motor[currentIndex]->handleMovementComplete();
+    /*
+        if (currentIndex == 0)
+        {
+            encoder[1]->disable();
+            delay(10);
+            encoder[0]->enable();
+        }
+        else
+        {
+            encoder[0]->disable();
+            delay(10);
+            encoder[1]->enable();
+        }
 
-    if (currentIndex == 0)
-    {
-        encoder[1]->disable();
-        delay(10);
-        encoder[0]->enable();
-    }
-    else
-    {
-        encoder[0]->disable();
-        delay(10);
-        encoder[1]->enable();
-    }
+        encoder[currentIndex]->processPWM();
 
-    encoder[currentIndex]->processPWM();
+        Serial.print(F("Encoder\t\tEnabled\t\tAttached\tDetached\tProcess\n"));
+        Serial.print(currentIndex + 1);
+        Serial.print(F("\t\t"));
+        Serial.print(encoder[currentIndex]->isEnabled());
+        Serial.print(F("\t\t"));
+        Serial.print(MAE3Encoder::getNumberOfInterruptsAttached(currentIndex));
+        Serial.print(F("\t\t"));
+        Serial.print(MAE3Encoder::getNumberOfInterruptsDetached(currentIndex));
+        Serial.print(F("\t\t"));
+        Serial.println(MAE3Encoder::getNumberOfProcessInterrupts(currentIndex));
 
-    Serial.print(F("Encoder\t\tEnabled\t\tAttached\tDetached\tProcess\n"));
-    Serial.print(currentIndex + 1);
-    Serial.print(F("\t\t"));
-    Serial.print(encoder[currentIndex]->isEnabled());
-    Serial.print(F("\t\t"));
-    Serial.print(MAE3Encoder::getNumberOfInterruptsAttached(currentIndex));
-    Serial.print(F("\t\t"));
-    Serial.print(MAE3Encoder::getNumberOfInterruptsDetached(currentIndex));
-    Serial.print(F("\t\t"));
-    Serial.println(MAE3Encoder::getNumberOfProcessInterrupts(currentIndex));
+        Serial.println(F("--------------------------------"));
 
-    Serial.println(F("--------------------------------"));
+    */
     printSerial();
-
 #if ENABLE_WDT
     esp_task_wdt_reset();
 #endif

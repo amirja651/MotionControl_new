@@ -169,19 +169,9 @@ void MAE3Encoder::processPWM()
     if (!_enabled || !updated)
         return;
 
-    Serial.println(F("_enabled\tupdated\t\tperios "));
-    Serial.print(_enabled);
-    Serial.print(F("\t\t"));
-    Serial.print(updated);
-
     int64_t width_h = get_median_width_high();
     int64_t width_l = get_median_width_low();
     int64_t period  = width_h + width_l;
-
-    Serial.print(F("\t\t"));
-    Serial.println(period);
-    Serial.println();
-    Serial.println();
 
     if (period == 0)
         return;
@@ -236,9 +226,9 @@ void MAE3Encoder::processPWM()
     _last_pulse = _state.current_pulse;
 
     _newPulseAvailable = true;
-    portENTER_CRITICAL(&classMux);
+    // portENTER_CRITICAL(&classMux);
     _bufferUpdated = false;
-    portEXIT_CRITICAL(&classMux);
+    // portEXIT_CRITICAL(&classMux);
     _lastPulseTime = esp_timer_get_time();
 
     // NEW: invoke callback if set
@@ -250,7 +240,7 @@ void MAE3Encoder::processPWM()
 
 EncoderContext& MAE3Encoder::getEncoderContext() const
 {
-    portENTER_CRITICAL(&classMux);
+    // portENTER_CRITICAL(&classMux);
     _encoderContext.current_pulse = _state.current_pulse;
     _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
                                     : _state.direction == Direction::CLOCKWISE ? " CW"
@@ -262,7 +252,7 @@ EncoderContext& MAE3Encoder::getEncoderContext() const
     _encoderContext.position_mm      = _encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / FULL_SCALE);
     _encoderContext.total_travel_mm  = (_lap.id * LEAD_SCREW_PITCH_MM) + _encoderContext.position_mm;
     _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
-    portEXIT_CRITICAL(&classMux);
+    // portEXIT_CRITICAL(&classMux);
     return _encoderContext;
 }
 
@@ -404,10 +394,10 @@ int64_t MAE3Encoder::get_median_width_high() const
 {
     std::array<int64_t, PULSE_BUFFER_SIZE> temp;
 
-    portENTER_CRITICAL(&classMux);
-    // Use memcpy for faster copy inside critical section
+    // portENTER_CRITICAL(&classMux);
+    //  Use memcpy for faster copy inside critical section
     memcpy(temp.data(), _width_h_buffer.data(), sizeof(int64_t) * PULSE_BUFFER_SIZE);
-    portEXIT_CRITICAL(&classMux);
+    // portEXIT_CRITICAL(&classMux);
 
     std::sort(temp.begin(), temp.end());
     return temp[PULSE_BUFFER_SIZE / 2];
@@ -416,10 +406,10 @@ int64_t MAE3Encoder::get_median_width_low() const
 {
     std::array<int64_t, PULSE_BUFFER_SIZE> temp;
 
-    portENTER_CRITICAL(&classMux);
-    // Use memcpy for faster copy inside critical section
+    // portENTER_CRITICAL(&classMux);
+    //  Use memcpy for faster copy inside critical section
     memcpy(temp.data(), _width_l_buffer.data(), sizeof(int64_t) * PULSE_BUFFER_SIZE);
-    portEXIT_CRITICAL(&classMux);
+    // portEXIT_CRITICAL(&classMux);
 
     std::sort(temp.begin(), temp.end());
     return temp[PULSE_BUFFER_SIZE / 2];
