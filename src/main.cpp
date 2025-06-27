@@ -1,3 +1,4 @@
+#include "Debug.h"
 #include "MAE3Encoder.h"
 #include "MotorSpeedController.h"
 #include "Pins.h"
@@ -10,8 +11,6 @@
 #include <TMCStepper.h>
 #include <esp_task_wdt.h>
 #include <memory>
-
-#define DEBUG 1
 
 #define _MIN_SPEED       20
 #define _FINE_MOVE_SPEED 12
@@ -90,7 +89,7 @@ void setup()
     SPI.setDataMode(SPI_MODE3);
     Serial.begin(115200);
 
-#if DEBUG
+#if DEBUG_MAIN
     esp_task_wdt_init(5, true);
 #else
     esp_task_wdt_init(5, false);
@@ -147,13 +146,13 @@ void setup()
             // Create motor controller
             motor[index] = std::unique_ptr<MotorSpeedController>(new MotorSpeedController(
                 index, *driver[index], DriverPins::DIR[index], DriverPins::STEP[index], DriverPins::EN[index]));
-
+            delay(100);
             // Initialize all motor controllers
             motor[index]->begin();
 
             // Create pwm encoder
             encoder[index] = std::unique_ptr<MAE3Encoder>(new MAE3Encoder(EncoderPins::SIGNAL[index], index));
-
+            delay(100);
             // Initialize all encoders
             encoder[index]->begin();
         }
@@ -176,10 +175,10 @@ void setup()
 
     // Core 1 - For time-sensitive tasks (precise control)
     // xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
-    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
+    // xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
 
     // Core 0 - For less time-sensitive tasks (such as I/O)
-    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
+    // xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
 
     // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
     esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
@@ -194,7 +193,14 @@ void loop()
     // Handle movement complete outside ISR
     if (motor[currentIndex])
         motor[currentIndex]->handleMovementComplete();
-
+    currentIndex = 0;
+    encoder[currentIndex]->processPWM();
+    printSerial();
+    delay(800);
+    currentIndex = 1;
+    encoder[currentIndex]->processPWM();
+    printSerial();
+    delay(800);
     esp_task_wdt_reset();
     vTaskDelay(10);
 }
@@ -577,9 +583,9 @@ void linearMotorUpdate()
     static const int     FINE_MOVE_SPEED               = _FINE_MOVE_SPEED;  // Fine movement speed
     static const float   SEGMENT_SIZE_PERCENT          = 5.0f;              // 5% segments for speed changes
 
-    // Add debug logging for state variables
-    // Serial.println(F("[Debug][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance: %.2f\r\n",
-    // motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
+    // Add DEBUG_MAIN logging for state variables
+    // Serial.println(F("[DEBUG_MAIN][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance:
+    // %.2f\r\n", motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
