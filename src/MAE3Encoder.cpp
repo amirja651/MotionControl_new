@@ -278,12 +278,11 @@ void MAE3Encoder::setOnPulseUpdatedCallback(std::function<void(const EncoderStat
 
 void MAE3Encoder::attachInterruptHandler()
 {
+#if DEBUG_ENCODER
+    Serial.print(F("Encoder attach Interrupt Handler: "));
+#endif
     switch (_encoderId)
     {
-#if DEBUG_ENCODER
-        Serial.print(F("Encoder attach Interrupt Handler: "));
-#endif
-
         case 0:
 #if DEBUG_ENCODER
             Serial.print(_encoderId + 1);
