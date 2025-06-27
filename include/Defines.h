@@ -7,7 +7,8 @@
 #define NUM_ENCODERS 2
 
 // Debug flags
-#define DEBUG_MAIN    0
+#define DEBUG_MAIN    1
+#define DEBUG_DRIVER  0
 #define DEBUG_ENCODER 0
 #define DEBUG_MOTOR   0
 
