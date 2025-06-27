@@ -25,9 +25,9 @@ struct MotorContext
     int32_t errorPulses;
 };
 
-std::unique_ptr<TMC5160Manager>       driver[NUM_DRIVERS]  = {nullptr};
-std::unique_ptr<MotorSpeedController> motor[NUM_DRIVERS]   = {nullptr};
-std::unique_ptr<MAE3Encoder>          encoder[NUM_DRIVERS] = {nullptr};
+std::unique_ptr<TMC5160Manager>       driver[NUM_MOTORS]    = {nullptr};
+std::unique_ptr<MotorSpeedController> motor[NUM_MOTORS]     = {nullptr};
+std::unique_ptr<MAE3Encoder>          encoder[NUM_ENCODERS] = {nullptr};
 
 // Task handles
 TaskHandle_t encoderUpdateTaskHandle = NULL;
@@ -36,14 +36,14 @@ TaskHandle_t serialReadTaskHandle    = NULL;
 
 static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
-static uint8_t currentIndex           = 0;  // Current driver index
-static int32_t lastPulse[NUM_DRIVERS] = {0};
+static uint8_t currentIndex            = 0;  // Current driver index
+static int32_t lastPulse[NUM_ENCODERS] = {0};
 
-static float targetPosition[NUM_DRIVERS] = {0};
+static float targetPosition[NUM_ENCODERS] = {0};
 
-static bool driverEnabled[NUM_DRIVERS]             = {false};
-static bool newTargetpositionReceived[NUM_DRIVERS] = {false};
-static bool firstTime                              = true;
+static bool driverEnabled[NUM_MOTORS]               = {false};
+static bool newTargetpositionReceived[NUM_ENCODERS] = {false};
+static bool firstTime                               = true;
 
 // Command history support
 #define HISTORY_SIZE 10
@@ -51,12 +51,12 @@ static String commandHistory[HISTORY_SIZE];
 static int    historyCount = 0;
 static int    historyIndex = -1;  // -1 means not navigating
 
-bool motorMoving[NUM_DRIVERS] = {false};
+bool motorMoving[NUM_MOTORS] = {false};
 
-static float lastSpeed[NUM_DRIVERS] = {0.0f};
+static float lastSpeed[NUM_MOTORS] = {0.0f};
 
 // Static variable to store total distance for speed profile calculations
-static float initialTotalDistance[NUM_DRIVERS] = {0.0f};
+static float initialTotalDistance[NUM_MOTORS] = {0.0f};
 
 // Static variable to store high water mark
 static unsigned int highWaterMark = 0;
@@ -67,7 +67,7 @@ void serialReadTask(void* pvParameters);
 
 bool         isValidNumber(const String& str);
 void         setTargetPosition(String targetPos);
-void         setmotorId(String motorId);
+void         setMotorId(String motorId);
 float        getMotorPosition();
 MotorContext getMotorContext();
 void         linearMotorUpdate();
@@ -120,14 +120,14 @@ void setup()
 
     // for disable all drivers pins - for avoid conflict in SPI bus
     // Initialize CS pins and turn them off
-    for (uint8_t index = 0; index < 4; index++)
+    for (uint8_t index = 0; index < NUM_MOTORS; index++)
     {
         pinMode(DriverPins::CS[index], OUTPUT);
         digitalWrite(DriverPins::CS[index], HIGH);
     }
 
     // Initialize TMC5160 drivers
-    for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+    for (uint8_t index = 0; index < NUM_MOTORS; index++)
     {
         // Create driver
         driver[index] = std::unique_ptr<TMC5160Manager>(new TMC5160Manager(index, DriverPins::CS[index]));
@@ -160,7 +160,7 @@ void setup()
 
     // Check if any driver is enabled
     bool anyDriverEnabled = false;
-    for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+    for (uint8_t index = 0; index < NUM_MOTORS; index++)
         anyDriverEnabled = anyDriverEnabled || driverEnabled[index];
 
     if (!anyDriverEnabled)
@@ -193,7 +193,10 @@ void loop()
     // Handle movement complete outside ISR
     if (motor[currentIndex])
         motor[currentIndex]->handleMovementComplete();
-    currentIndex = 0;
+    if (currentIndex == 0)
+        currentIndex = 1;
+    else
+        currentIndex = 0;
     encoder[currentIndex]->enable();
     encoder[currentIndex]->processPWM();
     Serial.print(F("Encoder "));
@@ -265,7 +268,8 @@ void setTargetPosition(String targetPos)
     }
     else
     {
-        Serial.println(F("[Error][M100] Invalid Motor Id. limit: 1-4"));
+        Serial.print(F("[Error][M100] Invalid Motor Id. limit: 1-"));
+        Serial.println(NUM_MOTORS);
         return;
     }
 
@@ -286,23 +290,25 @@ void setTargetPosition(String targetPos)
 }
 
 // Motor Id is 1-4 (0-3) (M101)
-void setmotorId(String motorId)
+void setMotorId(String motorId)
 {
     // 1. Check that it contains only numbers
     for (size_t i = 0; i < motorId.length(); i++)
     {
         if (!isDigit(motorId[i]))
         {
-            Serial.println(F("[Error][M101] Invalid Motor Id. limit: 1-4"));
+            Serial.print(F("[Error][M101] Invalid Motor Id. limit: 1-"));
+            Serial.println(NUM_MOTORS);
             return;
         }
     }
 
     // 2. Convert to integer
     int index = motorId.toInt();
-    if (index < 1 || index > 4)
+    if (index < 1 || index > NUM_MOTORS)
     {
-        Serial.println(F("[Error][M101] Invalid Motor Id. limit: 1-4"));
+        Serial.print(F("[Error][M101] Invalid Motor Id. limit: 1-"));
+        Serial.println(NUM_MOTORS);
         return;
     }
 
@@ -436,9 +442,8 @@ MotorContext getMotorContext()
 // Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
-    const uint8_t    MOTOR_UPDATE_TIME = 4;
-    const TickType_t xFrequency        = pdMS_TO_TICKS(MOTOR_UPDATE_TIME);
-    TickType_t       xLastWakeTime     = xTaskGetTickCount();
+    const TickType_t xFrequency    = pdMS_TO_TICKS(4);
+    TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     static bool     isDriverConnectedMessageShown_enc = false;
     static bool     isDriverConnectedMessageShown_mtr = false;
@@ -492,7 +497,7 @@ void motorUpdateTask(void* pvParameters)
         // if driver is connected, don't show the message again
         isDriverConnectedMessageShown_enc = isEnabled && isDriverConnectedMessageShown_enc;
 
-        for (uint8_t index = 0; index < NUM_DRIVERS; index++)
+        for (uint8_t index = 0; index < NUM_MOTORS; index++)
         {
             // Check for null pointers
             if (encoder[index] == nullptr)
@@ -518,7 +523,7 @@ void motorUpdateTask(void* pvParameters)
         }
 
         // Process PWM if the driver is enabled
-        if (currentIndex < NUM_DRIVERS && isEnabled)
+        if (currentIndex < NUM_MOTORS && isEnabled)
         {
             encoder[currentIndex]->processPWM();
             esp_task_wdt_reset();
@@ -873,7 +878,7 @@ void motorStopAndSavePosition(String callerFunctionName)
 // Emergency reset function to clear all motor state variables (M108)
 void resetMotorState(uint8_t id)
 {
-    if (id >= NUM_DRIVERS)
+    if (id >= NUM_MOTORS)
         return;
 
     Serial.print(F("[Info][M108] Resetting motor state variables: "));
@@ -1065,7 +1070,7 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("n").isSet())
                 {
                     String motorIdStr = c.getArgument("n").getValue();
-                    setmotorId(motorIdStr);
+                    setMotorId(motorIdStr);
                 }
                 else
                 {

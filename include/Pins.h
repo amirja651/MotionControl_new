@@ -6,10 +6,10 @@
 
 struct DriverPins
 {
-    static const uint16_t DIR[NUM_DRIVERS];
-    static const uint16_t STEP[NUM_DRIVERS];
-    static const uint16_t EN[NUM_DRIVERS];
-    static const uint16_t CS[4];
+    static const uint16_t DIR[NUM_MOTORS];
+    static const uint16_t STEP[NUM_MOTORS];
+    static const uint16_t EN[NUM_MOTORS];
+    static const uint16_t CS[NUM_DRIVERS];
 };
 
 struct SPIPins
@@ -21,7 +21,7 @@ struct SPIPins
 
 struct EncoderPins
 {
-    static const uint16_t SIGNAL[NUM_DRIVERS];
+    static const uint16_t SIGNAL[NUM_ENCODERS];
 };
 
 #endif  // DRIVER_PINS_H

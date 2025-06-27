@@ -114,7 +114,7 @@ private:
     bool    _initialized;
 
     // Maximum number of encoders supported
-    static constexpr uint8_t MAX_ENCODERS  = NUM_DRIVERS;
+    static constexpr uint8_t MAX_ENCODERS  = NUM_ENCODERS;
     static constexpr int8_t  LAPS_OFFSET   = 10;
     static constexpr int64_t DIR_THRESHOLD = 2;     // For example, if the difference is more than 2 pulses → change direction
     static constexpr int64_t FULL_SCALE    = 4096;  // 0..4095
@@ -139,16 +139,16 @@ private:
     int64_t get_median_width_high() const;
     int64_t get_median_width_low() const;
 
-#if NUM_DRIVERS > 0
+#if NUM_ENCODERS > 0
     static void IRAM_ATTR interruptHandler0();
 #endif
-#if NUM_DRIVERS > 1
+#if NUM_ENCODERS > 1
     static void IRAM_ATTR interruptHandler1();
 #endif
-#if NUM_DRIVERS > 2
+#if NUM_ENCODERS > 2
     static void IRAM_ATTR interruptHandler2();
 #endif
-#if NUM_DRIVERS > 3
+#if NUM_ENCODERS > 3
     static void IRAM_ATTR interruptHandler3();
 #endif
 

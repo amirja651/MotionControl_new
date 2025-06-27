@@ -288,7 +288,7 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
-#if NUM_DRIVERS > 0
+#if NUM_ENCODERS > 0
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler0, CHANGE);
 #endif
             break;
@@ -298,7 +298,7 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
-#if NUM_DRIVERS > 1
+#if NUM_ENCODERS > 1
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler1, CHANGE);
 #endif
             break;
@@ -308,7 +308,7 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
-#if NUM_DRIVERS > 2
+#if NUM_ENCODERS > 2
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler2, CHANGE);
 #endif
             break;
@@ -318,7 +318,7 @@ void MAE3Encoder::attachInterruptHandler()
             Serial.print(F(" |  pin: "));
             Serial.println(_signalPin);
 #endif
-#if NUM_DRIVERS > 3
+#if NUM_ENCODERS > 3
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler3, CHANGE);
 #endif
             break;
@@ -428,7 +428,7 @@ int64_t MAE3Encoder::get_median_width_low() const
 }
 
 // Individual interrupt handlers for each encoder
-#if NUM_DRIVERS > 0
+#if NUM_ENCODERS > 0
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
     #if DEBUG_ENCODER
@@ -446,7 +446,7 @@ void IRAM_ATTR MAE3Encoder::interruptHandler0()
     #endif
 }
 #endif
-#if NUM_DRIVERS > 1
+#if NUM_ENCODERS > 1
 void IRAM_ATTR MAE3Encoder::interruptHandler1()
 {
     #if DEBUG_ENCODER
@@ -464,7 +464,7 @@ void IRAM_ATTR MAE3Encoder::interruptHandler1()
     #endif
 }
 #endif
-#if NUM_DRIVERS > 2
+#if NUM_ENCODERS > 2
 void IRAM_ATTR MAE3Encoder::interruptHandler2()
 {
     #if DEBUG_ENCODER
@@ -482,7 +482,7 @@ void IRAM_ATTR MAE3Encoder::interruptHandler2()
     #endif
 }
 #endif
-#if NUM_DRIVERS > 3
+#if NUM_ENCODERS > 3
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
     #if DEBUG_ENCODER

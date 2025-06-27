@@ -4,28 +4,28 @@
 MotorSpeedController* MotorSpeedController::_motorInstances[MAX_MOTORS] = {nullptr};
 
 // Static ISR handlers
-#if NUM_DRIVERS > 0
+#if NUM_MOTORS > 0
 void IRAM_ATTR MotorSpeedController::onTimerISR0()
 {
     if (_motorInstances[0] && _motorInstances[0]->_enabled)
         _motorInstances[0]->onTimerISR();
 }
 #endif
-#if NUM_DRIVERS > 1
+#if NUM_MOTORS > 1
 void IRAM_ATTR MotorSpeedController::onTimerISR1()
 {
     if (_motorInstances[1] && _motorInstances[1]->_enabled)
         _motorInstances[1]->onTimerISR();
 }
 #endif
-#if NUM_DRIVERS > 2
+#if NUM_MOTORS > 2
 void IRAM_ATTR MotorSpeedController::onTimerISR2()
 {
     if (_motorInstances[2] && _motorInstances[2]->_enabled)
         _motorInstances[2]->onTimerISR();
 }
 #endif
-#if NUM_DRIVERS > 3
+#if NUM_MOTORS > 3
 void IRAM_ATTR MotorSpeedController::onTimerISR3()
 {
     if (_motorInstances[3] && _motorInstances[3]->_enabled)
@@ -66,7 +66,7 @@ MotorSpeedController::~MotorSpeedController()
 
 bool MotorSpeedController::begin()
 {
-    if (_motorId >= NUM_DRIVERS)
+    if (_motorId >= NUM_MOTORS)
         return false;
 
     // Configure pins
@@ -120,22 +120,22 @@ void MotorSpeedController::attachInterruptHandler()
         switch (_motorId)
         {
             case 0:
-#if NUM_DRIVERS > 0
+#if NUM_MOTORS > 0
                 timerAttachInterrupt(_timer, &onTimerISR0, false);
 #endif
                 break;
             case 1:
-#if NUM_DRIVERS > 1
+#if NUM_MOTORS > 1
                 timerAttachInterrupt(_timer, &onTimerISR1, false);
 #endif
                 break;
             case 2:
-#if NUM_DRIVERS > 2
+#if NUM_MOTORS > 2
                 timerAttachInterrupt(_timer, &onTimerISR2, false);
 #endif
                 break;
             case 3:
-#if NUM_DRIVERS > 3
+#if NUM_MOTORS > 3
                 timerAttachInterrupt(_timer, &onTimerISR3, false);
 #endif
                 break;

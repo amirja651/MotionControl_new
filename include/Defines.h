@@ -2,7 +2,9 @@
 #define DEFINES_H
 
 // Number of drivers
-#define NUM_DRIVERS 2
+#define NUM_DRIVERS  4
+#define NUM_MOTORS   2
+#define NUM_ENCODERS 2
 
 // Debug flags
 #define DEBUG_MAIN    0

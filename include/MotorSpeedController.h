@@ -70,7 +70,7 @@ private:
     volatile bool _enabled;
 
     // Maximum number of supported motors
-    static constexpr uint8_t MAX_MOTORS = NUM_DRIVERS;
+    static constexpr uint8_t MAX_MOTORS = NUM_MOTORS;
 
     static MotorSpeedController* _motorInstances[MAX_MOTORS];  // Timer/ISR support
 
@@ -81,16 +81,16 @@ private:
     void attachInterruptHandler();
     void detachInterruptHandler();
 
-#if NUM_DRIVERS > 0
+#if NUM_MOTORS > 0
     static void IRAM_ATTR onTimerISR0();
 #endif
-#if NUM_DRIVERS > 1
+#if NUM_MOTORS > 1
     static void IRAM_ATTR onTimerISR1();
 #endif
-#if NUM_DRIVERS > 2
+#if NUM_MOTORS > 2
     static void IRAM_ATTR onTimerISR2();
 #endif
-#if NUM_DRIVERS > 3
+#if NUM_MOTORS > 3
     static void IRAM_ATTR onTimerISR3();
 #endif
 
