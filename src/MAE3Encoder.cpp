@@ -1,10 +1,14 @@
 #include "MAE3Encoder.h"
 
+// For pins above 31 (e.g. GPIO32 to GPIO39), GPIO.in1.data is used
+#define READ_FAST(pin) ((pin < 32) ? ((GPIO.in >> pin) & 0x1) : ((GPIO.in1.data >> (pin - 32)) & 0x1))
+
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
 
 int MAE3Encoder::_interruptsAttached[NUM_ENCODERS] = {0};
 int MAE3Encoder::_interruptsDetached[NUM_ENCODERS] = {0};
+int MAE3Encoder::_processInterrupt[NUM_ENCODERS]   = {0};
 // Initialize static member
 // portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -158,16 +162,26 @@ void MAE3Encoder::processPWM()
 {
     bool updated;
 
-    portENTER_CRITICAL(&classMux);
+    // portENTER_CRITICAL(&classMux);
     updated = _bufferUpdated;
-    portEXIT_CRITICAL(&classMux);
+    // portEXIT_CRITICAL(&classMux);
 
     if (!_enabled || !updated)
         return;
 
+    Serial.println(F("_enabled\tupdated\t\tperios "));
+    Serial.print(_enabled);
+    Serial.print(F("\t\t"));
+    Serial.print(updated);
+
     int64_t width_h = get_median_width_high();
     int64_t width_l = get_median_width_low();
     int64_t period  = width_h + width_l;
+
+    Serial.print(F("\t\t"));
+    Serial.println(period);
+    Serial.println();
+    Serial.println();
 
     if (period == 0)
         return;
@@ -378,7 +392,8 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         _state.width_low = _width_l_buffer[_pulseBufferIndex] = _r_pulse.low;
 
         _pulseBufferIndex = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
-        _bufferUpdated    = true;
+        _processInterrupt[_encoderId]++;
+        _bufferUpdated = true;
     }
 
     portEXIT_CRITICAL_ISR(&classMux);

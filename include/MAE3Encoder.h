@@ -10,9 +10,6 @@
 #include <esp_timer.h>
 #include <functional>  // For callback support
 
-// For pins above 31 (e.g. GPIO32 to GPIO39), GPIO.in1.data is used
-#define READ_FAST(pin) ((pin < 32) ? ((GPIO.in >> pin) & 0x1) : ((GPIO.in1.data >> (pin - 32)) & 0x1))
-
 // Direction enum
 enum class Direction
 {
@@ -84,6 +81,10 @@ public:
     {
         return (encoderId < NUM_ENCODERS) ? _interruptsDetached[encoderId] : -1;
     }
+    static int getNumberOfProcessInterrupts(uint8_t encoderId)
+    {
+        return (encoderId < NUM_ENCODERS) ? _processInterrupt[encoderId] : -1;
+    }
 
     EncoderContext& getEncoderContext() const;
 
@@ -97,6 +98,7 @@ public:
 protected:
     static int _interruptsAttached[NUM_ENCODERS];
     static int _interruptsDetached[NUM_ENCODERS];
+    static int _processInterrupt[NUM_ENCODERS];
 
 private:
     // Pin assignments

@@ -150,14 +150,17 @@ void loop()
 
     encoder[currentIndex]->processPWM();
 
-    Serial.print(F("Encoder\t\tEnabled\t\tAttached\tDetached\n"));
+    Serial.print(F("Encoder\t\tEnabled\t\tAttached\tDetached\tProcess\n"));
     Serial.print(currentIndex + 1);
     Serial.print(F("\t\t"));
     Serial.print(encoder[currentIndex]->isEnabled());
     Serial.print(F("\t\t"));
     Serial.print(MAE3Encoder::getNumberOfInterruptsAttached(currentIndex));
     Serial.print(F("\t\t"));
-    Serial.println(MAE3Encoder::getNumberOfInterruptsDetached(currentIndex));
+    Serial.print(MAE3Encoder::getNumberOfInterruptsDetached(currentIndex));
+    Serial.print(F("\t\t"));
+    Serial.println(MAE3Encoder::getNumberOfProcessInterrupts(currentIndex));
+
     Serial.println(F("--------------------------------"));
     printSerial();
 
