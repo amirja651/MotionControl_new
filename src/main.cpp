@@ -1,9 +1,6 @@
 #include "Pins.h"
 #include <Arduino.h>
 
-// New method for reading voltage from encoder pins
-void readEncoderVoltages();
-
 // New method for reading PWM encoder values
 void readPWMEncoders();
 
@@ -15,20 +12,6 @@ void setup()
     delay(1000);
     while (!Serial)
         delay(10);
-
-    // Initialize analog pins for voltage reading
-    analogReadResolution(12);        // Set ADC resolution to 12 bits (0-4095)
-    analogSetAttenuation(ADC_11db);  // Set attenuation for 0-3.3V range
-
-    // Configure pins 34 and 35 for analog reading
-    // Note: These pins are already configured as analog inputs by default on ESP32
-    // GPIO34 (VP) and GPIO35 (VN) are dedicated analog input pins
-    Serial.print(F("[Info][Setup] Analog pins 34 and 35 initialized for voltage reading\r\n"));
-
-    // Configure pins 36 and 39 for analog reading
-    // Note: These pins are already configured as analog inputs by default on ESP32
-    // GPIO36 (VP) and GPIO39 (VN) are dedicated analog input pins
-    Serial.print(F("[Info][Setup] Analog pins 36 and 39 initialized for voltage reading\r\n"));
 
     // Configure pins 36 and 39 for digital PWM reading
     pinMode(36, INPUT);  // GPIO36 for PWM encoder 1
@@ -56,52 +39,6 @@ void loop()
     readPWMEncoders();
 
     delay(1000);
-}
-
-// New method for reading voltage from encoder pins
-void readEncoderVoltages()
-{
-    // Read analog values from pins 34 and 35
-    static int prevVoltagePin34 = -1;
-    static int prevVoltagePin35 = -1;
-
-    int voltagePin34 = analogRead(34);  // GPIO34 (VP)
-    int voltagePin35 = analogRead(35);  // GPIO35 (VN)
-
-    // اگر مقادیر 4 پین نسبت به مقادیر قبلیشون تغییر نداشتند خارج شو
-    if ((voltagePin34 == prevVoltagePin34 && voltagePin35 == prevVoltagePin35) || (voltagePin34 == 0 && voltagePin35 == 0))
-    {
-        return;
-    }
-
-    // Update previous values
-    prevVoltagePin34 = voltagePin34;
-    prevVoltagePin35 = voltagePin35;
-
-    // Convert to voltage (ESP32 ADC reference is 3.3V, 12-bit resolution = 4095)
-    float voltage34 = (voltagePin34 * 3.3f) / 4095.0f;
-    float voltage35 = (voltagePin35 * 3.3f) / 4095.0f;
-
-    // Print the voltage values
-    char buffer[256];
-
-    // Print table header
-    sprintf(buffer, "┌─────────┬─────────┬──────────┐\r\n");
-    Serial.print(buffer);
-    sprintf(buffer, "│ Pin     │ Voltage │ ADC      │\r\n");
-    Serial.print(buffer);
-    sprintf(buffer, "├─────────┼─────────┼──────────┤\r\n");
-    Serial.print(buffer);
-
-    // Print data rows
-    sprintf(buffer, "│ Pin 34  │ %6.3fV │ %6d   │\r\n", voltage34, voltagePin34);
-    Serial.print(buffer);
-    sprintf(buffer, "│ Pin 35  │ %6.3fV │ %6d   │\r\n", voltage35, voltagePin35);
-    Serial.print(buffer);
-
-    // Print table footer
-    sprintf(buffer, "└─────────┴─────────┴──────────┘\r\n");
-    Serial.print(buffer);
 }
 
 // New method for reading PWM encoder values
