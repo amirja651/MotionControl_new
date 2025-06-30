@@ -12,6 +12,10 @@ volatile bool          newData36 = false, newData39 = false;
 volatile unsigned long bypassedCount36 = 0, bypassedCount39 = 0;
 volatile unsigned long totalInterrupts36 = 0, totalInterrupts39 = 0;
 
+// Pulse edge transition detection variables
+volatile int           pulseTransitionCounter36 = 0, pulseTransitionCounter39 = 0;
+volatile unsigned long lastPulseValue36 = 0, lastPulseValue39 = 0;
+
 void IRAM_ATTR handleInterrupt36();
 void IRAM_ATTR handleInterrupt39();
 
@@ -21,6 +25,10 @@ unsigned long getMedian(unsigned long arr[], int size);
 float         calculateStandardDeviation(unsigned long arr[], int size);
 void          diagnoseEncoderSignals();
 bool          validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber);
+int           countDigits(unsigned long number);
+void detectPulseEdgeTransition(unsigned long currentPulse, unsigned long lastPulse, int pinNumber, volatile int* counter);
+void resetPulseTransitionCounters();
+void printPulseTransitionStats();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -51,6 +59,9 @@ void setup()
 
     Serial.print(F("\r\n"));
     Serial.flush();
+
+    // Test pulse transition detection (uncomment to test)
+    // testPulseTransitionDetection();
 }
 
 // Function to reset bypass statistics
@@ -84,6 +95,7 @@ void loop()
     if (millis() - lastResetTime > 10000)
     {
         resetBypassStatistics();
+        resetPulseTransitionCounters();
         lastResetTime = millis();
     }
 
@@ -128,7 +140,7 @@ void loop()
     }
 
     // Check if any data has changed
-    if (currentPosition36 != lastPosition36 || currentPosition39 - lastPosition39 || currentValid36 != lastValid36 ||
+    if (currentPosition36 != lastPosition36 || currentPosition39 != lastPosition39 || currentValid36 != lastValid36 ||
         currentValid39 != lastValid39)
     {
         // Update last values
@@ -144,6 +156,14 @@ void loop()
             printf("Pin 36: Position=%d, Valid=%s\n", currentPosition36, currentValid36 ? "YES" : "NO");
             printf("Pin 39: Position=%d, Valid=%s\n", currentPosition39, currentValid39 ? "YES" : "NO");
         }
+    }
+
+    // Print pulse transition statistics every 5 seconds
+    static unsigned long lastTransitionPrintTime = 0;
+    if (millis() - lastTransitionPrintTime > 5000)
+    {
+        printPulseTransitionStats();
+        lastTransitionPrintTime = millis();
     }
 
     delay(1000);
@@ -180,6 +200,10 @@ void IRAM_ATTR handleInterrupt36()
             if (totalPeriod >= 2000 && totalPeriod <= 6000)
             {
                 newData36 = true;  // Accept valid data
+
+                // Detect pulse edge transitions
+                detectPulseEdgeTransition(pulseHigh36, lastPulseValue36, 36, &pulseTransitionCounter36);
+                lastPulseValue36 = pulseHigh36;
             }
             else
             {
@@ -223,6 +247,10 @@ void IRAM_ATTR handleInterrupt39()
             if (totalPeriod >= 2000 && totalPeriod <= 6000)
             {
                 newData39 = true;  // Accept valid data
+
+                // Detect pulse edge transitions
+                detectPulseEdgeTransition(pulseHigh39, lastPulseValue39, 39, &pulseTransitionCounter39);
+                lastPulseValue39 = pulseHigh39;
             }
             else
             {
@@ -603,4 +631,83 @@ float calculateStandardDeviation(unsigned long arr[], int size)
 
     // Return standard deviation
     return sqrt(variance);
+}
+
+// Pulse edge transition detection function
+int countDigits(unsigned long number)
+{
+    if (number == 0)
+        return 1;
+    int count = 0;
+    while (number > 0)
+    {
+        number /= 10;
+        count++;
+    }
+    return count;
+}
+
+void detectPulseEdgeTransition(unsigned long currentPulse, unsigned long lastPulse, int pinNumber, volatile int* counter)
+{
+    if (lastPulse == 0)  // First reading, just store the value
+    {
+        return;
+    }
+    // amir
+    //  Count digits for current and last pulse values
+    int currentDigits = countDigits(currentPulse);
+    int lastDigits    = countDigits(lastPulse);
+
+    // Detect transition from 1-2 digits to 4 digits (increasing)
+    if ((lastDigits <= 2) && (currentDigits >= 4))
+    {
+        (*counter)++;
+    }
+    // Detect transition from 4 digits to 1-2 digits (decreasing)
+    else if ((lastDigits >= 4) && (currentDigits <= 2))
+    {
+        (*counter)--;
+    }
+}
+
+void resetPulseTransitionCounters()
+{
+    pulseTransitionCounter36 = 0;
+    pulseTransitionCounter39 = 0;
+    lastPulseValue36         = 0;
+    lastPulseValue39         = 0;
+}
+
+// Function to print pulse transition statistics
+void printPulseTransitionStats()
+{
+    printf("\n=== PULSE EDGE TRANSITION STATISTICS ===\n");
+    printf("Pin 36 - Transition Counter: %d\n", pulseTransitionCounter36);
+    printf("Pin 39 - Transition Counter: %d\n", pulseTransitionCounter39);
+    printf("Last Pulse Values - Pin 36: %lu, Pin 39: %lu\n", lastPulseValue36, lastPulseValue39);
+    printf("==========================================\n");
+}
+
+// Test function to simulate pulse transitions
+void testPulseTransitionDetection()
+{
+    printf("\n=== TESTING PULSE TRANSITION DETECTION ===\n");
+
+    // Test case 1: Small to large number (should increment counter)
+    detectPulseEdgeTransition(1234, 45, 36, &pulseTransitionCounter36);
+    printf("Test 1: 45 -> 1234, Counter: %d\n", pulseTransitionCounter36);
+
+    // Test case 2: Large to small number (should decrement counter)
+    detectPulseEdgeTransition(67, 2345, 36, &pulseTransitionCounter36);
+    printf("Test 2: 2345 -> 67, Counter: %d\n", pulseTransitionCounter36);
+
+    // Test case 3: Both small numbers (should not change counter)
+    detectPulseEdgeTransition(89, 12, 36, &pulseTransitionCounter36);
+    printf("Test 3: 12 -> 89, Counter: %d\n", pulseTransitionCounter36);
+
+    // Test case 4: Both large numbers (should not change counter)
+    detectPulseEdgeTransition(3456, 1234, 36, &pulseTransitionCounter36);
+    printf("Test 4: 1234 -> 3456, Counter: %d\n", pulseTransitionCounter36);
+
+    printf("=== END TEST ===\n");
 }
