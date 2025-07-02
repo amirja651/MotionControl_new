@@ -6,7 +6,7 @@
 
 // Timing Configuration
 #define PWM_TIMEOUT_US    5000  // 5ms timeout for signal detection
-#define PWM_MIN_PULSE_US  50    // Minimum valid pulse width (MAE3 spec)
+#define PWM_MIN_PULSE_US  1     // Minimum valid pulse width (MAE3 spec)
 #define PWM_MAX_PULSE_US  4097  // Maximum valid pulse width (MAE3 spec)
 #define PWM_MAX_PERIOD_US 4098  // Maximum total period (MAE3 spec)
 
@@ -35,8 +35,14 @@
 // MAE3 Specific Constants
 #define MAE3_FULL_SCALE   4096  // 12-bit resolution
 #define MAE3_PWM_CONSTANT 4098  // PWM calculation constant
-#define MAE3_FREQUENCY_HZ 250   // Typical PWM frequency
-#define MAE3_PERIOD_US    4000  // Typical period in microseconds
+
+#define MAE3_FREQUENCY_MIN_HZ 220
+#define MAE3_FREQUENCY_TYP_HZ 244  // Typical PWM frequency
+#define MAE3_FREQUENCY_MAX_HZ 268
+
+#define MAE3_PERIOD_MIN_US 3731
+#define MAE3_PERIOD_TYP_US 4098  // Typical period in microseconds
+#define MAE3_PERIOD_MAX_US 4545
 
 // Error Estimation
 #define PWM_ERROR_THRESHOLD_US  5  // Maximum acceptable timing error

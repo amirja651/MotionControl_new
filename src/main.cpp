@@ -1,6 +1,22 @@
 #include "Pins.h"
 #include <Arduino.h>
 
+#define DEBUG_MAIN_2       0
+#define MAE3_PERIOD_MIN_US 3731  // from frequency 268 Hz
+#define MAE3_PERIOD_MAX_US 4545  // from frequency 220 Hz
+
+struct validatePwmResult
+{
+    unsigned long totalPeriod;
+    int           position;
+    float         degrees;
+    bool          highOK;
+    bool          lowOK;
+    bool          totalOK;
+    bool          periodOK;
+    bool          overall;
+};
+
 // Interrupt-based PWM reading for maximum accuracy
 volatile unsigned long lastRisingEdgeTime36 = 0, lastFallingEdgeTime36 = 0;
 volatile unsigned long lastRisingEdgeTime39 = 0, lastFallingEdgeTime39 = 0;
@@ -19,69 +35,37 @@ volatile unsigned long lastPulseValue36 = 0, lastPulseValue39 = 0;
 void IRAM_ATTR handleInterrupt36();
 void IRAM_ATTR handleInterrupt39();
 
-void          readPWMEncodersInterrupt();
-void          readPWMEncoders();
-unsigned long getMedian(unsigned long arr[], int size);
-float         calculateStandardDeviation(unsigned long arr[], int size);
-void          diagnoseEncoderSignals();
-bool          validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber);
-int           countDigits(unsigned long number);
+void InitPins();
 void detectPulseEdgeTransition(unsigned long currentPulse, unsigned long lastPulse, int pinNumber, volatile int* counter);
+int  countDigits(unsigned long number);
+void resetBypassStatistics();
 void resetPulseTransitionCounters();
-void printPulseTransitionStats();
+validatePwmResult validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber);
+void              readPWMEncodersInterrupt();
+void              diagnoseEncoderSignals();
+void              resetValidatePWM(validatePwmResult* result);
+void              testPulseTransitionDetection();
+unsigned long     getMedian(unsigned long arr[], int size);
+float             calculateStandardDeviation(unsigned long arr[], int size);
+void              readPWMEncoders();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
 {
     Serial.begin(115200);
-
     delay(1000);
     while (!Serial)
         delay(10);
 
-    // Configure pins 36 and 39 for digital PWM reading
-    pinMode(36, INPUT);  // GPIO36 for PWM encoder 1
-    pinMode(39, INPUT);  // GPIO39 for PWM encoder 2
-
-    // Attach interrupts for maximum accuracy
-    attachInterrupt(digitalPinToInterrupt(36), handleInterrupt36, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(39), handleInterrupt39, CHANGE);
-
-    Serial.print(F("[Info][Setup] Digital pins 36 and 39 initialized with interrupts for PWM encoder reading\r\n"));
-
-    // for disable all drivers pins - for avoid conflict in SPI bus
-    // Initialize CS pins and turn them off
-    for (uint8_t index = 0; index < 4; index++)
-    {
-        pinMode(DriverPins::CS[index], OUTPUT);
-        digitalWrite(DriverPins::CS[index], HIGH);
-    }
+    // Initialize pins
+    InitPins();
 
     Serial.print(F("\r\n"));
     Serial.flush();
-
-    // Test pulse transition detection (uncomment to test)
-    // testPulseTransitionDetection();
-}
-
-// Function to reset bypass statistics
-void resetBypassStatistics()
-{
-    bypassedCount36   = 0;
-    bypassedCount39   = 0;
-    totalInterrupts36 = 0;
-    totalInterrupts39 = 0;
-    if (0)
-    {
-        printf("Bypass statistics reset\n");
-    }
 }
 
 void loop()
 {
-    // Read and print encoder voltages every 1000ms
-    // readEncoderVoltages();
-
     // Run diagnostics first (only once)
     static bool diagnosticsRun = false;
     if (!diagnosticsRun)
@@ -99,74 +83,58 @@ void loop()
         lastResetTime = millis();
     }
 
-    // Read and print PWM encoder values every 1000ms
-    // Choose between polling and interrupt-based methods:
-
-    // Method 1: Optimized polling (good accuracy)
-    // readPWMEncoders();
-
-    // Method 2: Interrupt-based (maximum accuracy)
-    // Read PWM encoders and only update display if data changed
-    static int  lastPosition36 = -1, lastPosition39 = -1;
-    static bool lastValid36 = false, lastValid39 = false;
-
+    // Interrupt-based (maximum accuracy)
     readPWMEncodersInterrupt();
 
-    // Get current positions from the interrupt function
-    int  currentPosition36 = 0, currentPosition39 = 0;
-    bool currentValid36 = false, currentValid39 = false;
-
-    // Calculate current positions (reuse logic from readPWMEncodersInterrupt)
-    if (newData36 && pulseHigh36 > 0 && pulseLow36 > 0)
-    {
-        unsigned long totalPeriod36 = pulseHigh36 + pulseLow36;
-        if (totalPeriod36 >= 2000 && totalPeriod36 <= 6000)
+    /*
+        // Print pulse transition statistics every 5 seconds
+        static unsigned long lastTransitionPrintTime = 0;
+        if (millis() - lastTransitionPrintTime > 5000)
         {
-            currentPosition36 = ((pulseHigh36 * 4098) / totalPeriod36) - 1;
-            currentPosition36 = constrain(currentPosition36, 0, 4095);
-            currentValid36    = true;
+            lastTransitionPrintTime = millis();
         }
-    }
-
-    if (newData39 && pulseHigh39 > 0 && pulseLow39 > 0)
-    {
-        unsigned long totalPeriod39 = pulseHigh39 + pulseLow39;
-        if (totalPeriod39 >= 2000 && totalPeriod39 <= 6000)
-        {
-            currentPosition39 = ((pulseHigh39 * 4098) / totalPeriod39) - 1;
-            currentPosition39 = constrain(currentPosition39, 0, 4095);
-            currentValid39    = true;
-        }
-    }
-
-    // Check if any data has changed
-    if (currentPosition36 != lastPosition36 || currentPosition39 != lastPosition39 || currentValid36 != lastValid36 ||
-        currentValid39 != lastValid39)
-    {
-        // Update last values
-        lastPosition36 = currentPosition36;
-        lastPosition39 = currentPosition39;
-        lastValid36    = currentValid36;
-        lastValid39    = currentValid39;
-
-        if (0)
-        {
-            // Only print when data changes
-            printf("\n=== ENCODER DATA UPDATED ===\n");
-            printf("Pin 36: Position=%d, Valid=%s\n", currentPosition36, currentValid36 ? "YES" : "NO");
-            printf("Pin 39: Position=%d, Valid=%s\n", currentPosition39, currentValid39 ? "YES" : "NO");
-        }
-    }
-
-    // Print pulse transition statistics every 5 seconds
-    static unsigned long lastTransitionPrintTime = 0;
-    if (millis() - lastTransitionPrintTime > 5000)
-    {
-        printPulseTransitionStats();
-        lastTransitionPrintTime = millis();
-    }
-
+    */
     delay(1000);
+}
+
+void InitPins()
+{
+    // Configure pins 36 and 39 for digital PWM reading
+    pinMode(36, INPUT);  // GPIO36 for PWM encoder 1
+    pinMode(39, INPUT);  // GPIO39 for PWM encoder 2
+
+    // Attach interrupts for maximum accuracy
+    attachInterrupt(digitalPinToInterrupt(36), handleInterrupt36, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(39), handleInterrupt39, CHANGE);
+
+    Serial.print(F("[Info][Setup] Digital pins 36 and 39 initialized with interrupts for PWM encoder reading\r\n"));
+
+    // For disable all drivers pins - for avoid conflict in SPI bus
+    // Initialize CS pins and turn them off
+    for (uint8_t index = 0; index < 4; index++)
+    {
+        pinMode(DriverPins::CS[index], OUTPUT);
+        digitalWrite(DriverPins::CS[index], HIGH);
+    }
+}
+
+// Function to reset bypass statistics
+void resetBypassStatistics()
+{
+    bypassedCount36   = 0;
+    bypassedCount39   = 0;
+    totalInterrupts36 = 0;
+    totalInterrupts39 = 0;
+
+    printf("Bypass statistics reset\n");
+}
+
+void resetPulseTransitionCounters()
+{
+    pulseTransitionCounter36 = 0;
+    pulseTransitionCounter39 = 0;
+    lastPulseValue36         = 0;
+    lastPulseValue39         = 0;
 }
 
 // Interrupt handlers for precise timing
@@ -195,9 +163,9 @@ void IRAM_ATTR handleInterrupt36()
             // Check total period before accepting the values
             unsigned long totalPeriod = pulseHigh36 + pulseLow36;
 
-            // MAE3 standard: period should be around 4000 us (250 Hz)
-            // Accept range: 2000-6000 us (167-500 Hz)
-            if (totalPeriod >= 2000 && totalPeriod <= 6000)
+            // MAE3 standard: period should be around 4000 us (244 Hz)
+            // Accept range: 3731-4545 us (220-268 Hz)
+            if (totalPeriod >= MAE3_PERIOD_MIN_US && totalPeriod <= MAE3_PERIOD_MAX_US)
             {
                 newData36 = true;  // Accept valid data
 
@@ -242,9 +210,9 @@ void IRAM_ATTR handleInterrupt39()
             // Check total period before accepting the values
             unsigned long totalPeriod = pulseHigh39 + pulseLow39;
 
-            // MAE3 standard: period should be around 4000 us (250 Hz)
-            // Accept range: 2000-6000 us (167-500 Hz)
-            if (totalPeriod >= 2000 && totalPeriod <= 6000)
+            // MAE3 standard: period should be around 4000 us (244 Hz)
+            // Accept range: 3731-4545 us (220-268 Hz)
+            if (totalPeriod >= MAE3_PERIOD_MIN_US && totalPeriod <= MAE3_PERIOD_MAX_US)
             {
                 newData39 = true;  // Accept valid data
 
@@ -267,23 +235,20 @@ void IRAM_ATTR handleInterrupt39()
 // Diagnostic function to check encoder signal quality
 void diagnoseEncoderSignals()
 {
-    if (0)
-    {
-        printf("\n=== ENCODER SIGNAL DIAGNOSTICS ===\n");
+    printf("\n=== ENCODER SIGNAL DIAGNOSTICS ===\n");
 
-        // Check if interrupts are working
-        printf("Interrupt Status:\n");
-        printf("- Pin 36 interrupt attached: %s\n", (digitalPinToInterrupt(36) != NOT_AN_INTERRUPT) ? "YES" : "NO");
-        printf("- Pin 39 interrupt attached: %s\n", (digitalPinToInterrupt(39) != NOT_AN_INTERRUPT) ? "YES" : "NO");
+    // Check if interrupts are working
+    printf("Interrupt Status:\n");
+    printf("- Pin 36 interrupt attached: %s\n", (digitalPinToInterrupt(36) != NOT_AN_INTERRUPT) ? "YES" : "NO");
+    printf("- Pin 39 interrupt attached: %s\n", (digitalPinToInterrupt(39) != NOT_AN_INTERRUPT) ? "YES" : "NO");
 
-        // Check pin states
-        printf("\nPin States:\n");
-        printf("- Pin 36 state: %s\n", digitalRead(36) ? "HIGH" : "LOW");
-        printf("- Pin 39 state: %s\n", digitalRead(39) ? "HIGH" : "LOW");
+    // Check pin states
+    printf("\nPin States:\n");
+    printf("- Pin 36 state: %s\n", digitalRead(36) ? "HIGH" : "LOW");
+    printf("- Pin 39 state: %s\n", digitalRead(39) ? "HIGH" : "LOW");
 
-        // Check for signal activity
-        printf("\nSignal Activity Test (5 seconds):\n");
-    }
+    // Check for signal activity
+    printf("\nSignal Activity Test (5 seconds):\n");
 
     unsigned long startTime     = millis();
     unsigned long transitions36 = 0, transitions39 = 0;
@@ -310,14 +275,11 @@ void diagnoseEncoderSignals()
         delayMicroseconds(100);
     }
 
-    if (0)
-    {
-        printf("- Pin 36 transitions: %lu (%.1f Hz)\n", transitions36, (float)transitions36 / 5.0);
-        printf("- Pin 39 transitions: %lu (%.1f Hz)\n", transitions39, (float)transitions39 / 5.0);
+    printf("- Pin 36 transitions: %lu (%.1f Hz)\n", transitions36, (float)transitions36 / 10.0);
+    printf("- Pin 39 transitions: %lu (%.1f Hz)\n", transitions39, (float)transitions39 / 10.0);
 
-        // Expected frequency for MAE3 is ~250 Hz
-        printf("- Expected frequency: ~250 Hz\n");
-    }
+    // Expected frequency for MAE3 is ~250 Hz
+    printf("- Expected frequency: MIN. 220 Hz, MAX. 268 Hz, TYP. 244 Hz\n");
 
     if (transitions36 < 100)
     {
@@ -328,50 +290,60 @@ void diagnoseEncoderSignals()
         printf("WARNING: Pin 39 has very low activity - check wiring!\n");
     }
 
-    if (0)
-    {
-        printf("=== END DIAGNOSTICS ===\n\n");
-    }
+    printf("=== END DIAGNOSTICS ===\n\n");
+}
+
+void resetValidatePWM(validatePwmResult* result)
+{
+    result->totalPeriod = 0;
+    result->position    = 0;
+    result->degrees     = 0.0f;
+    result->highOK      = false;
+    result->lowOK       = false;
+    result->totalOK     = false;
+    result->periodOK    = false;
+    result->overall     = false;
 }
 
 // Simple validation function with detailed error reporting
-bool validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber)
+validatePwmResult validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber)
 {
-    if (0)
-    {
-        printf("\n=== Validation for Pin %d ===\n", pinNumber);
-        printf("High pulse: %lu us\n", highPulse);
-        printf("Low pulse: %lu us\n", lowPulse);
-        printf("Total period: %lu us\n", highPulse + lowPulse);
-    }
+    validatePwmResult result;
+    resetValidatePWM(&result);
+
+    result.totalPeriod = highPulse + lowPulse;
+#if DEBUG_MAIN_2
+    printf("\n=== Validation for Pin %d ===\n", pinNumber);
+    printf("High pulse: %lu us\n", highPulse);
+    printf("Low pulse: %lu us\n", lowPulse);
+    printf("Total period: %lu us\n", result.totalPeriod);
+#endif
+
     // Check if data was bypassed (values are 0)
     if (highPulse == 0 && lowPulse == 0)
     {
+#if DEBUG_MAIN_2
         printf("Data was bypassed - invalid period detected\n");
-        return false;
+#endif
+        return result;
     }
 
     // Check each condition separately
-    bool highOK   = (highPulse >= 1 && highPulse <= 10000);
-    bool lowOK    = (lowPulse >= 1 && lowPulse <= 10000);
-    bool totalOK  = ((highPulse + lowPulse) > 0);
-    bool periodOK = ((highPulse + lowPulse) >= 2000 && (highPulse + lowPulse) <= 6000);
+    result.highOK   = (highPulse >= 1 && highPulse <= 4097);
+    result.lowOK    = (lowPulse >= 1 && lowPulse <= 4097);
+    result.totalOK  = ((result.totalPeriod) > 0);
+    result.periodOK = ((result.totalPeriod) >= MAE3_PERIOD_MIN_US && (result.totalPeriod) <= MAE3_PERIOD_MAX_US);
+    result.overall  = result.highOK && result.lowOK && result.totalOK && result.periodOK;
 
-    if (0)
-    {
-        printf("High pulse validation: %s (1-10000 us)\n", highOK ? "PASS" : "FAIL");
-        printf("Low pulse validation: %s (1-10000 us)\n", lowOK ? "PASS" : "FAIL");
-        printf("Total period validation: %s (>0 us)\n", totalOK ? "PASS" : "FAIL");
-        printf("Period range validation: %s (2000-6000 us)\n", periodOK ? "PASS" : "FAIL");
-    }
+#if DEBUG_MAIN_2
+    printf("High pulse validation: %s (1-4097 us)\n", result.highOK ? "PASS" : "FAIL");
+    printf("Low pulse validation: %s (1-4097 us)\n", result.lowOK ? "PASS" : "FAIL");
+    printf("Total period validation: %s (>0 us)\n", result.totalOK ? "PASS" : "FAIL");
+    printf("Period range validation: %s (3731-4545 us)\n", result.periodOK ? "PASS" : "FAIL");
+    printf("Overall validation: %s\n", result.overall ? "PASS" : "FAIL");
+#endif
 
-    bool overall = highOK && lowOK && totalOK && periodOK;
-    if (0)
-    {
-        printf("Overall validation: %s\n", overall ? "PASS" : "FAIL");
-    }
-
-    return overall;
+    return result;
 }
 
 // Interrupt-based PWM reading method
@@ -381,8 +353,6 @@ void readPWMEncodersInterrupt()
     newData36 = false;
     newData39 = false;
 
-    static int lastPosition36 = -1, lastPosition39 = -1;
-
     // Wait for new data (with timeout)
     unsigned long startWait = millis();
     while ((!newData36 || !newData39) && (millis() - startWait) < 100)
@@ -390,50 +360,46 @@ void readPWMEncodersInterrupt()
         delayMicroseconds(10);
     }
 
-    if (0)
-    {
-        // Print bypass statistics
-        printf("\n=== BYPASS STATISTICS ===\n");
-        printf("Pin 36 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts36, bypassedCount36,
-               (totalInterrupts36 > 0) ? (float)bypassedCount36 * 100.0f / totalInterrupts36 : 0.0f);
-        printf("Pin 39 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts39, bypassedCount39,
-               (totalInterrupts39 > 0) ? (float)bypassedCount39 * 100.0f / totalInterrupts39 : 0.0f);
+#if DEBUG_MAIN_2
+    // Print bypass statistics
+    printf("\n=== BYPASS STATISTICS ===\n");
+    printf("Pin 36 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts36, bypassedCount36,
+           (totalInterrupts36 > 0) ? (float)bypassedCount36 * 100.0f / totalInterrupts36 : 0.0f);
+    printf("Pin 39 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts39, bypassedCount39,
+           (totalInterrupts39 > 0) ? (float)bypassedCount39 * 100.0f / totalInterrupts39 : 0.0f);
 
-        // Debug: Print raw values before validation
-        printf("\n=== DEBUG: Raw PWM Values ===\n");
-        printf("Pin 36 - High: %lu us, Low: %lu us, Total: %lu us\n", pulseHigh36, pulseLow36, pulseHigh36 + pulseLow36);
-        printf("Pin 39 - High: %lu us, Low: %lu us, Total: %lu us\n", pulseHigh39, pulseLow39, pulseHigh39 + pulseLow39);
-    }
+    // Print raw values before validation
+    printf("\n===  Raw PWM Values ===\n");
+    printf("Pin 36 - High: %lu us, Low: %lu us, Total: %lu us\n", pulseHigh36, pulseLow36, pulseHigh36 + pulseLow36);
+    printf("Pin 39 - High: %lu us, Low: %lu us, Total: %lu us\n", pulseHigh39, pulseLow39, pulseHigh39 + pulseLow39);
+#endif
 
     // Use detailed validation
-    bool valid36 = validatePWMValues(pulseHigh36, pulseLow36, 36);
-    bool valid39 = validatePWMValues(pulseHigh39, pulseLow39, 39);
+    validatePwmResult valid36 = validatePWMValues(pulseHigh36, pulseLow36, 36);
+    validatePwmResult valid39 = validatePWMValues(pulseHigh39, pulseLow39, 39);
 
     // Calculate position using MAE3 PWM formula for 12-bit
-    int           position36 = 0, position39 = 0;
-    unsigned long totalPeriod36 = pulseHigh36 + pulseLow36;
-    unsigned long totalPeriod39 = pulseHigh39 + pulseLow39;
-
-    if (valid36 && totalPeriod36 > 0)
+    if (valid36.overall)
     {
-        position36 = ((pulseHigh36 * 4098) / totalPeriod36) - 1;
-        position36 = constrain(position36, 0, 4095);
+        int position36   = ((pulseHigh36 * 4098) / valid36.totalPeriod) - 1;
+        valid36.position = constrain(position36, 0, 4095);
+        valid36.degrees  = (valid36.position * 360.0f) / 4096.0f;
     }
 
-    if (valid39 && totalPeriod39 > 0)
+    if (valid36.overall)
     {
-        position39 = ((pulseHigh39 * 4098) / totalPeriod39) - 1;
-        position39 = constrain(position39, 0, 4095);
+        int position39   = ((pulseHigh39 * 4098) / valid39.totalPeriod) - 1;
+        valid39.position = constrain(position39, 0, 4095);
+        valid39.degrees  = (valid39.position * 360.0f) / 4096.0f;
     }
 
-    // Convert to degrees
-    float degrees36 = (position36 * 360.0f) / 4096.0f;
-    float degrees39 = (position39 * 360.0f) / 4096.0f;
+    // Check if position has changed
+    static int lastPrintPosition36 = -1, lastPrintPosition39 = -1;
 
-    if (abs(position36 - lastPosition36) > 1 || abs(position39 - lastPosition39) > 1)
+    if (abs(valid36.position - lastPrintPosition36) > 1 || abs(valid39.position - lastPrintPosition39) > 1)
     {
-        lastPosition36 = position36;
-        lastPosition39 = position39;
+        lastPrintPosition36 = valid36.position;
+        lastPrintPosition39 = valid39.position;
 
         // Print results
         printf("\n┌────────────────────────────────────────────────────────────────────────────┐\n");
@@ -441,12 +407,18 @@ void readPWMEncodersInterrupt()
         printf("├────────────────────────────────────────────────────────────────────────────┤\n");
         printf("│ Pin │ Position │ Degrees  │ High Pulse │ Low Pulse │ Total Period │ Status │\n");
         printf("├─────┼──────────┼──────────┼────────────┼───────────┼──────────────┼────────┤\n");
-        printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │\n", position36, degrees36, pulseHigh36, pulseLow36,
-               totalPeriod36, valid36 ? "OK    " : "ERR   ");
-        printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │\n", position39, degrees39, pulseHigh39, pulseLow39,
-               totalPeriod39, valid39 ? "OK    " : "ERR   ");
+        printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │\n", valid36.position, valid36.degrees, pulseHigh36, pulseLow36,
+               valid36.totalPeriod, valid36.overall ? "OK    " : "ERR   ");
+        printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │\n", valid39.position, valid39.degrees, pulseHigh39, pulseLow39,
+               valid39.totalPeriod, valid39.overall ? "OK    " : "ERR   ");
         printf("└────────────────────────────────────────────────────────────────────────────┘\n");
     }
+
+    printf("\n=== PULSE EDGE TRANSITION STATISTICS ===\n");
+    printf("Pin 36 - Transition Counter: %d\n", pulseTransitionCounter36);
+    printf("Pin 39 - Transition Counter: %d\n", pulseTransitionCounter39);
+    printf("Last Pulse Values - Pin 36: %lu, Pin 39: %lu\n", lastPulseValue36, lastPulseValue39);
+    printf("==========================================\n");
 }
 
 // Optimized method for reading PWM encoder values with minimal error
@@ -668,24 +640,6 @@ void detectPulseEdgeTransition(unsigned long currentPulse, unsigned long lastPul
     {
         (*counter)--;
     }
-}
-
-void resetPulseTransitionCounters()
-{
-    pulseTransitionCounter36 = 0;
-    pulseTransitionCounter39 = 0;
-    lastPulseValue36         = 0;
-    lastPulseValue39         = 0;
-}
-
-// Function to print pulse transition statistics
-void printPulseTransitionStats()
-{
-    printf("\n=== PULSE EDGE TRANSITION STATISTICS ===\n");
-    printf("Pin 36 - Transition Counter: %d\n", pulseTransitionCounter36);
-    printf("Pin 39 - Transition Counter: %d\n", pulseTransitionCounter39);
-    printf("Last Pulse Values - Pin 36: %lu, Pin 39: %lu\n", lastPulseValue36, lastPulseValue39);
-    printf("==========================================\n");
 }
 
 // Test function to simulate pulse transitions
