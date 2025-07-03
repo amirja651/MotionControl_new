@@ -138,7 +138,7 @@ private:
     static constexpr size_t  PULSE_BUFFER_SIZE   = 5;     // Pulse width ring buffers
 
     // static portMUX_TYPE      classMux;
-    mutable portMUX_TYPE classMux = portMUX_INITIALIZER_UNLOCKED;
+    //mutable portMUX_TYPE classMux = portMUX_INITIALIZER_UNLOCKED;
 
     static MAE3Encoder* _encoderInstances[MAX_ENCODERS];  // Static array to store encoder instances for interrupt handling
 

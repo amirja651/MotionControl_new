@@ -1,16 +1,11 @@
 #include "MAE3Encoder.h"
 
-// For pins above 31 (e.g. GPIO32 to GPIO39), GPIO.in1.data is used
-#define READ_FAST(pin) ((pin < 32) ? ((GPIO.in >> pin) & 0x1) : ((GPIO.in1.data >> (pin - 32)) & 0x1))
-
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[4] = {nullptr};
 
 int MAE3Encoder::_interruptsAttached[4] = {0};
 int MAE3Encoder::_interruptsDetached[4] = {0};
 int MAE3Encoder::_processInterrupt[4]   = {0};
-// Initialize static member
-// portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
 
 MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
     : _signalPin(signalPin),
@@ -130,9 +125,7 @@ void MAE3Encoder::processPWM()
 {
     bool updated;
 
-    // portENTER_CRITICAL(&classMux);
     updated = _bufferUpdated;
-    // portEXIT_CRITICAL(&classMux);
 
     if (!_enabled || !updated)
         return;
@@ -194,9 +187,9 @@ void MAE3Encoder::processPWM()
     _last_pulse = _state.current_pulse;
 
     _newPulseAvailable = true;
-    // portENTER_CRITICAL(&classMux);
+
     _bufferUpdated = false;
-    // portEXIT_CRITICAL(&classMux);
+
     _lastPulseTime = esp_timer_get_time();
 
     // NEW: invoke callback if set
@@ -208,7 +201,6 @@ void MAE3Encoder::processPWM()
 
 EncoderContext& MAE3Encoder::getEncoderContext() const
 {
-    // portENTER_CRITICAL(&classMux);
     _encoderContext.current_pulse = _state.current_pulse;
     _encoderContext.direction     = _state.direction == Direction::UNKNOWN ? "   " : _state.direction == Direction::CLOCKWISE ? " CW" : "CCW";
     _encoderContext.lap_id        = _lap.id;
@@ -218,7 +210,7 @@ EncoderContext& MAE3Encoder::getEncoderContext() const
     _encoderContext.position_mm      = _encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / FULL_SCALE);
     _encoderContext.total_travel_mm  = (_lap.id * LEAD_SCREW_PITCH_MM) + _encoderContext.position_mm;
     _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
-    // portEXIT_CRITICAL(&classMux);
+
     return _encoderContext;
 }
 
@@ -278,7 +270,6 @@ void MAE3Encoder::detachInterruptHandler()
 void IRAM_ATTR MAE3Encoder::processInterrupt()
 {
     int64_t currentTime = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&classMux);
 
     if (digitalRead(_signalPin))
     {
@@ -291,7 +282,6 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
 
             if (pulse_width < 1 || pulse_width > 4097)
             {
-                portEXIT_CRITICAL_ISR(&classMux);
                 return;
             }
 
@@ -309,7 +299,6 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
 
             if (pulse_width < 1 || pulse_width > 4097)
             {
-                portEXIT_CRITICAL_ISR(&classMux);
                 return;
             }
 
@@ -322,7 +311,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         {
             _r_pulse.high = 0;
             _r_pulse.low  = 0;
-            portEXIT_CRITICAL_ISR(&classMux);
+
             return;
         }
 
@@ -333,8 +322,6 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         _processInterrupt[_encoderId]++;
         _bufferUpdated = true;
     }
-
-    portEXIT_CRITICAL_ISR(&classMux);
 }
 
 // Get median width of high and low pulses
@@ -342,10 +329,8 @@ int64_t MAE3Encoder::get_median_width_high() const
 {
     std::array<int64_t, PULSE_BUFFER_SIZE> temp;
 
-    // portENTER_CRITICAL(&classMux);
     //  Use memcpy for faster copy inside critical section
     memcpy(temp.data(), _width_h_buffer.data(), sizeof(int64_t) * PULSE_BUFFER_SIZE);
-    // portEXIT_CRITICAL(&classMux);
 
     std::sort(temp.begin(), temp.end());
     return temp[PULSE_BUFFER_SIZE / 2];
@@ -354,10 +339,8 @@ int64_t MAE3Encoder::get_median_width_low() const
 {
     std::array<int64_t, PULSE_BUFFER_SIZE> temp;
 
-    // portENTER_CRITICAL(&classMux);
     //  Use memcpy for faster copy inside critical section
     memcpy(temp.data(), _width_l_buffer.data(), sizeof(int64_t) * PULSE_BUFFER_SIZE);
-    // portEXIT_CRITICAL(&classMux);
 
     std::sort(temp.begin(), temp.end());
     return temp[PULSE_BUFFER_SIZE / 2];
@@ -366,19 +349,19 @@ int64_t MAE3Encoder::get_median_width_low() const
 // Individual interrupt handlers for each encoder
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
-        _encoderInstances[0]->processInterrupt();
+    _encoderInstances[0]->processInterrupt();
 }
 void IRAM_ATTR MAE3Encoder::interruptHandler1()
 {
-        _encoderInstances[1]->processInterrupt();
+    _encoderInstances[1]->processInterrupt();
 }
 void IRAM_ATTR MAE3Encoder::interruptHandler2()
 {
-        _encoderInstances[2]->processInterrupt();
+    _encoderInstances[2]->processInterrupt();
 }
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
-        _encoderInstances[3]->processInterrupt();
+    _encoderInstances[3]->processInterrupt();
 }
 void MAE3Encoder::setPeriod(int32_t lapIndex, int64_t period, bool reset_count)
 {

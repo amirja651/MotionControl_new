@@ -56,24 +56,28 @@ static float initialTotalDistance[4] = {0.0f};
 // Static variable to store high water mark
 static unsigned int highWaterMark = 0;
 
-void encoderUpdateTask(void* pvParameters);
-void motorUpdateTask(void* pvParameters);
-void serialReadTask(void* pvParameters);
-
+// ============================
+// Function Declarations
+// ============================
+void         encoderUpdateTask(void* pvParameters);
+void         motorUpdateTask(void* pvParameters);
+void         serialReadTask(void* pvParameters);
 bool         isValidNumber(const String& str);
 void         setTargetPosition(String targetPos);
 void         setMotorId(String motorId);
 float        getMotorPosition();
 MotorContext getMotorContext();
+void         motorUpdateTask(void* pvParameters);
 void         linearMotorUpdate();
 void         rotaryMotorUpdate();
 int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void         demonstrateSpeedProfile();
 void         motorStopAndSavePosition(String callerFunctionName);
+void         resetMotorState(uint8_t id);
 void         clearLine();
+void         serialReadTask(void* pvParameters);
 void         printSerial();
 void         printMotorStatus();
-void         resetMotorState(uint8_t motorId);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -156,7 +160,7 @@ void setup()
     if (!anyDriverEnabled)
     {
         Serial.println(F("[Error][Setup] All drivers are disabled. Please reset the system."));
-        for (;;)
+        while (1)
         {
             esp_task_wdt_reset();
             delay(10);
@@ -164,15 +168,15 @@ void setup()
     }
 
     // Core 1 - For time-sensitive tasks (precise control)
-    // xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
-    // xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
-
+    xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
+    xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
     // Core 0 - For less time-sensitive tasks (such as I/O)
-    // xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
+    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
 
     // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
-    esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
-    esp_task_wdt_add(serialReadTaskHandle);   // Register with WDT
+    esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
+    esp_task_wdt_add(motorUpdateTaskHandle);    // Register with WDT
+    esp_task_wdt_add(serialReadTaskHandle);     // Register with WDT
 
     Serial.println();
     Serial.flush();
@@ -183,19 +187,8 @@ void loop()
     // Handle movement complete outside ISR
     if (motor[currentIndex])
         motor[currentIndex]->handleMovementComplete();
-    if (currentIndex == 0)
-        currentIndex = 1;
-    else
-        currentIndex = 0;
-    encoder[currentIndex]->enable();
-    encoder[currentIndex]->processPWM();
-    Serial.print(F("Encoder "));
-    Serial.print(currentIndex + 1);
-    Serial.print(F(" isEnabled: "));
-    Serial.println(encoder[currentIndex]->isEnabled());
-    printSerial();
     esp_task_wdt_reset();
-    vTaskDelay(800);
+    vTaskDelay(300);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -430,6 +423,21 @@ MotorContext getMotorContext()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Motor Update Task (M104)
+void encoderUpdateTask(void* pvParameters)
+{
+    const TickType_t xFrequency    = pdMS_TO_TICKS(1000);
+    TickType_t       xLastWakeTime = xTaskGetTickCount();
+
+    while (1)
+    {
+        encoder[currentIndex]->processPWM();
+        printSerial();
+        esp_task_wdt_reset();
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+// Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(4);
@@ -440,7 +448,7 @@ void motorUpdateTask(void* pvParameters)
     static int      lastReportedIndex                 = -1;
     static uint32_t counter                           = 0;
 
-    for (;;)
+    while (1)
     {
         // Check for null pointers
         if (driver[currentIndex] == nullptr)
@@ -908,7 +916,7 @@ void serialReadTask(void* pvParameters)
     String           inputBuffer   = "";
     String           lastInput     = "";
 
-    for (;;)
+    while (1)
     {
         while (Serial.available())
         {
