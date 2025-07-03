@@ -4,25 +4,7 @@
 MAE3Encoder* MAE3Encoder::_encoderInstances[4] = {nullptr};
 
 MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
-    : _signalPin(signalPin),
-      _encoderId(encoderId),
-      _state{},
-      _lap{},
-      _encoderContext{},
-      _vResult{},
-      _enabled(false),
-      _r_pulse{0, 0},
-      _lastPulseTime(0),
-      _lastFallingEdgeTime(0),
-      _lastRisingEdgeTime(0),
-      _newPulseAvailable(false),
-      _bufferUpdated(false),
-      _newData(false),
-      _last_pulse(0),
-      _initialized(0),
-      _width_l_buffer{},
-      _width_h_buffer{},
-      _pulseBufferIndex(0)
+    : _signalPin(signalPin), _encoderId(encoderId), _state{}, _lap{}, _encoderContext{}, _vResult{}, _enabled(false), _r_pulse{0, 0}, _lastPulseTime(0), _lastFallingEdgeTime(0), _lastRisingEdgeTime(0), _newPulseAvailable(false), _bufferUpdated(false), _newData(false), _last_pulse(0), _initialized(0), _width_l_buffer{}, _width_h_buffer{}, _pulseBufferIndex(0)
 {
 }
 
@@ -129,8 +111,6 @@ void MAE3Encoder::processPWM()
     {
         validateResult vResult = validatePWMValues(_r_pulse.high, _r_pulse.low, _signalPin);
 
-        int64_t period = _r_pulse.high + _r_pulse.low;
-
         if (!vResult.overall)
         {
             _r_pulse.high = 0;
@@ -222,9 +202,7 @@ void MAE3Encoder::processPWM()
 EncoderContext& MAE3Encoder::getEncoderContext() const
 {
     _encoderContext.current_pulse = _state.current_pulse;
-    _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
-                                    : _state.direction == Direction::CLOCKWISE ? " CW"
-                                                                               : "CCW";
+    _encoderContext.direction     = _state.direction == Direction::UNKNOWN ? "   " : _state.direction == Direction::CLOCKWISE ? " CW" : "CCW";
     _encoderContext.lap_id        = _lap.id;
     _encoderContext.lap_period    = _lap.period[_lap.id + LAPS_OFFSET];
 
@@ -384,17 +362,6 @@ void MAE3Encoder::resetAllPeriods()
 // Diagnostic function to check encoder signal quality
 void MAE3Encoder::diagnoseEncoderSignals()
 {
-    printf("\n=== ENCODER SIGNAL DIAGNOSTICS ===\n");
-
-    // Check if interrupts are working
-    printf("Interrupt Status:\n");
-    printf("- Pin %d interrupt attached: %s\n", _signalPin,
-           (digitalPinToInterrupt(_signalPin) != NOT_AN_INTERRUPT) ? "YES" : "NO");
-
-    // Check pin states
-    printf("\nPin States:\n");
-    printf("- Pin %d state: %s\n", _signalPin, digitalRead(_signalPin) ? "HIGH" : "LOW");
-
     // Check for signal activity
     printf("\nSignal Activity Test (5 seconds):\n");
 
@@ -415,17 +382,42 @@ void MAE3Encoder::diagnoseEncoderSignals()
         delayMicroseconds(100);
     }
 
-    printf("- Pin %d transitions: %lu (%.1f Hz)\n", _signalPin, transitions, (float)transitions / 10.0);
+    Serial.println();
+    printf("┌───────────────────────────────────────────────────────────────────────┐\n");
+    printf("│                    ENCODER SIGNAL DIAGNOSTICS                         │\n");
+    printf("├───────────────────────────────────────────────────────────────────────┤\n");
+    printf("│ %-25s │ %-15s │ %-23s │\n", "Parameter", "Value", "Status");
+    printf("├───────────────────────────────────────────────────────────────────────┤\n");
 
-    // Expected frequency for MAE3 is ~250 Hz
-    printf("- Expected frequency: MIN. 220 Hz, MAX. 268 Hz, TYP. 244 Hz\n");
+    // Interrupt Status
+    bool interruptAttached = (digitalPinToInterrupt(_signalPin) != NOT_AN_INTERRUPT);
+    printf("│ %-25s │ %-15s │ %-24s │\n", "Interrupt Attached", interruptAttached ? "YES" : "NO", interruptAttached ? "✅ OK" : "❌ FAIL");
 
+    // Pin State
+    bool pinState = digitalRead(_signalPin);
+    printf("│ %-25s │ %-15s │ %-23s │\n", "Pin State", pinState ? "HIGH" : "LOW", "");
+
+    // Transition Count
+    float frequency = (float)transitions / 10.0;
+    printf("│ %-25s │ %-15lu │ %-23s │\n", "Transitions", transitions, "");
+
+    // Frequency
+    printf("│ %-25s │ %-15.1f │ %-23s │\n", "Measured Frequency", frequency, "");
+
+    // Expected Frequency Range
+    printf("│ %-25s │ %-15s │ %-23s │\n", "Expected Frequency", "220-268 Hz", "");
+
+    // Frequency Status
+    bool freqOK = (frequency >= 220.0 && frequency <= 268.0);
+    printf("│ %-25s │ %-15s │ %-24s │\n", "Frequency Status", freqOK ? "IN RANGE" : "OUT OF RANGE", freqOK ? "✅ PASS" : "❌ FAIL");
+
+    // Low Activity Warning
     if (transitions < 100)
     {
-        printf("WARNING: Pin %d has very low activity - check wiring!\n", _signalPin);
+        printf("│ %-25s │ %-15s │ %-28s │\n", "Activity Warning", "LOW", "⚠️  Check Wiring!");
     }
 
-    printf("=== END DIAGNOSTICS ===\n\n");
+    printf("└───────────────────────────────────────────────────────────────────────┘\n\n");
 }
 
 validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPulse, uint8_t pinNumber)
@@ -434,16 +426,19 @@ validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPuls
 
     _vResult.totalPeriod = highPulse + lowPulse;
 
-    printf("\n=== Validation for Pin %d ===\n", _signalPin);
-    printf("High pulse: %lld us\n", highPulse);
-    printf("Low pulse: %lld us\n", lowPulse);
-    printf("Total period: %lld us\n", _vResult.totalPeriod);
+    Serial.println();
+    printf("┌───────────────────────────────────────────────────────────────────────┐\n");
+    printf("│                         Validation for Pin %-4d                       │\n", _signalPin);
+    printf("├───────────────────────────────────────────────────────────────────────┤\n");
+    printf("│ %-15s │ %-15s │ %-15s │ %-15s │\n", "Parameter", "High Pulse", "Low Pulse", "Total Period");
+    printf("├───────────────────────────────────────────────────────────────────────┤\n");
+    printf("│ %-15s │ %-15lld │ %-15lld │ %-15lld │\n", "Duration (us)", highPulse, lowPulse, _vResult.totalPeriod);
+    printf("└───────────────────────────────────────────────────────────────────────┘\n");
 
     // Check if data was bypassed (values are 0)
     if (highPulse == 0 && lowPulse == 0)
     {
         printf("Data was bypassed - invalid period detected\n");
-
         return _vResult;
     }
 
@@ -454,11 +449,17 @@ validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPuls
     _vResult.periodOK = ((_vResult.totalPeriod) >= 3731 && (_vResult.totalPeriod) <= 4545);
     _vResult.overall  = _vResult.highOK && _vResult.lowOK && _vResult.totalOK && _vResult.periodOK;
 
-    printf("High pulse validation: %s (1-4097 us)\n", _vResult.highOK ? "PASS" : "FAIL");
-    printf("Low pulse validation: %s (1-4097 us)\n", _vResult.lowOK ? "PASS" : "FAIL");
-    printf("Total period validation: %s (>0 us)\n", _vResult.totalOK ? "PASS" : "FAIL");
-    printf("Period range validation: %s (3731-4545 us)\n", _vResult.periodOK ? "PASS" : "FAIL");
-    printf("Overall validation: %s\n", _vResult.overall ? "PASS" : "FAIL");
+    printf("┌───────────────────────────────────────────────────────────────────────┐\n");
+    printf("│                   Validation Results for Id #%-4d                     │\n", _encoderId + 1);
+    printf("├───────────────────────────────────────────────────────────────────────┤\n");
+    printf("│ %-25s │ %-10s │ %-28s │\n", "Test", "Status", "Range");
+    printf("├───────────────────────────────────────────────────────────────────────┤\n");
+    printf("│ %-25s │ %-10s │ %-28s │\n", "High pulse validation", _vResult.highOK ? "PASS" : "FAIL", "1-4097 us");
+    printf("│ %-25s │ %-10s │ %-28s │\n", "Low pulse validation", _vResult.lowOK ? "PASS" : "FAIL", "1-4097 us");
+    printf("│ %-25s │ %-10s │ %-28s │\n", "Total period validation", _vResult.totalOK ? "PASS" : "FAIL", "> 0 us");
+    printf("│ %-25s │ %-10s │ %-28s │\n", "Period range validation", _vResult.periodOK ? "PASS" : "FAIL", "3731-4545 us");
+    printf("│ %-25s │ %-10s │ %-29s │\n", "Overall validation", _vResult.overall ? "PASS" : "FAIL", "✅");
+    printf("└───────────────────────────────────────────────────────────────────────┘\n");
 
     return _vResult;
 }
