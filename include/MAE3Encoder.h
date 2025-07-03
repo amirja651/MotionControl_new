@@ -72,19 +72,6 @@ public:
     void reset();
     void processPWM();
 
-    static int getNumberOfInterruptsAttached(uint8_t encoderId)
-    {
-        return _interruptsAttached[encoderId];
-    }
-    static int getNumberOfInterruptsDetached(uint8_t encoderId)
-    {
-        return _interruptsDetached[encoderId];
-    }
-    static int getNumberOfProcessInterrupts(uint8_t encoderId)
-    {
-        return _processInterrupt[encoderId];
-    }
-
     EncoderContext& getEncoderContext() const;
 
     int32_t umToPulses(float um);
@@ -93,11 +80,6 @@ public:
 
     bool isStopped(int64_t threshold_us = 500000 /* 500ms */) const;
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
-
-protected:
-    static int _interruptsAttached[4];
-    static int _interruptsDetached[4];
-    static int _processInterrupt[4];
 
 private:
     // Pin assignments
@@ -128,9 +110,10 @@ private:
     bool    _initialized;
 
     // Maximum number of encoders supported
-    static constexpr uint8_t MAX_ENCODERS        = 4;
-    static constexpr int8_t  LAPS_OFFSET         = 10;
-    static constexpr int64_t DIR_THRESHOLD       = 2;     // For example, if the difference is more than 2 pulses → change direction
+    static constexpr uint8_t MAX_ENCODERS = 4;
+    static constexpr int8_t  LAPS_OFFSET  = 10;
+    static constexpr int64_t DIR_THRESHOLD =
+        2;  // For example, if the difference is more than 2 pulses → change direction
     static constexpr int64_t FULL_SCALE          = 4096;  // 0..4095
     static constexpr int64_t HIGH_WRAP_THRESHOLD = 1000;
     static constexpr int64_t LOW_WRAP_THRESHOLD  = -1000;
@@ -138,9 +121,10 @@ private:
     static constexpr size_t  PULSE_BUFFER_SIZE   = 5;     // Pulse width ring buffers
 
     // static portMUX_TYPE      classMux;
-    //mutable portMUX_TYPE classMux = portMUX_INITIALIZER_UNLOCKED;
+    // mutable portMUX_TYPE classMux = portMUX_INITIALIZER_UNLOCKED;
 
-    static MAE3Encoder* _encoderInstances[MAX_ENCODERS];  // Static array to store encoder instances for interrupt handling
+    static MAE3Encoder*
+        _encoderInstances[MAX_ENCODERS];  // Static array to store encoder instances for interrupt handling
 
     std::array<int64_t, PULSE_BUFFER_SIZE> _width_l_buffer{};
     std::array<int64_t, PULSE_BUFFER_SIZE> _width_h_buffer{};
@@ -157,11 +141,8 @@ private:
     int64_t get_median_width_low() const;
 
     static void IRAM_ATTR interruptHandler0();
-
     static void IRAM_ATTR interruptHandler1();
-
     static void IRAM_ATTR interruptHandler2();
-
     static void IRAM_ATTR interruptHandler3();
 
     void setPeriod(int32_t lapIndex, int64_t period, bool reset_count = false);

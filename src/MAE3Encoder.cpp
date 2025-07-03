@@ -3,10 +3,6 @@
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[4] = {nullptr};
 
-int MAE3Encoder::_interruptsAttached[4] = {0};
-int MAE3Encoder::_interruptsDetached[4] = {0};
-int MAE3Encoder::_processInterrupt[4]   = {0};
-
 MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
     : _signalPin(signalPin),
       _encoderId(encoderId),
@@ -202,7 +198,9 @@ void MAE3Encoder::processPWM()
 EncoderContext& MAE3Encoder::getEncoderContext() const
 {
     _encoderContext.current_pulse = _state.current_pulse;
-    _encoderContext.direction     = _state.direction == Direction::UNKNOWN ? "   " : _state.direction == Direction::CLOCKWISE ? " CW" : "CCW";
+    _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
+                                    : _state.direction == Direction::CLOCKWISE ? " CW"
+                                                                               : "CCW";
     _encoderContext.lap_id        = _lap.id;
     _encoderContext.lap_period    = _lap.period[_lap.id + LAPS_OFFSET];
 
@@ -319,8 +317,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         _state.width_low = _width_l_buffer[_pulseBufferIndex] = _r_pulse.low;
 
         _pulseBufferIndex = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
-        _processInterrupt[_encoderId]++;
-        _bufferUpdated = true;
+        _bufferUpdated    = true;
     }
 }
 
