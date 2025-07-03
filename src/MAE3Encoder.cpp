@@ -426,6 +426,7 @@ validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPuls
 
     _vResult.totalPeriod = highPulse + lowPulse;
 
+#if ENCODER_DEBUG
     Serial.println();
     printf("┌───────────────────────────────────────────────────────────────────────┐\n");
     printf("│                         Validation for Pin %-4d                       │\n", _signalPin);
@@ -434,11 +435,16 @@ validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPuls
     printf("├───────────────────────────────────────────────────────────────────────┤\n");
     printf("│ %-15s │ %-15lld │ %-15lld │ %-15lld │\n", "Duration (us)", highPulse, lowPulse, _vResult.totalPeriod);
     printf("└───────────────────────────────────────────────────────────────────────┘\n");
+#endif
 
     // Check if data was bypassed (values are 0)
     if (highPulse == 0 && lowPulse == 0)
     {
-        printf("Data was bypassed - invalid period detected\n");
+#if ENCODER_DEBUG
+        printf("┌───────────────────────────────────────────────────────────────────────┐\n");
+        printf("│ %-25s │ %-15s │ %-24s │\n", "Data Bypass Status", "DETECTED", "❌ INVALID PERIOD");
+        printf("└───────────────────────────────────────────────────────────────────────┘\n");
+#endif
         return _vResult;
     }
 
@@ -449,6 +455,7 @@ validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPuls
     _vResult.periodOK = ((_vResult.totalPeriod) >= 3731 && (_vResult.totalPeriod) <= 4545);
     _vResult.overall  = _vResult.highOK && _vResult.lowOK && _vResult.totalOK && _vResult.periodOK;
 
+#if ENCODER_DEBUG
     printf("┌───────────────────────────────────────────────────────────────────────┐\n");
     printf("│                   Validation Results for Id #%-4d                     │\n", _encoderId + 1);
     printf("├───────────────────────────────────────────────────────────────────────┤\n");
@@ -460,7 +467,7 @@ validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPuls
     printf("│ %-25s │ %-10s │ %-28s │\n", "Period range validation", _vResult.periodOK ? "PASS" : "FAIL", "3731-4545 us");
     printf("│ %-25s │ %-10s │ %-29s │\n", "Overall validation", _vResult.overall ? "PASS" : "FAIL", "✅");
     printf("└───────────────────────────────────────────────────────────────────────┘\n");
-
+#endif
     return _vResult;
 }
 
