@@ -4,7 +4,7 @@
 #define READ_FAST(pin) ((pin < 32) ? ((GPIO.in >> pin) & 0x1) : ((GPIO.in1.data >> (pin - 32)) & 0x1))
 
 // Initialize static member
-MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
+MAE3Encoder* MAE3Encoder::_encoderInstances[4] = {nullptr};
 
 int MAE3Encoder::_interruptsAttached[4] = {0};
 int MAE3Encoder::_interruptsDetached[4] = {0};
@@ -36,18 +36,11 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
 MAE3Encoder::~MAE3Encoder()
 {
     disable();
-
-    if (_encoderId < MAX_ENCODERS)
-    {
-        _encoderInstances[_encoderId] = nullptr;
-    }
+    _encoderInstances[_encoderId] = nullptr;
 }
 
 bool MAE3Encoder::begin()
 {
-    if (_encoderId >= MAX_ENCODERS)
-        return false;
-
     // Initialize state
     reset();
 
@@ -284,9 +277,6 @@ void MAE3Encoder::detachInterruptHandler()
 // method for processing interrupt *************************amir
 void IRAM_ATTR MAE3Encoder::processInterrupt()
 {
-    if (__builtin_expect(!_enabled, 0))
-        return;
-
     int64_t currentTime = esp_timer_get_time();
     portENTER_CRITICAL_ISR(&classMux);
 
@@ -376,22 +366,18 @@ int64_t MAE3Encoder::get_median_width_low() const
 // Individual interrupt handlers for each encoder
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
-    if (_encoderInstances[0] && _encoderInstances[0]->_enabled)
         _encoderInstances[0]->processInterrupt();
 }
 void IRAM_ATTR MAE3Encoder::interruptHandler1()
 {
-    if (_encoderInstances[1] && _encoderInstances[1]->_enabled)
         _encoderInstances[1]->processInterrupt();
 }
 void IRAM_ATTR MAE3Encoder::interruptHandler2()
 {
-    if (_encoderInstances[2] && _encoderInstances[2]->_enabled)
         _encoderInstances[2]->processInterrupt();
 }
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
-    if (_encoderInstances[3] && _encoderInstances[3]->_enabled)
         _encoderInstances[3]->processInterrupt();
 }
 void MAE3Encoder::setPeriod(int32_t lapIndex, int64_t period, bool reset_count)

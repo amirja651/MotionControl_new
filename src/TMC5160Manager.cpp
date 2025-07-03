@@ -21,18 +21,6 @@ bool TMC5160Manager::begin()
 
 bool TMC5160Manager::testConnection(bool print)
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return false;
-    }
-
-    // Try to read the version register
-    // uint32_t version = _driver->version();
-
-    //
-    // return (version != 0 && version != 0xFFFFFFFF);
     uint8_t  version  = 0;
     uint32_t gconf    = 0;
     uint32_t status   = 0;
@@ -198,13 +186,6 @@ TMC5160Manager::DriverStatus TMC5160Manager::getDriverStatus()
 {
     DriverStatus status = {false, 0, 0, 0, 0, 0};
 
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return status;
-    }
-
     status.connected  = true;
     status.version    = _driver->version();
     status.status     = _driver->DRV_STATUS();
@@ -230,13 +211,6 @@ TMC5160Manager::DriverStatus TMC5160Manager::getDriverStatus()
 
 bool TMC5160Manager::configureDriver()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return false;
-    }
-
     // Basic configuration
     _driver->begin();
     delay(5);
@@ -297,13 +271,6 @@ bool TMC5160Manager::configureDriver()
 
 void TMC5160Manager::setStealthChopMode()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     _driver->toff(0);            // Disable SpreadCycle
     _driver->en_pwm_mode(true);  // Enable StealthChop
     _driver->pwm_autoscale(true);
@@ -321,13 +288,6 @@ void TMC5160Manager::setStealthChopMode()
 
 void TMC5160Manager::setSpreadCycleMode()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     _driver->toff(5);             // Enable SpreadCycle
     _driver->en_pwm_mode(false);  // Disable StealthChop
     delay(5);
@@ -347,13 +307,6 @@ void TMC5160Manager::setSpreadCycleMode()
 
 bool TMC5160Manager::isStealthChopEnabled()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return false;
-    }
-
     bool stealthChop = _driver->en_pwm_mode();  // returns true if StealthChop is enabled
     delay(5);
 
@@ -365,13 +318,6 @@ bool TMC5160Manager::isStealthChopEnabled()
 
 void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     // ---- GCONF ----
     uint32_t gconf = 0;
     gconf |= (1 << 3);  // Microstep interpolation
@@ -421,13 +367,6 @@ void TMC5160Manager::configureDriver_Nema11_1004H(bool useStealth)
 
 void TMC5160Manager::configureDriver_Pancake()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     // ---------------------------
     // 1. Basic Driver Configuration (GCONF)
     // ---------------------------
@@ -508,13 +447,6 @@ void TMC5160Manager::DriverOff()
 
 void TMC5160Manager::setCurrent(uint16_t current)
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     _driver->rms_current(current);
 
     // Turn off the driver
@@ -523,13 +455,6 @@ void TMC5160Manager::setCurrent(uint16_t current)
 
 void TMC5160Manager::setMicrosteps(uint16_t microsteps)
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     _driver->microsteps(microsteps);
 
     // Turn off the driver
@@ -538,13 +463,6 @@ void TMC5160Manager::setMicrosteps(uint16_t microsteps)
 
 void TMC5160Manager::setSGTHRS(uint32_t threshold)
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     _driver->write(0x40, threshold);  // Direct register access
     delay(5);
 
@@ -554,13 +472,6 @@ void TMC5160Manager::setSGTHRS(uint32_t threshold)
 
 uint32_t TMC5160Manager::getSG_RESULT()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return 0;
-    }
-
     uint32_t sg_result = _driver->sg_result();  // TMC5160 uses lowercase method names
 
     // Turn off the driver
@@ -571,13 +482,6 @@ uint32_t TMC5160Manager::getSG_RESULT()
 
 void TMC5160Manager::logDriverStatus()
 {
-    if (!_driver)
-    {
-        // Turn off the driver
-        DriverOff();
-        return;
-    }
-
     Serial.print(F("[LogDriverStatus] Driver "));
     Serial.print(_driverIndex + 1);
     Serial.println(F(" status:"));
