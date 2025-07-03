@@ -80,6 +80,7 @@ public:
 
     bool isStopped(int64_t threshold_us = 500000 /* 500ms */) const;
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
+    void diagnoseEncoderSignals();
 
 private:
     // Pin assignments
@@ -105,6 +106,7 @@ private:
 
     // Flag to indicate buffer was updated (set in processInterrupt, cleared after processPWM)
     volatile bool _bufferUpdated;
+    volatile bool _newData;
 
     int32_t _last_pulse;
     bool    _initialized;

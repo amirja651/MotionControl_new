@@ -16,6 +16,7 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
       _lastRisingEdgeTime(0),
       _newPulseAvailable(false),
       _bufferUpdated(false),
+      _newData(false),
       _last_pulse(0),
       _initialized(0),
       _width_l_buffer{},
@@ -110,6 +111,7 @@ void MAE3Encoder::reset()
 
     // Flag to indicate buffer was updated (set in processInterrupt, cleared after processPWM)
     _bufferUpdated = false;
+    _newData       = false;
 
     // Reset last pulse
     _last_pulse  = 0;
@@ -119,11 +121,35 @@ void MAE3Encoder::reset()
 //  method for processing PWM signal *************************amir
 void MAE3Encoder::processPWM()
 {
-    bool updated;
+    if (_newData)
+    {
+        int64_t period = _r_pulse.high + _r_pulse.low;
 
-    updated = _bufferUpdated;
+        if (period > 4098 || ((_r_pulse.low < 50 && _r_pulse.high < 50)))
+        {
+            _r_pulse.high = 0;
+            _r_pulse.low  = 0;
+            _newData      = false;
+            return;
+        }
 
-    if (!_enabled || !updated)
+        _state.width_high = _width_h_buffer[_pulseBufferIndex] = _r_pulse.high;
+        _state.width_low = _width_l_buffer[_pulseBufferIndex] = _r_pulse.low;
+
+        _pulseBufferIndex = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
+        _bufferUpdated    = true;
+        _newData          = false;
+
+        Serial.print(F("width_h: "));
+        Serial.println(_r_pulse.high);
+        Serial.print(F("width_l: "));
+        Serial.println(_r_pulse.low);
+        Serial.print(F("period: "));
+        Serial.println(period);
+        Serial.println(F("--------------------------------"));
+    }
+
+    if (!_bufferUpdated)  // if (!_enabled || !updated)
         return;
 
     int64_t width_h = get_median_width_high();
@@ -267,57 +293,26 @@ void MAE3Encoder::detachInterruptHandler()
 // method for processing interrupt *************************amir
 void IRAM_ATTR MAE3Encoder::processInterrupt()
 {
-    int64_t currentTime = esp_timer_get_time();
+    // if (_bufferUpdated)
+    //  return;
 
-    if (digitalRead(_signalPin))
+    int64_t currentTime = esp_timer_get_time();
+    if (digitalRead(_signalPin) == HIGH)
     {
         // Rising edge
         _lastRisingEdgeTime = currentTime;
-
         if (_lastFallingEdgeTime != 0)
-        {
-            int64_t pulse_width = _lastRisingEdgeTime - _lastFallingEdgeTime;
-
-            if (pulse_width < 1 || pulse_width > 4097)
-            {
-                return;
-            }
-
-            _r_pulse.low = pulse_width;
-        }
+            _r_pulse.low = _lastRisingEdgeTime - _lastFallingEdgeTime;
     }
     else
     {
         // Falling edge
         _lastFallingEdgeTime = currentTime;
-
         if (_lastRisingEdgeTime != 0)
         {
-            int64_t pulse_width = _lastFallingEdgeTime - _lastRisingEdgeTime;
-
-            if (pulse_width < 1 || pulse_width > 4097)
-            {
-                return;
-            }
-
-            _r_pulse.high = pulse_width;
+            _r_pulse.high = _lastFallingEdgeTime - _lastRisingEdgeTime;
+            _newData      = true;
         }
-
-        int64_t period = _r_pulse.high + _r_pulse.low;
-
-        if (period > 4098 || ((_r_pulse.low < 50 && _r_pulse.high < 50)))
-        {
-            _r_pulse.high = 0;
-            _r_pulse.low  = 0;
-
-            return;
-        }
-
-        _state.width_high = _width_h_buffer[_pulseBufferIndex] = _r_pulse.high;
-        _state.width_low = _width_l_buffer[_pulseBufferIndex] = _r_pulse.low;
-
-        _pulseBufferIndex = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
-        _bufferUpdated    = true;
     }
 }
 
@@ -381,4 +376,51 @@ void MAE3Encoder::resetAllPeriods()
     memset(_lap.period, 0, sizeof(_lap.period));
     memset(_lap.period_sum, 0, sizeof(_lap.period_sum));
     memset(_lap.period_count, 0, sizeof(_lap.period_count));
+}
+
+// Diagnostic function to check encoder signal quality
+void MAE3Encoder::diagnoseEncoderSignals()
+{
+    printf("\n=== ENCODER SIGNAL DIAGNOSTICS ===\n");
+
+    // Check if interrupts are working
+    printf("Interrupt Status:\n");
+    printf("- Pin %d interrupt attached: %s\n", _signalPin,
+           (digitalPinToInterrupt(_signalPin) != NOT_AN_INTERRUPT) ? "YES" : "NO");
+
+    // Check pin states
+    printf("\nPin States:\n");
+    printf("- Pin %d state: %s\n", _signalPin, digitalRead(_signalPin) ? "HIGH" : "LOW");
+
+    // Check for signal activity
+    printf("\nSignal Activity Test (5 seconds):\n");
+
+    unsigned long startTime   = millis();
+    unsigned long transitions = 0;
+    bool          lastState   = digitalRead(_signalPin);
+
+    while (millis() - startTime < 5000)
+    {
+        bool currentState = digitalRead(_signalPin);
+
+        if (currentState != lastState)
+        {
+            transitions++;
+            lastState = currentState;
+        }
+
+        delayMicroseconds(100);
+    }
+
+    printf("- Pin %d transitions: %lu (%.1f Hz)\n", _signalPin, transitions, (float)transitions / 10.0);
+
+    // Expected frequency for MAE3 is ~250 Hz
+    printf("- Expected frequency: MIN. 220 Hz, MAX. 268 Hz, TYP. 244 Hz\n");
+
+    if (transitions < 100)
+    {
+        printf("WARNING: Pin %d has very low activity - check wiring!\n", _signalPin);
+    }
+
+    printf("=== END DIAGNOSTICS ===\n\n");
 }

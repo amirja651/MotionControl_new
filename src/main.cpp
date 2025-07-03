@@ -184,10 +184,19 @@ void setup()
     Serial.flush();
 }
 
+static bool diagnosticsRun = false;
+
 void loop()
 {
     // Handle movement complete outside ISR
     motor[currentIndex].handleMovementComplete();
+
+    // Run diagnostics first (only once)
+    if (!diagnosticsRun)
+    {
+        encoder[currentIndex].diagnoseEncoderSignals();
+        diagnosticsRun = true;
+    }
 
     esp_task_wdt_reset();
     vTaskDelay(300);
@@ -352,8 +361,9 @@ void encoderUpdateTask(void* pvParameters)
 
     while (1)
     {
-        encoder[currentIndex].processPWM();
-        printSerial();
+        if (diagnosticsRun)
+            encoder[currentIndex].processPWM();
+        // printSerial();
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
