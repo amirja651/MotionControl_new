@@ -1,7 +1,6 @@
 #ifndef MAE3_ENCODER2_H
 #define MAE3_ENCODER2_H
 
-#include "Defines.h"
 #include <Arduino.h>
 #include <algorithm>
 #include <array>
@@ -75,15 +74,15 @@ public:
 
     static int getNumberOfInterruptsAttached(uint8_t encoderId)
     {
-        return (encoderId < NUM_ENCODERS) ? _interruptsAttached[encoderId] : -1;
+        return _interruptsAttached[encoderId];
     }
     static int getNumberOfInterruptsDetached(uint8_t encoderId)
     {
-        return (encoderId < NUM_ENCODERS) ? _interruptsDetached[encoderId] : -1;
+        return _interruptsDetached[encoderId];
     }
     static int getNumberOfProcessInterrupts(uint8_t encoderId)
     {
-        return (encoderId < NUM_ENCODERS) ? _processInterrupt[encoderId] : -1;
+        return _processInterrupt[encoderId];
     }
 
     EncoderContext& getEncoderContext() const;
@@ -96,9 +95,9 @@ public:
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
 
 protected:
-    static int _interruptsAttached[NUM_ENCODERS];
-    static int _interruptsDetached[NUM_ENCODERS];
-    static int _processInterrupt[NUM_ENCODERS];
+    static int _interruptsAttached[4];
+    static int _interruptsDetached[4];
+    static int _processInterrupt[4];
 
 private:
     // Pin assignments
@@ -129,10 +128,10 @@ private:
     bool    _initialized;
 
     // Maximum number of encoders supported
-    static constexpr uint8_t MAX_ENCODERS  = NUM_ENCODERS;
-    static constexpr int8_t  LAPS_OFFSET   = 10;
-    static constexpr int64_t DIR_THRESHOLD = 2;     // For example, if the difference is more than 2 pulses → change direction
-    static constexpr int64_t FULL_SCALE    = 4096;  // 0..4095
+    static constexpr uint8_t MAX_ENCODERS        = 4;
+    static constexpr int8_t  LAPS_OFFSET         = 10;
+    static constexpr int64_t DIR_THRESHOLD       = 2;     // For example, if the difference is more than 2 pulses → change direction
+    static constexpr int64_t FULL_SCALE          = 4096;  // 0..4095
     static constexpr int64_t HIGH_WRAP_THRESHOLD = 1000;
     static constexpr int64_t LOW_WRAP_THRESHOLD  = -1000;
     static constexpr float   LEAD_SCREW_PITCH_MM = 0.2f;  // Lead screw pitch in mm
@@ -157,18 +156,13 @@ private:
     int64_t get_median_width_high() const;
     int64_t get_median_width_low() const;
 
-#if NUM_ENCODERS > 0
     static void IRAM_ATTR interruptHandler0();
-#endif
-#if NUM_ENCODERS > 1
+
     static void IRAM_ATTR interruptHandler1();
-#endif
-#if NUM_ENCODERS > 2
+
     static void IRAM_ATTR interruptHandler2();
-#endif
-#if NUM_ENCODERS > 3
+
     static void IRAM_ATTR interruptHandler3();
-#endif
 
     void setPeriod(int32_t lapIndex, int64_t period, bool reset_count = false);
     void resetAllPeriods();

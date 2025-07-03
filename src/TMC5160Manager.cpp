@@ -57,11 +57,10 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-#if DEBUG_DRIVER == 1
             Serial.print(F(" - Invalid version (0x"));
             Serial.print(version, HEX);
             Serial.println(F(")"));
-#endif
+
             Serial.println(F(" - connection failed!\r\n"));
         }
 
@@ -74,21 +73,18 @@ bool TMC5160Manager::testConnection(bool print)
     // Test GCONF register
     gconf = _driver->GCONF();
 
-#if DEBUG_DRIVER == 1
     if (print)
     {
         Serial.print(F(" - GCONF read: 0x"));
         Serial.println(gconf, HEX);
     }
-#endif
 
     if (gconf == 0xFFFFFFFF)
     {
         if (print)
         {
-#if DEBUG_DRIVER == 1
             Serial.println(F(" - GCONF register read failed"));
-#endif
+#
             Serial.println(F(" - connection failed!\r\n"));
         }
 
@@ -101,21 +97,18 @@ bool TMC5160Manager::testConnection(bool print)
     // Test DRV_STATUS register
     status = _driver->DRV_STATUS();
 
-#if DEBUG_DRIVER == 1
     if (print)
     {
         Serial.print(F(" - DRV_STATUS read: 0x"));
         Serial.println(status, HEX);
     }
-#endif
 
     if (status == 0xFFFFFFFF)
     {
         if (print)
         {
-#if DEBUG_DRIVER == 1
             Serial.println(F(" - DRV_STATUS register read failed"));
-#endif
+
             Serial.println(F(" - connection failed!\r\n"));
         }
 
@@ -128,21 +121,18 @@ bool TMC5160Manager::testConnection(bool print)
     // Test CHOPCONF register
     chopconf = _driver->CHOPCONF();
 
-#if DEBUG_DRIVER == 1
     if (print)
     {
         Serial.print(F(" - CHOPCONF read: 0x"));
         Serial.println(chopconf, HEX);
     }
-#endif
 
     if (chopconf == 0xFFFFFFFF)
     {
         if (print)
         {
-#if DEBUG_DRIVER == 1
             Serial.println(F(" - CHOPCONF register read failed"));
-#endif
+
             Serial.println(F(" - connection failed!\r\n"));
         }
 
@@ -157,7 +147,6 @@ bool TMC5160Manager::testConnection(bool print)
 
     uint32_t readback = _driver->GCONF();
 
-#if DEBUG_DRIVER == 1
     if (print)
     {
         Serial.print(F(" - GCONF write/read test: Original = 0x"));
@@ -165,15 +154,12 @@ bool TMC5160Manager::testConnection(bool print)
         Serial.print(F(", Readback = 0x"));
         Serial.println(readback, HEX);
     }
-#endif
 
     if (readback != gconf)
     {
         if (print)
         {
-#if DEBUG_DRIVER == 1
             Serial.println(F(" - GCONF register write/read mismatch"));
-#endif
             Serial.println(F(" - connection failed!\r\n"));
         }
 
@@ -193,12 +179,12 @@ bool TMC5160Manager::testConnection(bool print)
     if (print)
     {
         // Get and print driver status
-#if DEBUG_DRIVER == 1
+
         auto status = getDriverStatus();
         Serial.printf("  - Version: 0x%08X\r\n", status.version);
         Serial.printf("  - Current: %d mA\r\n", status.current);
         Serial.printf("  - Temperature: %d\r\n", status.temperature);
-#endif
+
         Serial.print(F("✅  connected successfully\r\n\r\n"));
     }
 
@@ -281,7 +267,6 @@ bool TMC5160Manager::configureDriver()
         return false;
     }
 
-#if DEBUG_DRIVER == 1
     bool sd_mode = _driver->sd_mode();  // Check if driver is in STEP/DIR mode
     delay(5);
     bool drv_enn = _driver->drv_enn();  // Determines if the driver is enabled or not (from hardware perspective).
@@ -303,7 +288,6 @@ bool TMC5160Manager::configureDriver()
     Serial.printf(" - Hardware enabled: %s\r\n", drv_enn ? "true" : "false");
     Serial.printf(" - DRV_STATUS: 0x%08X\r\n", drv_status);
     Serial.printf(" - GCONF: 0x%08X\r\n\r\n", gconf);
-#endif
 
     // Turn off the driver
     DriverOff();

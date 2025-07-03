@@ -1,648 +1,1260 @@
+#include "MAE3Encoder.h"
+#include "MotorSpeedController.h"
 #include "Pins.h"
+#include "SystemDiagnostics.h"
+#include "TMC5160Manager.h"
 #include <Arduino.h>
+#include <CLIManager.h>
+#include <SPI.h>
+#include <SimpleCLI.h>
+#include <TMCStepper.h>
+#include <esp_task_wdt.h>
+#include <memory>
 
-#define DEBUG_MAIN_2       0
-#define MAE3_PERIOD_MIN_US 3731  // from frequency 268 Hz
-#define MAE3_PERIOD_MAX_US 4545  // from frequency 220 Hz
-
-bool process36 = false, process39 = false;
-
-struct validatePwmResult
+struct MotorContext
 {
-    unsigned long totalPeriod;
-    int           position;
-    float         degrees;
-    int           delta;
-    bool          highOK;
-    bool          lowOK;
-    bool          totalOK;
-    bool          periodOK;
-    bool          overall;
+    float   currentPosition;
+    float   error;
+    int32_t currentPositionPulses;
+    int32_t targetPositionPulses;
+    int32_t errorPulses;
 };
 
-// Interrupt-based PWM reading for maximum accuracy
-volatile unsigned long lastRisingEdgeTime36 = 0, lastFallingEdgeTime36 = 0;
-volatile unsigned long lastRisingEdgeTime39 = 0, lastFallingEdgeTime39 = 0;
-volatile unsigned long pulseHigh36 = 0, pulseLow36 = 0;
-volatile unsigned long pulseHigh39 = 0, pulseLow39 = 0;
-volatile bool          newData36 = false, newData39 = false;
+std::unique_ptr<TMC5160Manager>       driver[4]  = {nullptr};
+std::unique_ptr<MotorSpeedController> motor[4]   = {nullptr};
+std::unique_ptr<MAE3Encoder>          encoder[4] = {nullptr};
 
-// Statistics tracking for bypassed values
-volatile unsigned long bypassedCount36 = 0, bypassedCount39 = 0;
-volatile unsigned long totalInterrupts36 = 0, totalInterrupts39 = 0;
+// Task handles
+TaskHandle_t encoderUpdateTaskHandle = NULL;
+TaskHandle_t motorUpdateTaskHandle   = NULL;
+TaskHandle_t serialReadTaskHandle    = NULL;
 
-// Pulse edge transition detection variables
-volatile int           pulseTransitionCounter36 = 0, pulseTransitionCounter39 = 0;
-volatile unsigned long lastPulseHigh36 = 0, lastPulseHigh39 = 0;
+static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
-void IRAM_ATTR handleInterrupt36();
-void IRAM_ATTR handleInterrupt39();
+static uint8_t currentIndex = 0;  // Current driver index
+static int32_t lastPulse[4] = {0};
 
-void              InitPins();
-validatePwmResult validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber);
-void              readPWMEncodersInterrupt();
-void              diagnoseEncoderSignals();
-void              resetValidatePWM(validatePwmResult* result);
-unsigned long     getMedian(unsigned long arr[], int size);
-float             calculateStandardDeviation(unsigned long arr[], int size);
-void              readPWMEncoders();
+static float targetPosition[4] = {0};
+
+static bool driverEnabled[4]             = {false};
+static bool newTargetpositionReceived[4] = {false};
+static bool firstTime                    = true;
+
+// Command history support
+#define HISTORY_SIZE 10
+static String commandHistory[HISTORY_SIZE];
+static int    historyCount = 0;
+static int    historyIndex = -1;  // -1 means not navigating
+
+bool motorMoving[4] = {false};
+
+static float lastSpeed[4] = {0.0f};
+
+// Static variable to store total distance for speed profile calculations
+static float initialTotalDistance[4] = {0.0f};
+
+// Static variable to store high water mark
+static unsigned int highWaterMark = 0;
+
+void encoderUpdateTask(void* pvParameters);
+void motorUpdateTask(void* pvParameters);
+void serialReadTask(void* pvParameters);
+
+bool         isValidNumber(const String& str);
+void         setTargetPosition(String targetPos);
+void         setMotorId(String motorId);
+float        getMotorPosition();
+MotorContext getMotorContext();
+void         linearMotorUpdate();
+void         rotaryMotorUpdate();
+int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
+void         demonstrateSpeedProfile();
+void         motorStopAndSavePosition(String callerFunctionName);
+void         clearLine();
+void         printSerial();
+void         printMotorStatus();
+void         resetMotorState(uint8_t motorId);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
 {
+    // Initialize SPI
+    SPI.begin(SPIPins::SCK, SPIPins::MISO, SPIPins::MOSI);
+    SPI.setFrequency(SPI_CLOCK);
+    SPI.setDataMode(SPI_MODE3);
     Serial.begin(115200);
+
+    esp_task_wdt_init(10, true);
+    esp_task_wdt_add(NULL);  // Add the current task (setup)
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
+
     delay(1000);
     while (!Serial)
-        delay(10);
-
-    // Initialize pins
-    InitPins();
-
-    Serial.print(F("\r\n"));
-    Serial.flush();
-}
-
-void loop()
-{
-    // Run diagnostics first (only once)
-    static bool diagnosticsRun = false;
-    if (!diagnosticsRun)
     {
-        diagnoseEncoderSignals();
-        diagnosticsRun = true;
+        esp_task_wdt_reset();
+        delay(10);
     }
 
-    // Interrupt-based (maximum accuracy)
-    readPWMEncodersInterrupt();
+#ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
+    Serial.println(F("Stack overflow checking enabled"));
+#else
+    Serial.println(F("Stack overflow checking **NOT** enabled"));
+#endif
 
-    vTaskDelay(370);
-}
+    // Initialize CLI
+    initializeCLI();
 
-void InitPins()
-{
-    // Configure pins 36 and 39 for digital PWM reading
-    pinMode(36, INPUT);  // GPIO36 for PWM encoder 1
-    pinMode(39, INPUT);  // GPIO39 for PWM encoder 2
+    // Initialize and print system diagnostics
+    SystemDiagnostics::initialize();
+    SystemDiagnostics::printSystemInfo();
+    SystemDiagnostics::printSystemStatus();
 
-    // Attach interrupts for maximum accuracy
-    attachInterrupt(digitalPinToInterrupt(36), handleInterrupt36, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(39), handleInterrupt39, CHANGE);
-
-    Serial.print(F("[Info][Setup] Digital pins 36 and 39 initialized with interrupts for PWM encoder reading\r\n"));
-
-    // For disable all drivers pins - for avoid conflict in SPI bus
+    // for disable all drivers pins - for avoid conflict in SPI bus
     // Initialize CS pins and turn them off
     for (uint8_t index = 0; index < 4; index++)
     {
         pinMode(DriverPins::CS[index], OUTPUT);
         digitalWrite(DriverPins::CS[index], HIGH);
     }
+
+    // Initialize TMC5160 drivers
+    for (uint8_t index = 0; index < 4; index++)
+    {
+        // Create driver
+        driver[index] = std::unique_ptr<TMC5160Manager>(new TMC5160Manager(index, DriverPins::CS[index]));
+        driver[index]->begin();
+
+        // Test connection for each driver
+        if (driver[index]->testConnection(true))
+        {
+            driverEnabled[index] = true;
+            // Configure motor parameters
+            if (index == (uint8_t)MotorType::LINEAR)
+                driver[index]->configureDriver_Nema11_1004H(true);
+            else
+                driver[index]->configureDriver_Pancake();
+
+            // Create motor controller
+            motor[index] = std::unique_ptr<MotorSpeedController>(new MotorSpeedController(index, *driver[index], DriverPins::DIR[index], DriverPins::STEP[index], DriverPins::EN[index]));
+            delay(100);
+            // Initialize all motor controllers
+            motor[index]->begin();
+
+            // Create pwm encoder
+            encoder[index] = std::unique_ptr<MAE3Encoder>(new MAE3Encoder(EncoderPins::SIGNAL[index], index));
+            delay(100);
+            // Initialize all encoders
+            encoder[index]->begin();
+        }
+    }
+
+    // Check if any driver is enabled
+    bool anyDriverEnabled = false;
+    for (uint8_t index = 0; index < 4; index++)
+        anyDriverEnabled = anyDriverEnabled || driverEnabled[index];
+
+    if (!anyDriverEnabled)
+    {
+        Serial.println(F("[Error][Setup] All drivers are disabled. Please reset the system."));
+        for (;;)
+        {
+            esp_task_wdt_reset();
+            delay(10);
+        }
+    }
+
+    // Core 1 - For time-sensitive tasks (precise control)
+    // xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
+    // xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
+
+    // Core 0 - For less time-sensitive tasks (such as I/O)
+    // xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
+
+    // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
+    esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
+    esp_task_wdt_add(serialReadTaskHandle);   // Register with WDT
+
+    Serial.println();
+    Serial.flush();
 }
 
-// Interrupt handlers for precise timing
-void IRAM_ATTR handleInterrupt36()
+void loop()
 {
-    if (process36)
-        return;
+    // Handle movement complete outside ISR
+    if (motor[currentIndex])
+        motor[currentIndex]->handleMovementComplete();
+    if (currentIndex == 0)
+        currentIndex = 1;
+    else
+        currentIndex = 0;
+    encoder[currentIndex]->enable();
+    encoder[currentIndex]->processPWM();
+    Serial.print(F("Encoder "));
+    Serial.print(currentIndex + 1);
+    Serial.print(F(" isEnabled: "));
+    Serial.println(encoder[currentIndex]->isEnabled());
+    printSerial();
+    esp_task_wdt_reset();
+    vTaskDelay(800);
+}
 
-    unsigned long currentTime = micros();
-    totalInterrupts36++;
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+bool isValidNumber(const String& str)
+{
+    bool dotSeen = false;
+    int  start   = (str[0] == '-') ? 1 : 0;
 
-    if (digitalRead(36) == HIGH)
+    if (start == 1 && str.length() == 1)
+        return false;  // Not just "-"
+
+    for (size_t i = start; i < str.length(); i++)
     {
-        // Rising edge
-        lastRisingEdgeTime36 = currentTime;
-        if (lastFallingEdgeTime36 != 0)
-            pulseLow36 = currentTime - lastFallingEdgeTime36;
+        char c = str[i];
+        if (c == '.')
+        {
+            if (dotSeen)
+                return false;  // Only one dot is allowed
+            dotSeen = true;
+        }
+        else if (!isDigit(c))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Target P. is in um or degrees (M100)
+void setTargetPosition(String targetPos)
+{
+    // 1. Validate the string
+    if (!isValidNumber(targetPos))
+    {
+        Serial.println(F("[Error][M100] Target P. invalid."));
+        return;
+    }
+
+    // 2. Convert to decimal
+    float value = targetPos.toFloat();
+
+    // 3. Check based on currentIndex
+    MotorType type = motor[currentIndex]->getMotorType();
+    if (type == MotorType::LINEAR)
+    {
+        if (value < -2000.0f || value > 2000.0f)
+        {
+            Serial.println(F("[Error][M100] Target P. limit (-/+)2000 (um) for linear motor."));
+            return;
+        }
+    }
+    else if (type == MotorType::ROTATIONAL)
+    {
+        if (value < 0.01f || value > 359.9f)
+        {
+            Serial.println(F("[Error][M100] Target P. limit 0.01/359.9 (deg) for rotary motor."));
+            return;
+        }
     }
     else
     {
-        // Falling edge
-        lastFallingEdgeTime36 = currentTime;
-        if (lastRisingEdgeTime36 != 0)
+        Serial.print(F("[Error][M100] Invalid Motor Id. limit: 1-"));
+        Serial.println(4);
+        return;
+    }
+
+    // ✅ The value is valid
+    if (currentIndex == (uint8_t)MotorType::LINEAR)
+        driver[currentIndex]->configureDriver_Nema11_1004H(true);
+    else
+        driver[currentIndex]->configureDriver_Pancake();
+
+    targetPosition[currentIndex]            = value;
+    newTargetpositionReceived[currentIndex] = true;
+
+    if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
+        firstTime = false;
+
+    Serial.print(F("[Info][M100] Target P. set to motor "));
+    Serial.println(currentIndex + 1);
+}
+
+// Motor Id is 1-4 (0-3) (M101)
+void setMotorId(String motorId)
+{
+    // 1. Check that it contains only numbers
+    for (size_t i = 0; i < motorId.length(); i++)
+    {
+        if (!isDigit(motorId[i]))
         {
-            pulseHigh36 = currentTime - lastRisingEdgeTime36;
+            Serial.print(F("[Error][M101] Invalid Motor Id. limit: 1-"));
+            Serial.println(4);
+            return;
+        }
+    }
 
-            // Check total period before accepting the values
-            // unsigned long totalPeriod = pulseHigh36 + pulseLow36;
+    // 2. Convert to integer
+    int index = motorId.toInt();
+    if (index < 1 || index > 4)
+    {
+        Serial.print(F("[Error][M101] Invalid Motor Id. limit: 1-"));
+        Serial.println(4);
+        return;
+    }
 
-            // MAE3 standard: period should be around 4000 us (244 Hz)
-            // Accept range: 3731-4545 us (220-268 Hz)
-            /*if (totalPeriod >= MAE3_PERIOD_MIN_US && totalPeriod <= MAE3_PERIOD_MAX_US)
-            {*/
-            newData36 = true;  // Accept valid data
+    // 3. Check if the motor is enabled (assuming: we have an array or function to check the status)
+    if (!driverEnabled[index - 1])
+    {
+        Serial.print(F("[Error][M101] Driver is disabled: "));
+        Serial.println(index);
+        return;
+    }
 
-            // Detect pulse edge transitions
-            // Count digits for current and last pulse values
-            /* int currentCountDigits = countDigits(pulseHigh36);
-             int lastCountDigits    = countDigits(lastPulseValue36);
+    // 4. Check if motor and encoder objects exist
+    // Check for null pointers
+    if (driver[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M101] Driver object is null: "));
+        Serial.println(currentIndex + 1);
+        return;
+    }
 
-             // Detect transition from 1-2 digits to 4 digits (increasing)
-             if (pulseHigh36 > 4000 && (lastCountDigits == 1 || lastCountDigits == 2))
-                 pulseTransitionCounter36++;
+    // Check for null pointers
+    if (motor[index - 1] == nullptr)
+    {
+        Serial.print(F("[Error][M101] Motor object is null: "));
+        Serial.println(index);
+        return;
+    }
 
-             // Detect transition from 4 digits to 1-2 digits (decreasing)
-             else if (lastPulseValue36 > 4000 && (currentCountDigits == 1 || currentCountDigits == 2))
-                 pulseTransitionCounter36--;
+    // Check for null pointers
+    if (encoder[index - 1] == nullptr)
+    {
+        Serial.print(F("[Error][M101] Encoder object is null: "));
+        Serial.println(index);
+        return;
+    }
 
-             lastPulseValue36 = pulseHigh36;*/
-            /*}
+    currentIndex = index - 1;
+    Serial.print(F("[Info][M101] Motor is selected: "));
+    Serial.println(index);
+}
+
+// Get motor position (M102)
+float getMotorPosition()
+{
+    // Check for null pointers
+    if (driver[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M102] Driver object is null: "));
+        Serial.println(currentIndex + 1);
+        return 0.000999f;  // Return 0.000999f if null pointers
+    }
+
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M102] Motor object is null: "));
+        Serial.println(currentIndex + 1);
+        return 0.000999f;  // Return 0.000999f if null pointers
+    }
+
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M102] Encoder object is null: "));
+        Serial.println(currentIndex + 1);
+        return 0.000999f;  // Return 0.000999f if null pointers
+    }
+
+    MotorType      type   = motor[currentIndex]->getMotorType();
+    EncoderContext encCtx = encoder[currentIndex]->getEncoderContext();
+    return (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
+}
+
+// Get motor context (M103)
+MotorContext getMotorContext()
+{
+    MotorContext motCtx = {};  // Zero-initialize all members
+
+    // Check for null pointers
+    if (driver[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M103] Driver object is null: "));
+        Serial.println(currentIndex + 1);
+        return motCtx;  // Return zero-initialized context
+    }
+
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M103] Motor object is null: "));
+        Serial.println(currentIndex + 1);
+        return motCtx;  // Return zero-initialized context
+    }
+
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M103] Encoder object is null: "));
+        Serial.println(currentIndex + 1);
+        return motCtx;  // Return zero-initialized context
+    }
+
+    EncoderContext encCtx = encoder[currentIndex]->getEncoderContext();
+    MotorType      type   = motor[currentIndex]->getMotorType();
+
+    motCtx.currentPosition = (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
+    motCtx.error           = motor[currentIndex]->calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
+
+    if (type == MotorType::ROTATIONAL)
+        motCtx.error = motor[currentIndex]->wrapAngle180(motCtx.error);
+
+    // amir
+    //  Use appropriate pulse conversion based on motor type
+    if (type == MotorType::LINEAR)
+    {
+        motCtx.currentPositionPulses = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
+        motCtx.targetPositionPulses  = encoder[currentIndex]->umToPulses(targetPosition[currentIndex]);
+        motCtx.errorPulses           = encoder[currentIndex]->umToPulses(motCtx.error);
+    }
+    else  // ROTATIONAL
+    {
+        motCtx.currentPositionPulses = encoder[currentIndex]->degreesToPulses(motCtx.currentPosition);
+        motCtx.targetPositionPulses  = encoder[currentIndex]->degreesToPulses(targetPosition[currentIndex]);
+        motCtx.errorPulses           = encoder[currentIndex]->degreesToPulses(motCtx.error);
+    }
+
+    return motCtx;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Motor Update Task (M104)
+void motorUpdateTask(void* pvParameters)
+{
+    const TickType_t xFrequency    = pdMS_TO_TICKS(4);
+    TickType_t       xLastWakeTime = xTaskGetTickCount();
+
+    static bool     isDriverConnectedMessageShown_enc = false;
+    static bool     isDriverConnectedMessageShown_mtr = false;
+    static int      lastReportedIndex                 = -1;
+    static uint32_t counter                           = 0;
+
+    for (;;)
+    {
+        // Check for null pointers
+        if (driver[currentIndex] == nullptr)
+        {
+            Serial.print(F("[Error][M104] Driver object is null: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // Check for null pointers
+        if (motor[currentIndex] == nullptr)
+        {
+            Serial.print(F("[Error][M104] Motor object is null: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // Check for null pointers
+        if (encoder[currentIndex] == nullptr)
+        {
+            Serial.print(F("[Error][M104] Encoder object is null: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // if driver is not connected, show the message
+        bool isEnabled = driverEnabled[currentIndex];
+        if (!isEnabled && !isDriverConnectedMessageShown_enc)
+        {
+            isDriverConnectedMessageShown_enc = true;
+            Serial.print(F("[Error][M104] Driver's connection failed!: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // if driver is connected, don't show the message again
+        isDriverConnectedMessageShown_enc = isEnabled && isDriverConnectedMessageShown_enc;
+
+        for (uint8_t index = 0; index < 4; index++)
+        {
+            // Check for null pointers
+            if (encoder[index] == nullptr)
+            {
+                Serial.print(F("[Error][M104] Encoder object is null: "));
+                Serial.println(index + 1);
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+
+            // Enable/Disable encoder based on currentIndex
+            if (index == currentIndex)
+            {
+                if (encoder[index]->isDisabled())
+                    encoder[index]->enable();
+            }
             else
             {
-                // Bypass invalid data - reset values
-                pulseHigh36 = 0;
-                pulseLow36  = 0;
-                newData36   = false;
-                bypassedCount36++;
-            }*/
+                if (encoder[index]->isEnabled())
+                    encoder[index]->disable();
+            }
         }
+
+        // Process PWM if the driver is enabled
+        if (currentIndex < 4 && isEnabled)
+        {
+            encoder[currentIndex]->processPWM();
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        }
+
+        if (!isEnabled && !isDriverConnectedMessageShown_mtr)
+        {
+            isDriverConnectedMessageShown_mtr = true;
+            Serial.print(F("[Error][M104] Driver's connection failed!: "));
+            Serial.println(currentIndex + 1);
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // if driver is connected, don't show the message again
+        isDriverConnectedMessageShown_mtr = isEnabled && isDriverConnectedMessageShown_mtr;
+
+        if (isEnabled)
+        {
+            isDriverConnectedMessageShown_mtr = false;
+
+            if (lastReportedIndex != currentIndex)
+            {
+                printMotorStatus();
+                lastReportedIndex = currentIndex;
+            }
+
+            // Call appropriate motor update function based on motor type
+            if (currentIndex == 0)  // Linear motor (index 0)
+                linearMotorUpdate();
+
+            else  // Rotary motors (indices 1-3)
+                rotaryMotorUpdate();
+        }
+
+        esp_task_wdt_reset();
+        if (++counter % 1000 == 0)  // Only check and print once every 1000
+            highWaterMark = uxTaskGetStackHighWaterMark(NULL);
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
-void IRAM_ATTR handleInterrupt39()
+// Linear Motor Update (M105)
+void linearMotorUpdate()
 {
-    if (process39)
+    if (!newTargetpositionReceived[currentIndex])
         return;
 
-    unsigned long currentTime = micros();
-    totalInterrupts39++;
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+        return;
 
-    if (digitalRead(39) == HIGH)
+    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;  // Acceptable error range
+    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;  // Acceptable error range
+    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // Fine movement threshold
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // Maximum correction pulses
+    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // Maximum correction pulses
+    static const int     MIN_SPEED                     = 20;    // Start and end speed
+    static const int     MAX_SPEED                     = 200;   // Maximum speed
+    static const int     FINE_MOVE_SPEED               = 12;    // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;  // 5% segments for speed changes
+
+    // Add DEBUG_MAIN logging for state variables
+    // Serial.println(F("[DEBUG_MAIN][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d, initialDistance:
+    // %.2f\r\n", motorMoving[currentIndex], newTargetpositionReceived[currentIndex], initialTotalDistance[currentIndex]);
+
+    if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        // Rising edge
-        lastRisingEdgeTime39 = currentTime;
-        if (lastFallingEdgeTime39 != 0)
-            pulseLow39 = currentTime - lastFallingEdgeTime39;
+        MotorContext motCtx = getMotorContext();
+
+        float absError = fabs(motCtx.error);
+        float target   = targetPosition[currentIndex];
+
+        int32_t targetPulse  = encoder[currentIndex]->umToPulses(target);
+        int32_t currentPulse = encoder[currentIndex]->umToPulses(motCtx.currentPosition);
+        int32_t deltaPulse   = targetPulse - currentPulse;
+
+        float   positionThreshold = (motCtx.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
+        int32_t maxMicroMovePulse = (motCtx.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
+
+        // Check if we've reached the Target P.
+        if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
+        {
+            motorStopAndSavePosition("M105");
+            return;
+        }
+
+        // Set movement direction
+        motor[currentIndex]->setDirection(motCtx.error > 0);
+
+        if (!motor[currentIndex]->isEnabled())
+            motor[currentIndex]->enable();
+
+        // Register callback for movement completion
+        motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
+
+        // Limit pulses for micro-movement
+        if (abs(deltaPulse) > maxMicroMovePulse)
+            deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
+
+        // Calculate speed based on smooth stepped profile
+        int moveSpeed;
+        if (absError <= FINE_MOVE_THRESHOLD_UM)
+        {
+            // Fine movement - low speed
+            moveSpeed = FINE_MOVE_SPEED;
+        }
+        else
+        {
+            // Store total distance at the beginning of movement
+            if (initialTotalDistance[currentIndex] == 0)
+            {
+                initialTotalDistance[currentIndex] = absError;
+            }
+
+            // Calculate progress percentage (0.0 to 1.0)
+            float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+
+            // Calculate speed based on stepped profile
+            moveSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+        }
+
+        // Execute movement
+        Serial.print(F("[Info][M105] deltaPulse = "));
+        Serial.print((long)deltaPulse);
+        Serial.print(F(", error = "));
+        Serial.print(motCtx.error, 2);
+        Serial.print(F(" um, speed = "));
+        Serial.print(moveSpeed);
+        Serial.print(F(", progress = "));
+        Serial.print((1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, 1);
+        Serial.print(F("%, isMotorEnabled = "));
+        Serial.println(motor[currentIndex]->isEnabled());
+
+        motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
+        lastSpeed[currentIndex]   = moveSpeed;
+        motorMoving[currentIndex] = true;
     }
     else
     {
-        // Falling edge
-        lastFallingEdgeTime39 = currentTime;
-        if (lastRisingEdgeTime39 != 0)
-        {
-            pulseHigh39 = currentTime - lastRisingEdgeTime39;
-
-            // Check total period before accepting the values
-            // unsigned long totalPeriod = pulseHigh39 + pulseLow39;
-
-            // MAE3 standard: period should be around 4000 us (244 Hz)
-            // Accept range: 3731-4545 us (220-268 Hz)
-            /*if (totalPeriod >= MAE3_PERIOD_MIN_US && totalPeriod <= MAE3_PERIOD_MAX_US)
-            {*/
-            newData39 = true;  // Accept valid data
-
-            // Detect pulse edge transitions
-            // Count digits for current and last pulse values
-            /*int currentCountDigits = countDigits(pulseHigh39);
-            int lastCountDigits    = countDigits(lastPulseValue39);
-
-            // Detect transition from 1-2 digits to 4 digits (increasing)
-            if (pulseHigh39 > 4000 && (lastCountDigits == 1 || lastCountDigits == 2))
-                pulseTransitionCounter39++;
-
-            // Detect transition from 4 digits to 1-2 digits (decreasing)
-            else if (lastPulseValue39 > 4000 && (currentCountDigits == 1 || currentCountDigits == 2))
-                pulseTransitionCounter39--;
-
-            lastPulseValue39 = pulseHigh39;*/
-            /* }
-             else
-             {
-                 // Bypass invalid data - reset values
-                 pulseHigh39 = 0;
-                 pulseLow39  = 0;
-                 newData39   = false;
-                 bypassedCount39++;
-             }*/
-        }
+        // When motor is moving, don't reset the total distance
+        // Only reset when movement is complete in motorStopAndSavePosition
     }
 }
 
-// Diagnostic function to check encoder signal quality
-void diagnoseEncoderSignals()
+// Rotary Motor Update (M106)
+void rotaryMotorUpdate()
 {
-    printf("\n=== ENCODER SIGNAL DIAGNOSTICS ===\n");
+    if (!newTargetpositionReceived[currentIndex])
+        return;
 
-    // Check if interrupts are working
-    printf("Interrupt Status:\n");
-    printf("- Pin 36 interrupt attached: %s\n", (digitalPinToInterrupt(36) != NOT_AN_INTERRUPT) ? "YES" : "NO");
-    printf("- Pin 39 interrupt attached: %s\n", (digitalPinToInterrupt(39) != NOT_AN_INTERRUPT) ? "YES" : "NO");
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+        return;
 
-    // Check pin states
-    printf("\nPin States:\n");
-    printf("- Pin 36 state: %s\n", digitalRead(36) ? "HIGH" : "LOW");
-    printf("- Pin 39 state: %s\n", digitalRead(39) ? "HIGH" : "LOW");
+    // Rotary motor specific constants
+    static const float   POSITION_THRESHOLD_DEG_FORWARD = 0.01f;  // Acceptable error range for rotary motors
+    static const float   FINE_MOVE_THRESHOLD_DEG        = 1.0f;   // Fine movement threshold for rotary motors
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD   = 3;      // Maximum correction pulses for rotary
+    static const int     MIN_SPEED                      = 8;      // Start and end speed
+    static const int     MAX_SPEED                      = 8;      // Maximum speed
+    static const int     FINE_MOVE_SPEED                = 8;      // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT           = 5.0f;   // 5% segments for speed changes
 
-    // Check for signal activity
-    printf("\nSignal Activity Test (5 seconds):\n");
-
-    unsigned long startTime     = millis();
-    unsigned long transitions36 = 0, transitions39 = 0;
-    bool          lastState36 = digitalRead(36);
-    bool          lastState39 = digitalRead(39);
-
-    while (millis() - startTime < 5000)
+    // Validate Target P. is within rotary motor limits (0.01 to 359.9 degrees)
+    float target = targetPosition[currentIndex];
+    if (target < 0.01f || target > 359.9f)
     {
-        bool currentState36 = digitalRead(36);
-        bool currentState39 = digitalRead(39);
-
-        if (currentState36 != lastState36)
-        {
-            transitions36++;
-            lastState36 = currentState36;
-        }
-
-        if (currentState39 != lastState39)
-        {
-            transitions39++;
-            lastState39 = currentState39;
-        }
-
-        delayMicroseconds(100);
+        Serial.print(F("[Error][M106] Target P. is out of range 0.01/359.9 (deg): "));
+        Serial.println(target);
+        newTargetpositionReceived[currentIndex] = false;
+        return;
     }
 
-    printf("- Pin 36 transitions: %lu (%.1f Hz)\n", transitions36, (float)transitions36 / 10.0);
-    printf("- Pin 39 transitions: %lu (%.1f Hz)\n", transitions39, (float)transitions39 / 10.0);
-
-    // Expected frequency for MAE3 is ~250 Hz
-    printf("- Expected frequency: MIN. 220 Hz, MAX. 268 Hz, TYP. 244 Hz\n");
-
-    if (transitions36 < 100)
+    if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        printf("WARNING: Pin 36 has very low activity - check wiring!\n");
-    }
-    if (transitions39 < 100)
-    {
-        printf("WARNING: Pin 39 has very low activity - check wiring!\n");
-    }
+        MotorContext motCtx = getMotorContext();
 
-    printf("=== END DIAGNOSTICS ===\n\n");
-}
+        float absError = fabs(motCtx.error);
 
-void resetValidatePWM(validatePwmResult* result)
-{
-    result->totalPeriod = 0;
-    result->position    = 0;
-    result->degrees     = 0.0f;
-    result->highOK      = false;
-    result->lowOK       = false;
-    result->totalOK     = false;
-    result->periodOK    = false;
-    result->overall     = false;
-}
+        // Convert degrees to pulses for rotary motor
+        int32_t targetPulse  = encoder[currentIndex]->degreesToPulses(target);
+        int32_t currentPulse = encoder[currentIndex]->degreesToPulses(motCtx.currentPosition);
+        int32_t deltaPulse   = targetPulse - currentPulse;
 
-// Simple validation function with detailed error reporting
-validatePwmResult validatePWMValues(unsigned long highPulse, unsigned long lowPulse, int pinNumber)
-{
-    validatePwmResult result;
-    resetValidatePWM(&result);
+        // Use symmetric thresholds for rotary motors
+        float   positionThreshold = POSITION_THRESHOLD_DEG_FORWARD;
+        int32_t maxMicroMovePulse = MAX_MICRO_MOVE_PULSE_FORWARD;
 
-    result.totalPeriod = highPulse + lowPulse;
-#if DEBUG_MAIN_2
-    printf("\n=== Validation for Pin %d ===\n", pinNumber);
-    printf("High pulse: %lu us\n", highPulse);
-    printf("Low pulse: %lu us\n", lowPulse);
-    printf("Total period: %lu us\n", result.totalPeriod);
-#endif
-
-    // Check if data was bypassed (values are 0)
-    if (highPulse == 0 && lowPulse == 0)
-    {
-#if DEBUG_MAIN_2
-        printf("Data was bypassed - invalid period detected\n");
-#endif
-        return result;
-    }
-
-    // Check each condition separately
-    result.highOK   = (highPulse >= 1 && highPulse <= 4302);  // 4097
-    result.lowOK    = (lowPulse >= 1 && lowPulse <= 4302);    // 4097//amir
-    result.totalOK  = ((result.totalPeriod) > 0);
-    result.periodOK = ((result.totalPeriod) >= MAE3_PERIOD_MIN_US && (result.totalPeriod) <= MAE3_PERIOD_MAX_US);
-    result.overall  = result.highOK && result.lowOK && result.totalOK && result.periodOK;
-
-#if DEBUG_MAIN_2
-    printf("High pulse validation: %s (1-4097 us)\n", result.highOK ? "PASS" : "FAIL");
-    printf("Low pulse validation: %s (1-4097 us)\n", result.lowOK ? "PASS" : "FAIL");
-    printf("Total period validation: %s (>0 us)\n", result.totalOK ? "PASS" : "FAIL");
-    printf("Period range validation: %s (3731-4545 us)\n", result.periodOK ? "PASS" : "FAIL");
-    printf("Overall validation: %s\n", result.overall ? "PASS" : "FAIL");
-#endif
-
-    return result;
-}
-
-bool enteredForwardWrapZone36 = false;
-bool enteredReverseWrapZone36 = false;
-bool enteredForwardWrapZone39 = false;
-bool enteredReverseWrapZone39 = false;
-
-#define WRAP_ZONE_MIN        200
-#define WRAP_ZONE_MAX        3000
-#define WRAP_ZONE_UNLOCK_MIN 300
-#define WRAP_ZONE_UNLOCK_MAX 3000
-
-// Interrupt-based PWM reading method
-void readPWMEncodersInterrupt()
-{
-    process36 = true;
-    process39 = true;
-
-    // Reset flags
-    newData36 = false;
-    newData39 = false;
-
-    // Wait for new data (with timeout)
-    unsigned long startWait = millis();
-    while ((!newData36 || !newData39) && (millis() - startWait) < 100)
-    {
-        delayMicroseconds(10);
-    }
-
-#if DEBUG_MAIN_2
-    // Print bypass statistics
-    printf("\n=== BYPASS STATISTICS ===\n");
-    printf("Pin 36 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts36, bypassedCount36, (totalInterrupts36 > 0) ? (float)bypassedCount36 * 100.0f / totalInterrupts36 : 0.0f);
-    printf("Pin 39 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts39, bypassedCount39, (totalInterrupts39 > 0) ? (float)bypassedCount39 * 100.0f / totalInterrupts39 : 0.0f);
-
-    // Print raw values before validation
-    printf("\n===  Raw PWM Values ===\n");
-    printf("Pin 36 - High: %lu us, Low: %lu us, Total: %lu us\n", pulseHigh36, pulseLow36, pulseHigh36 + pulseLow36);
-    printf("Pin 39 - High: %lu us, Low: %lu us, Total: %lu us\n", pulseHigh39, pulseLow39, pulseHigh39 + pulseLow39);
-#endif
-
-    // Use detailed validation
-    validatePwmResult valid36 = validatePWMValues(pulseHigh36, pulseLow36, 36);
-    validatePwmResult valid39 = validatePWMValues(pulseHigh39, pulseLow39, 39);
-
-    // Calculate position using MAE3 PWM formula for 12-bit
-    if (valid36.overall)
-    {
-        int position36   = ((pulseHigh36 * 4098) / valid36.totalPeriod) - 1;
-        valid36.position = constrain(position36, 0, 4095);
-        valid36.degrees  = (valid36.position * 360.0f) / 4096.0f;
-        valid36.delta    = pulseHigh36 - lastPulseHigh36;
-
-        if (lastPulseHigh36 > WRAP_ZONE_MAX && pulseHigh36 < WRAP_ZONE_MIN && !enteredForwardWrapZone36)
+        // Check if we've reached the Target P.
+        if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
-            pulseTransitionCounter36++;
-            enteredForwardWrapZone36 = true;
-            enteredReverseWrapZone36 = false;  // reset other direction
-        }
-        else if (lastPulseHigh36 < WRAP_ZONE_MIN && pulseHigh36 > WRAP_ZONE_MAX && !enteredReverseWrapZone36)
-        {
-            pulseTransitionCounter36--;
-            enteredForwardWrapZone36 = false;
-            enteredReverseWrapZone36 = true;  // reset other direction
+            motorStopAndSavePosition("M106");
+            return;
         }
 
-        // Reset lock flags when encoder is in mid-range (normal zone)
-        else if (pulseHigh36 > WRAP_ZONE_MIN + 200 && pulseHigh36 < WRAP_ZONE_MAX - 200)
+        // Set movement direction
+        motor[currentIndex]->setDirection(motCtx.error > 0);
+
+        if (!motor[currentIndex]->isEnabled())
+            motor[currentIndex]->enable();
+
+        // Register callback for movement completion
+        motor[currentIndex]->attachOnComplete([]() { motorMoving[currentIndex] = false; });
+
+        // Limit pulses for micro-movement
+        if (abs(deltaPulse) > maxMicroMovePulse)
+            deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
+
+        // Calculate speed based on smooth stepped profile
+        int moveSpeed;
+        if (absError <= FINE_MOVE_THRESHOLD_DEG)
         {
-            enteredForwardWrapZone36 = false;
-            enteredReverseWrapZone36 = false;
+            // Fine movement - low speed
+            moveSpeed = FINE_MOVE_SPEED;
         }
-
-        lastPulseHigh36 = pulseHigh36;
-    }
-
-    if (valid39.overall)
-    {
-        int position39   = ((pulseHigh39 * 4098) / valid39.totalPeriod) - 1;
-        valid39.position = constrain(position39, 0, 4095);
-        valid39.degrees  = (valid39.position * 360.0f) / 4096.0f;
-        valid39.delta    = pulseHigh39 - lastPulseHigh39;
-
-        if (lastPulseHigh39 > WRAP_ZONE_MAX && pulseHigh39 < WRAP_ZONE_MIN && !enteredForwardWrapZone39)
+        else
         {
-            pulseTransitionCounter39++;
-            enteredForwardWrapZone39 = true;
-            enteredReverseWrapZone39 = false;  // reset other direction
-        }
-        else if (lastPulseHigh39 < WRAP_ZONE_MIN && pulseHigh39 > WRAP_ZONE_MAX && !enteredReverseWrapZone39)
-        {
-            pulseTransitionCounter39--;
-            enteredForwardWrapZone39 = false;
-            enteredReverseWrapZone39 = true;  // reset other direction
-        }
-
-        // Reset flag when position returns to mid-range
-        if (pulseHigh39 > WRAP_ZONE_UNLOCK_MIN && pulseHigh39 < WRAP_ZONE_UNLOCK_MAX)
-        {
-            enteredForwardWrapZone39 = false;
-            enteredReverseWrapZone39 = false;
-        }
-
-        // Reset lock flags when encoder is in mid-range (normal zone)
-        else if (pulseHigh39 > WRAP_ZONE_MIN + 200 && pulseHigh39 < WRAP_ZONE_MAX - 200)
-        {
-            enteredForwardWrapZone39 = false;
-            enteredReverseWrapZone39 = false;
-        }
-
-        lastPulseHigh39 = pulseHigh39;
-    }
-
-    // Check if position has changed
-    static int lastPrintPosition36 = -1, lastPrintPosition39 = -1;
-
-    if (abs(valid36.position - lastPrintPosition36) > 1 || abs(valid39.position - lastPrintPosition39) > 1)
-    {
-        lastPrintPosition36 = valid36.position;
-        lastPrintPosition39 = valid39.position;
-
-        // Print results
-        Serial.println();
-        printf("┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┐\n");
-        printf("│                                     Interrupt-Based PWM Readings                                           │\n");
-        printf("├────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n");
-        printf("│ Pin │ Position │ Degrees  │ High Pulse │ Low Pulse │ Total Period │ Status │ Transition │ Bypassed │ Delta |\n");
-        printf("├─────┼──────────┼──────────┼────────────┼───────────┼──────────────┼────────┼────────────┼──────────────────┤\n");
-        printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │ %10d │ %8lu │ %5d │\n", valid36.position, valid36.degrees, pulseHigh36, pulseLow36, valid36.totalPeriod, valid36.overall ? "OK    " : "ERR   ", pulseTransitionCounter36, bypassedCount36, valid36.delta);
-        printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │ %10d │ %8lu │ %5d │\n", valid39.position, valid39.degrees, pulseHigh39, pulseLow39, valid39.totalPeriod, valid39.overall ? "OK    " : "ERR   ", pulseTransitionCounter39, bypassedCount39, valid39.delta);
-        printf("└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n");
-    }
-
-    process36 = false;
-    process39 = false;
-}
-
-// Optimized method for reading PWM encoder values with minimal error
-void readPWMEncoders()
-{
-    // Constants for optimization
-    const unsigned long TIMEOUT_US   = 5000;  // 5ms timeout
-    const unsigned long MIN_PULSE_US = 50;    // Minimum valid pulse width
-    const unsigned long MAX_PULSE_US = 4097;  // Maximum valid pulse width
-    const int           SAMPLES      = 5;     // Number of samples for averaging
-
-    // Arrays for multiple samples
-    unsigned long pulseHigh36[SAMPLES] = {0}, pulseLow36[SAMPLES] = {0};
-    unsigned long pulseHigh39[SAMPLES] = {0}, pulseLow39[SAMPLES] = {0};
-
-    // Take multiple samples for averaging
-    for (int sample = 0; sample < SAMPLES; sample++)
-    {
-        // Measure PWM for pin 36 with improved synchronization
-        unsigned long startTime = micros();
-
-        // Wait for stable signal - find falling edge
-        while (digitalRead(36) == HIGH && (micros() - startTime) < TIMEOUT_US)
-        {
-            // Wait for falling edge
-        }
-
-        // Wait for rising edge
-        startTime = micros();
-        while (digitalRead(36) == LOW && (micros() - startTime) < TIMEOUT_US)
-        {
-            // Wait for rising edge
-        }
-
-        // Measure high pulse width with precise timing
-        startTime               = micros();
-        unsigned long highStart = startTime;
-        while (digitalRead(36) == HIGH && (micros() - startTime) < TIMEOUT_US)
-        {
-            pulseHigh36[sample] = micros() - highStart;
-        }
-
-        // Measure low pulse width with precise timing
-        startTime              = micros();
-        unsigned long lowStart = startTime;
-        while (digitalRead(36) == LOW && (micros() - startTime) < TIMEOUT_US)
-        {
-            pulseLow36[sample] = micros() - lowStart;
-        }
-
-        // Measure PWM for pin 39 with same improved method
-        startTime = micros();
-        while (digitalRead(39) == HIGH && (micros() - startTime) < TIMEOUT_US)
-        {
-            // Wait for falling edge
-        }
-
-        startTime = micros();
-        while (digitalRead(39) == LOW && (micros() - startTime) < TIMEOUT_US)
-        {
-            // Wait for rising edge
-        }
-
-        startTime = micros();
-        highStart = startTime;
-        while (digitalRead(39) == HIGH && (micros() - startTime) < TIMEOUT_US)
-        {
-            pulseHigh39[sample] = micros() - highStart;
-        }
-
-        startTime = micros();
-        lowStart  = startTime;
-        while (digitalRead(39) == LOW && (micros() - startTime) < TIMEOUT_US)
-        {
-            pulseLow39[sample] = micros() - lowStart;
-        }
-
-        // Small delay between samples
-        delayMicroseconds(100);
-    }
-
-    // Calculate median values to remove outliers
-    unsigned long medianHigh36   = getMedian(pulseHigh36, SAMPLES);
-    unsigned long medianLow36    = getMedian(pulseLow36, SAMPLES);
-    unsigned long medianPeriod36 = medianHigh36 + medianLow36;
-
-    unsigned long medianHigh39   = getMedian(pulseHigh39, SAMPLES);
-    unsigned long medianLow39    = getMedian(pulseLow39, SAMPLES);
-    unsigned long medianPeriod39 = medianHigh39 + medianLow39;
-
-    // Validate pulse widths according to MAE3 specifications
-    bool valid36 = (medianHigh36 >= MIN_PULSE_US && medianHigh36 <= MAX_PULSE_US && medianLow36 >= MIN_PULSE_US && medianLow36 <= MAX_PULSE_US && medianPeriod36 > 0 && medianPeriod36 <= 4098);
-
-    bool valid39 = (medianHigh39 >= MIN_PULSE_US && medianHigh39 <= MAX_PULSE_US && medianLow39 >= MIN_PULSE_US && medianLow39 <= MAX_PULSE_US && medianPeriod39 > 0 && medianPeriod39 <= 4098);
-
-    // Calculate position using MAE3 PWM formula for 12-bit with validation
-    int position36 = 0, position39 = 0;
-
-    if (valid36)
-    {
-        // x = ((t_on * 4098) / (t_on + t_off)) - 1
-        position36 = ((medianHigh36 * 4098) / medianPeriod36) - 1;
-        position36 = constrain(position36, 0, 4095);  // Clamp to valid range
-    }
-
-    if (valid39)
-    {
-        position39 = ((medianHigh39 * 4098) / medianPeriod39) - 1;
-        position39 = constrain(position39, 0, 4095);  // Clamp to valid range
-    }
-
-    // Convert to degrees (360° / 4096 positions)
-    float degrees36 = (position36 * 360.0f) / 4096.0f;
-    float degrees39 = (position39 * 360.0f) / 4096.0f;
-
-    // Calculate standard deviation for error estimation
-    float stdDev36 = calculateStandardDeviation(pulseHigh36, SAMPLES);
-    float stdDev39 = calculateStandardDeviation(pulseHigh39, SAMPLES);
-
-    // Print results with error analysis
-    printf("\n┌─────────────────────────────────────────────────────────────────────────────────────┐\n");
-    printf("│                              Optimized PWM Encoder Readings                          │\n");
-    printf("├─────────────────────────────────────────────────────────────────────────────────────┤\n");
-    printf("│ Pin │ Position │ Degrees  │ High Pulse │ Low Pulse │ Total Period │ StdDev │ Status │\n");
-    printf("├─────┼──────────┼──────────┼────────────┼───────────┼──────────────┼────────┼────────┤\n");
-    printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %6.1f │ %s │\n", position36, degrees36, medianHigh36, medianLow36, medianPeriod36, stdDev36, valid36 ? "OK    " : "ERR   ");
-    printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %6.1f │ %s │\n", position39, degrees39, medianHigh39, medianLow39, medianPeriod39, stdDev39, valid39 ? "OK    " : "ERR   ");
-    printf("└─────────────────────────────────────────────────────────────────────────────────────┘\n");
-}
-
-// Helper function to calculate median
-unsigned long getMedian(unsigned long arr[], int size)
-{
-    // Create a copy for sorting
-    unsigned long temp[size];
-    memcpy(temp, arr, size * sizeof(unsigned long));
-
-    // Sort the array
-    for (int i = 0; i < size - 1; i++)
-    {
-        for (int j = 0; j < size - i - 1; j++)
-        {
-            if (temp[j] > temp[j + 1])
+            // Store total distance at the beginning of movement
+            if (initialTotalDistance[currentIndex] == 0)
             {
-                unsigned long t = temp[j];
-                temp[j]         = temp[j + 1];
-                temp[j + 1]     = t;
+                initialTotalDistance[currentIndex] = absError;
+            }
+
+            // Calculate progress percentage (0.0 to 1.0)
+            float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+
+            // Calculate speed based on stepped profile
+            moveSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+        }
+
+        // Execute movement
+        Serial.print(F("[Info][M106] Motor "));
+        Serial.print(currentIndex + 1);
+        Serial.print(F(": deltaPulse = "));
+        Serial.print((long)deltaPulse);
+        Serial.print(F(", error = "));
+        Serial.print(motCtx.error, 2);
+        Serial.print(F(" deg, speed = "));
+        Serial.print(moveSpeed);
+        Serial.print(F(", progress = "));
+        Serial.print((1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, 1);
+        Serial.print(F("%, isMotorEnabled = "));
+        Serial.println(motor[currentIndex]->isEnabled());
+
+        motor[currentIndex]->move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
+        lastSpeed[currentIndex]   = moveSpeed;
+        motorMoving[currentIndex] = true;
+    }
+    else
+    {
+        // When motor is moving, don't reset the total distance
+        // Only reset when movement is complete in motorStopAndSavePosition
+    }
+}
+
+// Helper function to calculate stepped speed profile
+int calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent)
+{
+    // Ensure progress is within bounds
+    if (progressPercent <= 0.0f)
+        return minSpeed;
+    if (progressPercent >= 1.0f)
+        return minSpeed;
+
+    // Calculate which segment we're in (0 to 19 for 5% segments)
+    int segment = static_cast<int>(progressPercent * 100.0f / segmentSizePercent);
+
+    // Calculate total number of segments
+    int totalSegments = static_cast<int>(100.0f / segmentSizePercent);
+
+    // Calculate speed range
+    int speedRange = maxSpeed - minSpeed;
+
+    // Calculate speed based on segment position
+    int speed;
+    if (segment <= totalSegments / 2)
+    {
+        // Ramp up phase (first half)
+        float rampUpProgress = static_cast<float>(segment) / (totalSegments / 2.0f);
+        speed                = minSpeed + static_cast<int>(speedRange * rampUpProgress);
+    }
+    else
+    {
+        // Ramp down phase (second half)
+        float rampDownProgress = static_cast<float>(segment - totalSegments / 2) / (totalSegments / 2.0f);
+        speed                  = maxSpeed - static_cast<int>(speedRange * rampDownProgress);
+    }
+
+    // Ensure speed is within bounds
+    if (speed < minSpeed)
+        speed = minSpeed;
+    if (speed > maxSpeed)
+        speed = maxSpeed;
+
+    return speed;
+}
+
+// Function to demonstrate speed profile (for testing)
+void demonstrateSpeedProfile()
+{
+    Serial.println(F("\r\n=== Speed Profile Demonstration ==="));
+    Serial.println(F("Progress% | Segment | Speed"));
+    Serial.println(F("----------|---------|------"));
+
+    const int   minSpeed    = 20;
+    const int   maxSpeed    = 200;
+    const float segmentSize = 5.0f;
+
+    for (int i = 0; i <= 100; i += 5)
+    {
+        float progress = i / 100.0f;
+        int   segment  = static_cast<int>(progress * 100.0f / segmentSize);
+        int   speed    = calculateSteppedSpeed(progress, minSpeed, maxSpeed, segmentSize);
+
+        Serial.printf("%8d%% | %7d | %5d\r\n", i, segment, speed);
+    }
+    Serial.println(F("=====================================\r\n"));
+}
+
+// Motor Stop and Save Position (M107)
+void motorStopAndSavePosition(String callerFunctionName)
+{
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
+        return;
+
+    callerFunctionName = "[" + callerFunctionName + "]";
+    Serial.println(callerFunctionName);
+
+    if (callerFunctionName == "M105" || callerFunctionName == "M106")
+        Serial.println(F(" - [Info][M107] Reached target. Stopping..."));
+
+    // Reset all state variables that prevent subsequent movements
+    newTargetpositionReceived[currentIndex] = false;
+    motorMoving[currentIndex]               = false;  // ✅ CRITICAL: Reset motor moving flag
+    initialTotalDistance[currentIndex]      = 0.0f;   // ✅ Reset distance for speed profile
+    lastSpeed[currentIndex]                 = 0.0f;
+
+    motor[currentIndex]->stop();
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    if (callerFunctionName == "M105" || callerFunctionName == "M106")
+        Serial.println(F(" - [Info][M107] Final correction within threshold. Done."));
+
+    printMotorStatus();
+    printSerial();
+}
+
+// Emergency reset function to clear all motor state variables (M108)
+void resetMotorState(uint8_t id)
+{
+    if (id >= 4)
+        return;
+
+    Serial.print(F("[Info][M108] Resetting motor state variables: "));
+    Serial.println(id + 1);
+
+    // Reset all state variables
+    newTargetpositionReceived[id] = false;
+    motorMoving[id]               = false;
+    lastSpeed[id]                 = 0.0f;
+
+    // Reset motor controller state
+    if (motor[id] != nullptr)
+    {
+        motor[id]->stop();
+        motor[id]->disable();
+    }
+
+    Serial.print(F("[Info][M108] Motor state reset complete: "));
+    Serial.println(id + 1);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void clearLine()
+{
+    Serial.print(F("\r"));  // Go to the beginning of the line
+    Serial.print(F("> "));
+    for (int i = 0; i < 50; ++i)
+        Serial.print(F(" "));  // More space
+    Serial.print(F("\r> "));
+}
+
+// Serial Read Task (M109)
+void serialReadTask(void* pvParameters)
+{
+    const TickType_t xFrequency    = pdMS_TO_TICKS(100);
+    TickType_t       xLastWakeTime = xTaskGetTickCount();
+    String           inputBuffer   = "";
+    String           lastInput     = "";
+
+    for (;;)
+    {
+        while (Serial.available())
+        {
+            char c = Serial.read();
+
+            // Handle escape sequences for arrow keys
+            static int escState = 0;  // 0: normal, 1: got '\x1b', 2: got '['
+            if (escState == 0 && c == '\x1b')
+            {
+                escState = 1;
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            if (escState == 1 && c == '[')
+            {
+                escState = 2;
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            if (escState == 2)
+            {
+                if (c == 'A')
+                {  // Up arrow
+                    if (historyCount > 0)
+                    {
+                        if (historyIndex < historyCount - 1)
+                            historyIndex++;
+                        inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
+                        // Clear current line and print inputBuffer
+                        clearLine();
+                        Serial.print(inputBuffer);
+                    }
+                    escState = 0;
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+                else if (c == 'B')
+                {  // Down arrow
+                    if (historyCount > 0 && historyIndex > 0)
+                    {
+                        historyIndex--;
+                        inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
+                        clearLine();
+                        Serial.print(inputBuffer);
+                        clearLine();
+                        Serial.print(inputBuffer);
+                    }
+                    else if (historyIndex == 0)
+                    {
+                        historyIndex = -1;
+                        inputBuffer  = lastInput;
+                        Serial.print(F("\r> "));
+                        Serial.print(inputBuffer);
+                        Serial.print(F("           \r> "));
+                        Serial.print(inputBuffer);
+                    }
+                    escState = 0;
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+                escState = 0;
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+
+            // Handle Enter
+            if (c == '\n')
+            {
+                if (inputBuffer.length() > 0)
+                {
+                    Serial.print(F("\r\n"));
+                    Serial.print(F("# "));
+                    Serial.print(inputBuffer.c_str());
+                    Serial.print(F("\r\n"));
+                    cli.parse(inputBuffer);
+                    // Add to history
+                    if (historyCount == 0 || commandHistory[(historyCount - 1) % HISTORY_SIZE] != inputBuffer)
+                    {
+                        commandHistory[historyCount % HISTORY_SIZE] = inputBuffer;
+
+                        if (historyCount < HISTORY_SIZE)
+                            historyCount++;
+                    }
+                    historyIndex = -1;
+                    lastInput    = "";
+                    inputBuffer  = "";  // Clear the buffer
+                }
+            }
+            else if (c == '\b' || c == 127)  // Handle backspace
+            {
+                if (inputBuffer.length() > 0)
+                {
+                    inputBuffer.remove(inputBuffer.length() - 1);
+                    Serial.print(F("\b \b"));
+                }
+            }
+            else if (c == 'i')
+            {
+                if (motor[currentIndex] != nullptr)
+                {
+                    motor[currentIndex]->setDirection(true);
+                    motor[currentIndex]->move(10, 100, 0.0f);
+                }
+                else
+                    Serial.println(F("[Error][M109] Motor not connected"));
+
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == 'k')
+            {
+                if (motor[currentIndex] != nullptr)
+                {
+                    motor[currentIndex]->setDirection(false);
+                    motor[currentIndex]->move(10, 100, 0.0f);
+                }
+                else
+                    Serial.println(F("[Error][M109] Motor not connected"));
+
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else
+            {
+                inputBuffer += c;  // Add character to buffer
+                Serial.print(c);
+                if (historyIndex == -1)
+                    lastInput = inputBuffer;
+            }
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        }
+
+        if (cli.available())
+        {
+            Command c = cli.getCmd();
+
+            // Handle motor commands
+            if (c == cmdMotor)
+            {
+                // Get Motor Id
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
+                else
+                {
+                    Serial.println(F("ERROR: Motor Id (-n) requires a value"));
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+
+                // Handle Get motor position command
+                if (c.getArgument("c").isSet())
+                {
+                    float position = getMotorPosition();
+                    Serial.print(F("*"));
+                    Serial.print(currentIndex);
+                    Serial.print(F("#"));
+                    Serial.print(position, 2);
+                    Serial.print(F("#\r\n"));
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+
+                // Handle position commands
+                if (c.getArgument("p").isSet())
+                {
+                    String targetPosition = c.getArgument("p").getValue();
+                    setTargetPosition(targetPosition);
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+            }
+            else if (c == cmdRestart)
+            {
+                motorStopAndSavePosition("CmdRestart");
+                Serial.println(F("Restarting..."));
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                ESP.restart();
+            }
+            else if (c == cmdStop)
+            {
+                motorStopAndSavePosition("CmdStop");
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == cmdShow)
+            {
+                printSerial();
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == cmdDrive)
+            {
+                driver[currentIndex]->logDriverStatus();
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == cmdSpeedProfile)
+            {
+                demonstrateSpeedProfile();
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == cmdReset)
+            {
+                resetMotorState(currentIndex);
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == cmdHelp)
+            {
+                Serial.print(F("Help:"));
+                Serial.print(cli.toString());
+                Serial.print(F("\r\n"));
             }
         }
-    }
 
-    // Return median
-    return temp[size / 2];
+        if (cli.errored())
+        {
+            String cmdError = cli.getError().toString();
+            Serial.print(F("ERROR: "));
+            Serial.print(cmdError);
+            Serial.print(F("\r\n"));
+        }
+
+        esp_task_wdt_reset();
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
 }
 
-// Helper function to calculate standard deviation
-float calculateStandardDeviation(unsigned long arr[], int size)
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Print Serial (M110)
+void printSerial()
 {
-    if (size <= 1)
-        return 0.0f;
+    Serial.print(F("[M110] HighWaterMark: "));
+    Serial.print(highWaterMark);
+    Serial.print(F(" words ("));
+    Serial.print(highWaterMark * 4);
+    Serial.print(F(" bytes)\n"));
 
-    // Calculate mean
-    unsigned long sum = 0;
-    for (int i = 0; i < size; i++)
+    if (!driverEnabled[currentIndex] || encoder[currentIndex] == nullptr || motor[currentIndex] == nullptr || (!Serial))
+        return;
+
+    EncoderContext encCtx = encoder[currentIndex]->getEncoderContext();
+    MotorContext   motCtx = getMotorContext();
+
+    MotorType type = motor[currentIndex]->getMotorType();
+    String    unit = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
+
+    // if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
+    //{
+    //  Format all values into the buffer
+    Serial.print(F("============================================================================================\r\n"));
+    Serial.print(F("MOT: "));
+    Serial.print((currentIndex + 1));
+    Serial.print(F("   "));
+    Serial.print(F("DIR: "));
+    Serial.print(encCtx.direction);
+    Serial.print(F("   "));
+    Serial.print(F("LAP: "));
+    Serial.print(encCtx.lap_id);
+    // Serial.print(F("\t"));
+    // Serial.print(F("CUR PULSE: "));
+    // Serial.print(encCtx.current_pulse);
+    Serial.print(F("      "));
+    Serial.print(F("CUR POS "));
+    Serial.print(unit);
+    Serial.print(motCtx.currentPosition);
+    // Serial.print(F("\t"));
+    // Serial.print(F("CUR POS (p): "));
+    // Serial.print(motCtx.currentPositionPulses, 0);
+    Serial.print(F("      "));
+    Serial.print(F("TGT POS: "));
+    Serial.print(unit);
+    Serial.print(targetPosition[currentIndex]);
+    // Serial.print(F("\t"));
+    // Serial.print(F("TGT POS (p): "));
+    // Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
+    Serial.print(F("      "));
+    Serial.print(F("ERR: "));
+    Serial.print(firstTime ? 0 : motCtx.error, 0);
+    // Serial.print(F("\t"));
+    // Serial.print(F("newTargetpositionReceived: "));
+    // Serial.print(newTargetpositionReceived[currentIndex]);
+    // Serial.print(F("\t"));
+    // Serial.print(F("driverEnabled: "));
+    // Serial.print(driverEnabled[currentIndex]);
+    Serial.print(F("\r\n\r\n"));
+
+    lastPulse[currentIndex] = encCtx.current_pulse;
+    // }
+}
+
+// Print Motor Status (M111)
+void printMotorStatus()
+{
+    // Check for null pointers
+    if (driver[currentIndex] == nullptr)
     {
-        sum += arr[i];
+        Serial.print(F("[Error][M111] Driver object is null: "));
+        Serial.println(currentIndex + 1);
+        return;
     }
-    float mean = (float)sum / size;
 
-    // Calculate variance
-    float variance = 0.0f;
-    for (int i = 0; i < size; i++)
+    // Check for null pointers
+    if (motor[currentIndex] == nullptr)
     {
-        float diff = (float)arr[i] - mean;
-        variance += diff * diff;
+        Serial.print(F("[Error][M111] Motor object is null: "));
+        Serial.println(currentIndex + 1);
+        return;
     }
-    variance /= (size - 1);
 
-    // Return standard deviation
-    return sqrt(variance);
+    // Check for null pointers
+    if (encoder[currentIndex] == nullptr)
+    {
+        Serial.print(F("[Error][M111] Encoder object is null: "));
+        Serial.println(currentIndex + 1);
+        return;  // Return 0.000999f if null pointers
+    }
+
+    auto status = driver[currentIndex]->getDriverStatus();
+    Serial.print(F("\r\n[Info][M111] Motor "));
+    Serial.print(currentIndex + 1);
+    Serial.print(F(" Status:\r\n"));
+    Serial.print(F(" - Current: "));
+    Serial.print(status.current);
+    Serial.print(F(" mA\r\n"));
+    Serial.print(F(" - Temperature: "));
+    Serial.print(status.temperature);
+    Serial.println(F("\r\n"));
 }

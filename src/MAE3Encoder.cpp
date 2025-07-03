@@ -6,9 +6,9 @@
 // Initialize static member
 MAE3Encoder* MAE3Encoder::_encoderInstances[MAX_ENCODERS] = {nullptr};
 
-int MAE3Encoder::_interruptsAttached[NUM_ENCODERS] = {0};
-int MAE3Encoder::_interruptsDetached[NUM_ENCODERS] = {0};
-int MAE3Encoder::_processInterrupt[NUM_ENCODERS]   = {0};
+int MAE3Encoder::_interruptsAttached[4] = {0};
+int MAE3Encoder::_interruptsDetached[4] = {0};
+int MAE3Encoder::_processInterrupt[4]   = {0};
 // Initialize static member
 // portMUX_TYPE MAE3Encoder::classMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -31,27 +31,14 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
       _width_h_buffer{},
       _pulseBufferIndex(0)
 {
-#if DEBUG_ENCODER
-    Serial.print(F("Encoder constructor: "));
-    Serial.println(_encoderId + 1);
-#endif
 }
 
 MAE3Encoder::~MAE3Encoder()
 {
     disable();
 
-#if DEBUG_ENCODER
-    Serial.print(F("Encoder destructor: "));
-    Serial.println(_encoderId + 1);
-#endif
-
     if (_encoderId < MAX_ENCODERS)
     {
-#if DEBUG_ENCODER
-        Serial.print(F(" - encoderInstances set to nullptr"));
-        Serial.println(_encoderId);
-#endif
         _encoderInstances[_encoderId] = nullptr;
     }
 }
@@ -72,13 +59,6 @@ bool MAE3Encoder::begin()
 
     // Store instance for interrupt handling
     _encoderInstances[_encoderId] = this;
-
-#if DEBUG_ENCODER
-    Serial.print(F("Encoder "));
-    Serial.print(_encoderId + 1);
-    Serial.println(F(" initialized"));
-    Serial.println();
-#endif
 
     return true;
 }
@@ -150,11 +130,6 @@ void MAE3Encoder::reset()
     // Reset last pulse
     _last_pulse  = 0;
     _initialized = false;
-
-#if DEBUG_ENCODER
-    Serial.print(F("Encoder reset: "));
-    Serial.println(_encoderId + 1);
-#endif
 }
 
 //  method for processing PWM signal *************************amir
@@ -242,9 +217,7 @@ EncoderContext& MAE3Encoder::getEncoderContext() const
 {
     // portENTER_CRITICAL(&classMux);
     _encoderContext.current_pulse = _state.current_pulse;
-    _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
-                                    : _state.direction == Direction::CLOCKWISE ? " CW"
-                                                                               : "CCW";
+    _encoderContext.direction     = _state.direction == Direction::UNKNOWN ? "   " : _state.direction == Direction::CLOCKWISE ? " CW" : "CCW";
     _encoderContext.lap_id        = _lap.id;
     _encoderContext.lap_period    = _lap.period[_lap.id + LAPS_OFFSET];
 
@@ -287,39 +260,24 @@ void MAE3Encoder::attachInterruptHandler()
     switch (_encoderId)
     {
         case 0:
-#if NUM_ENCODERS > 0
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler0, CHANGE);
-#endif
             break;
 
         case 1:
-#if NUM_ENCODERS > 1
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler1, CHANGE);
-#endif
             break;
 
         case 2:
-#if NUM_ENCODERS > 2
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler2, CHANGE);
-#endif
             break;
 
         case 3:
-#if NUM_ENCODERS > 3
             attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler3, CHANGE);
-#endif
             break;
     }
-
-#if DEBUG_ENCODER
-    _interruptsAttached[_encoderId]++;
-#endif
 }
 void MAE3Encoder::detachInterruptHandler()
 {
-#if DEBUG_ENCODER
-    _interruptsDetached[_encoderId]++;
-#endif
     detachInterrupt(digitalPinToInterrupt(_signalPin));
 }
 
@@ -332,7 +290,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
     int64_t currentTime = esp_timer_get_time();
     portENTER_CRITICAL_ISR(&classMux);
 
-    if (READ_FAST(_signalPin))
+    if (digitalRead(_signalPin))
     {
         // Rising edge
         _lastRisingEdgeTime = currentTime;
@@ -416,34 +374,26 @@ int64_t MAE3Encoder::get_median_width_low() const
 }
 
 // Individual interrupt handlers for each encoder
-#if NUM_ENCODERS > 0
 void IRAM_ATTR MAE3Encoder::interruptHandler0()
 {
     if (_encoderInstances[0] && _encoderInstances[0]->_enabled)
         _encoderInstances[0]->processInterrupt();
 }
-#endif
-#if NUM_ENCODERS > 1
 void IRAM_ATTR MAE3Encoder::interruptHandler1()
 {
     if (_encoderInstances[1] && _encoderInstances[1]->_enabled)
         _encoderInstances[1]->processInterrupt();
 }
-#endif
-#if NUM_ENCODERS > 2
 void IRAM_ATTR MAE3Encoder::interruptHandler2()
 {
     if (_encoderInstances[2] && _encoderInstances[2]->_enabled)
         _encoderInstances[2]->processInterrupt();
 }
-#endif
-#if NUM_ENCODERS > 3
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
     if (_encoderInstances[3] && _encoderInstances[3]->_enabled)
         _encoderInstances[3]->processInterrupt();
 }
-#endif
 void MAE3Encoder::setPeriod(int32_t lapIndex, int64_t period, bool reset_count)
 {
     _lap.period[lapIndex + LAPS_OFFSET] = static_cast<int32_t>(period);

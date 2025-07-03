@@ -1,15 +1,14 @@
 #ifndef PINS_H
 #define PINS_H
 
-#include "Defines.h"
 #include <Arduino.h>
 
 struct DriverPins
 {
-    static const uint16_t DIR[NUM_MOTORS];
-    static const uint16_t STEP[NUM_MOTORS];
-    static const uint16_t EN[NUM_MOTORS];
-    static const uint16_t CS[NUM_DRIVERS];
+    static const uint16_t DIR[4];
+    static const uint16_t STEP[4];
+    static const uint16_t EN[4];
+    static const uint16_t CS[4];
 };
 
 struct SPIPins
@@ -21,7 +20,7 @@ struct SPIPins
 
 struct EncoderPins
 {
-    static const uint16_t SIGNAL[NUM_ENCODERS];
+    static const uint16_t SIGNAL[4];
 };
 
 #endif  // DRIVER_PINS_H

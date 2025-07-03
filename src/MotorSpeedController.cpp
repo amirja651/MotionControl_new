@@ -1,74 +1,49 @@
 #include "MotorSpeedController.h"
 
 // Initialize static member
-MotorSpeedController* MotorSpeedController::_motorInstances[MAX_MOTORS] = {nullptr};
+MotorSpeedController* MotorSpeedController::_motorInstances[4] = {nullptr};
 
 // Static ISR handlers
-#if NUM_MOTORS > 0
 void IRAM_ATTR MotorSpeedController::onTimerISR0()
 {
     if (_motorInstances[0] && _motorInstances[0]->_enabled)
         _motorInstances[0]->onTimerISR();
 }
-#endif
-#if NUM_MOTORS > 1
+
 void IRAM_ATTR MotorSpeedController::onTimerISR1()
 {
     if (_motorInstances[1] && _motorInstances[1]->_enabled)
         _motorInstances[1]->onTimerISR();
 }
-#endif
-#if NUM_MOTORS > 2
+
 void IRAM_ATTR MotorSpeedController::onTimerISR2()
 {
     if (_motorInstances[2] && _motorInstances[2]->_enabled)
         _motorInstances[2]->onTimerISR();
 }
-#endif
-#if NUM_MOTORS > 3
+
 void IRAM_ATTR MotorSpeedController::onTimerISR3()
 {
     if (_motorInstances[3] && _motorInstances[3]->_enabled)
         _motorInstances[3]->onTimerISR();
 }
-#endif
 
-MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
-                                           uint16_t EN_PIN)
-    : _driver(driver),
-      _DIR_PIN(DIR_PIN),
-      _STEP_PIN(STEP_PIN),
-      _EN_PIN(EN_PIN),
-      _motorId(motorId),
-      _stepsRemaining(0),
-      _moving(false),
-      _speed(0),
-      _targetPosition(0),
-      _currentPosition(0),
-      _timer(nullptr),
-      _enabled(false),
-      _onComplete(nullptr)
+MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
+    : _driver(driver), _DIR_PIN(DIR_PIN), _STEP_PIN(STEP_PIN), _EN_PIN(EN_PIN), _motorId(motorId), _stepsRemaining(0), _moving(false), _speed(0), _targetPosition(0), _currentPosition(0), _timer(nullptr), _enabled(false), _onComplete(nullptr)
 {
     _mux = portMUX_INITIALIZER_UNLOCKED;
-    if (_motorId < MAX_MOTORS)
-    {
-        _motorInstances[_motorId] = this;
-    }
-    _movementCompleteFlag = false;
+    _motorInstances[_motorId] = this;
+    _movementCompleteFlag     = false;
 }
 
 MotorSpeedController::~MotorSpeedController()
 {
     disable();
-    if (_motorId < MAX_MOTORS)
         _motorInstances[_motorId] = nullptr;
 }
 
 bool MotorSpeedController::begin()
 {
-    if (_motorId >= NUM_MOTORS)
-        return false;
-
     // Configure pins
     pinMode(_DIR_PIN, OUTPUT);
     pinMode(_STEP_PIN, OUTPUT);
@@ -114,30 +89,30 @@ void MotorSpeedController::disable()
 void MotorSpeedController::attachInterruptHandler()
 {
     // Allocate timer
-    if (_timer == nullptr && _motorId < MAX_MOTORS)
+    if (_timer == nullptr && _motorId < 4)
     {
         _timer = timerBegin(_motorId, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
         switch (_motorId)
         {
             case 0:
-#if NUM_MOTORS > 0
+
                 timerAttachInterrupt(_timer, &onTimerISR0, false);
-#endif
+
                 break;
             case 1:
-#if NUM_MOTORS > 1
+
                 timerAttachInterrupt(_timer, &onTimerISR1, false);
-#endif
+
                 break;
             case 2:
-#if NUM_MOTORS > 2
+
                 timerAttachInterrupt(_timer, &onTimerISR2, false);
-#endif
+
                 break;
             case 3:
-#if NUM_MOTORS > 3
+
                 timerAttachInterrupt(_timer, &onTimerISR3, false);
-#endif
+
                 break;
         }
         timerAlarmWrite(_timer, 1000000, true);  // Default 1Hz, will be set in move()
