@@ -1,59 +1,45 @@
 #include "SystemDiagnostics.h"
 
-void SystemDiagnostics::initialize()
-{
-    // No initialization needed
-}
-
 void SystemDiagnostics::printSystemInfo()
 {
-    Serial.print(F("\r\n=== System Information ===\r\n"));
+    Serial.println();
     printChipInfo();
     printMemoryInfo();
-    Serial.print(F("========================\r\n\r\n"));
 }
 
 void SystemDiagnostics::printSystemStatus()
 {
-    Serial.print(F("=== System Status ===\r\n"));
-    printResetReason();
-    printTaskInfo();
-    Serial.print(F("====================\r\n\r\n"));
+    esp_reset_reason_t reason = esp_reset_reason();
+    Serial.println();
+    Serial.printf("┌─────────────┬─────────────┬─────────────┬─────────────┐\n");
+    Serial.printf("│ Reset       │ Uptime      │ Free Stack  │ Task        │\n");
+    Serial.printf("│ Reason      │ (seconds)   │ Space       │ Count       │\n");
+    Serial.printf("├─────────────┼─────────────┼─────────────┼─────────────┤\n");
+    Serial.printf("│ %-11s │ %-11lu │ %-11d │ %-11d │\n", getResetReason(reason), millis() / 1000, uxTaskGetStackHighWaterMark(NULL), uxTaskGetNumberOfTasks());
+    Serial.printf("└─────────────┴─────────────┴─────────────┴─────────────┘\n");
 }
 
 void SystemDiagnostics::printChipInfo()
 {
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
-
-    Serial.printf("Chip Model: %s\r\n", getChipModel());
-    Serial.printf("Chip Revision: %d\r\n", chip_info.revision);
-    Serial.printf("CPU Cores: %d\r\n", chip_info.cores);
-    Serial.printf("CPU Frequency: %d MHz\r\n", ESP.getCpuFreqMHz());
-    Serial.printf("Flash Size: %d MB\r\n", ESP.getFlashChipSize() / (1024 * 1024));
-    Serial.printf("Flash Speed: %d MHz\r\n", ESP.getFlashChipSpeed() / 1000000);
-    Serial.printf("SDK Version: %s\r\n", ESP.getSdkVersion());
+    Serial.println();
+    Serial.printf("┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐\n");
+    Serial.printf("│ Chip Model  │ Chip Rev.   │ CPU Cores   │ CPU Freq.   │ Flash Size  │ Flash Speed │ SDK Version │\n");
+    Serial.printf("├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤\n");
+    Serial.printf("│ %-11s │ %-11d │ %-11d │ %-11d │ %-11d │ %-11d │ %-11s │\n", getChipModel(), chip_info.revision, chip_info.cores, ESP.getCpuFreqMHz(), ESP.getFlashChipSize() / (1024 * 1024), ESP.getFlashChipSpeed() / 1000000, ESP.getSdkVersion());
+    Serial.printf("└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘\n");
 }
 
 void SystemDiagnostics::printMemoryInfo()
 {
-    Serial.printf("Free Heap: %d bytes\r\n", ESP.getFreeHeap());
-    Serial.printf("Free PSRAM: %d bytes\r\n", ESP.getFreePsram());
-    Serial.printf("Min Free Heap: %d bytes\r\n", ESP.getMinFreeHeap());
-    Serial.printf("Max Alloc Heap: %d bytes\r\n", ESP.getMaxAllocHeap());
-}
-
-void SystemDiagnostics::printResetReason()
-{
-    esp_reset_reason_t reason = esp_reset_reason();
-    Serial.printf("Reset Reason: %s\r\n", getResetReason(reason));
-    Serial.printf("Uptime: %lu seconds\r\n", millis() / 1000);
-}
-
-void SystemDiagnostics::printTaskInfo()
-{
-    Serial.printf("Free Stack Space: %d bytes\r\n", uxTaskGetStackHighWaterMark(NULL));
-    Serial.printf("Task Count: %d\r\n", uxTaskGetNumberOfTasks());
+    Serial.println();
+    Serial.printf("┌─────────────┬─────────────┬─────────────┬──────────────┐\n");
+    Serial.printf("│ Free Heap   │ Free PSRAM  │ Min Free    │ Max Alloc    │\n");
+    Serial.printf("│             │             │ Heap        │ Heap         │\n");
+    Serial.printf("├─────────────┼─────────────┼─────────────┼──────────────┤\n");
+    Serial.printf("│ %-11d │ %-11d │ %-11d │ %-12d │\n", ESP.getFreeHeap(), ESP.getFreePsram(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+    Serial.printf("└─────────────┴─────────────┴─────────────┴──────────────┘\n");
 }
 
 const char* SystemDiagnostics::getResetReason(esp_reset_reason_t reason)

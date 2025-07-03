@@ -9,6 +9,19 @@
 #include <esp_timer.h>
 #include <functional>  // For callback support
 
+struct validateResult
+{
+    int64_t totalPeriod;
+    int32_t position;
+    float   degrees;
+    int32_t delta;
+    bool    highOK;
+    bool    lowOK;
+    bool    totalOK;
+    bool    periodOK;
+    bool    overall;
+};
+
 // Direction enum
 enum class Direction
 {
@@ -73,6 +86,7 @@ public:
     void processPWM();
 
     EncoderContext& getEncoderContext() const;
+    validateResult& getValidatePWMResult() const;
 
     int32_t umToPulses(float um);
     int32_t degreesToPulses(float degrees);
@@ -91,6 +105,7 @@ private:
     EncoderState           _state;
     LapState               _lap;
     mutable EncoderContext _encoderContext;
+    mutable validateResult _vResult;
 
     volatile bool _enabled;
 
@@ -147,8 +162,10 @@ private:
     static void IRAM_ATTR interruptHandler2();
     static void IRAM_ATTR interruptHandler3();
 
-    void setPeriod(int32_t lapIndex, int64_t period, bool reset_count = false);
-    void resetAllPeriods();
+    void           setPeriod(int32_t lapIndex, int64_t period, bool reset_count = false);
+    void           resetAllPeriods();
+    validateResult validatePWMValues(int64_t highPulse, int64_t lowPulse, uint8_t pinNumber);
+    void           resetValidatePwmResult();
 };
 
 #endif  // MAE3_ENCODER2_H

@@ -9,6 +9,7 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
       _state{},
       _lap{},
       _encoderContext{},
+      _vResult{},
       _enabled(false),
       _r_pulse{0, 0},
       _lastPulseTime(0),
@@ -94,6 +95,9 @@ void MAE3Encoder::reset()
     _encoderContext.total_travel_um  = 0;
     _encoderContext.direction        = "UNK";
 
+    // Reset validatePWMResult
+    resetValidatePwmResult();
+
     // Reset RPulse
     _r_pulse.low  = 0;
     _r_pulse.high = 0;
@@ -123,9 +127,11 @@ void MAE3Encoder::processPWM()
 {
     if (_newData)
     {
+        validateResult vResult = validatePWMValues(_r_pulse.high, _r_pulse.low, _signalPin);
+
         int64_t period = _r_pulse.high + _r_pulse.low;
 
-        if (period > 4098 || ((_r_pulse.low < 50 && _r_pulse.high < 50)))
+        if (!vResult.overall)
         {
             _r_pulse.high = 0;
             _r_pulse.low  = 0;
@@ -139,14 +145,6 @@ void MAE3Encoder::processPWM()
         _pulseBufferIndex = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
         _bufferUpdated    = true;
         _newData          = false;
-
-        Serial.print(F("width_h: "));
-        Serial.println(_r_pulse.high);
-        Serial.print(F("width_l: "));
-        Serial.println(_r_pulse.low);
-        Serial.print(F("period: "));
-        Serial.println(period);
-        Serial.println(F("--------------------------------"));
     }
 
     if (!_bufferUpdated)  // if (!_enabled || !updated)
@@ -236,6 +234,11 @@ EncoderContext& MAE3Encoder::getEncoderContext() const
     _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
 
     return _encoderContext;
+}
+
+validateResult& MAE3Encoder::getValidatePWMResult() const
+{
+    return _vResult;
 }
 
 int32_t MAE3Encoder::umToPulses(float um)
@@ -423,4 +426,52 @@ void MAE3Encoder::diagnoseEncoderSignals()
     }
 
     printf("=== END DIAGNOSTICS ===\n\n");
+}
+
+validateResult MAE3Encoder::validatePWMValues(int64_t highPulse, int64_t lowPulse, uint8_t pinNumber)
+{
+    resetValidatePwmResult();
+
+    _vResult.totalPeriod = highPulse + lowPulse;
+
+    printf("\n=== Validation for Pin %d ===\n", _signalPin);
+    printf("High pulse: %lld us\n", highPulse);
+    printf("Low pulse: %lld us\n", lowPulse);
+    printf("Total period: %lld us\n", _vResult.totalPeriod);
+
+    // Check if data was bypassed (values are 0)
+    if (highPulse == 0 && lowPulse == 0)
+    {
+        printf("Data was bypassed - invalid period detected\n");
+
+        return _vResult;
+    }
+
+    // Check each condition separately
+    _vResult.highOK   = (highPulse >= 1 && highPulse <= 4302);  // 4097
+    _vResult.lowOK    = (lowPulse >= 1 && lowPulse <= 4302);    // 4097
+    _vResult.totalOK  = ((_vResult.totalPeriod) > 0);
+    _vResult.periodOK = ((_vResult.totalPeriod) >= 3731 && (_vResult.totalPeriod) <= 4545);
+    _vResult.overall  = _vResult.highOK && _vResult.lowOK && _vResult.totalOK && _vResult.periodOK;
+
+    printf("High pulse validation: %s (1-4097 us)\n", _vResult.highOK ? "PASS" : "FAIL");
+    printf("Low pulse validation: %s (1-4097 us)\n", _vResult.lowOK ? "PASS" : "FAIL");
+    printf("Total period validation: %s (>0 us)\n", _vResult.totalOK ? "PASS" : "FAIL");
+    printf("Period range validation: %s (3731-4545 us)\n", _vResult.periodOK ? "PASS" : "FAIL");
+    printf("Overall validation: %s\n", _vResult.overall ? "PASS" : "FAIL");
+
+    return _vResult;
+}
+
+void MAE3Encoder::resetValidatePwmResult()
+{
+    _vResult.totalPeriod = 0;
+    _vResult.position    = 0;
+    _vResult.degrees     = 0;
+    _vResult.delta       = 0;
+    _vResult.highOK      = false;
+    _vResult.lowOK       = false;
+    _vResult.totalOK     = false;
+    _vResult.periodOK    = false;
+    _vResult.overall     = false;
 }

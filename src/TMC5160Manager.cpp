@@ -37,7 +37,7 @@ bool TMC5160Manager::testConnection(bool print)
         Serial.print(_driverIndex + 1);
         Serial.println(F(":"));
 
-        Serial.print(F(" - Version read attempt: 0x"));
+        Serial.print(F("Version read attempt: 0x"));
         Serial.println(version, HEX);
     }
 
@@ -45,11 +45,11 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.print(F(" - Invalid version (0x"));
+            Serial.print(F("Invalid version (0x"));
             Serial.print(version, HEX);
             Serial.println(F(")"));
 
-            Serial.println(F(" - connection failed!\r\n"));
+            Serial.println(F("connection failed!\r\n"));
         }
 
         // Turn off the driver
@@ -63,7 +63,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.print(F(" - GCONF read: 0x"));
+        Serial.print(F("GCONF read: 0x"));
         Serial.println(gconf, HEX);
     }
 
@@ -71,9 +71,9 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F(" - GCONF register read failed"));
+            Serial.println(F("GCONF register read failed"));
 #
-            Serial.println(F(" - connection failed!\r\n"));
+            Serial.println(F("connection failed!\r\n"));
         }
 
         // Turn off the driver
@@ -87,7 +87,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.print(F(" - DRV_STATUS read: 0x"));
+        Serial.print(F("DRV_STATUS read: 0x"));
         Serial.println(status, HEX);
     }
 
@@ -95,9 +95,9 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F(" - DRV_STATUS register read failed"));
+            Serial.println(F("DRV_STATUS register read failed"));
 
-            Serial.println(F(" - connection failed!\r\n"));
+            Serial.println(F("connection failed!\r\n"));
         }
 
         // Turn off the driver
@@ -111,7 +111,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.print(F(" - CHOPCONF read: 0x"));
+        Serial.print(F("CHOPCONF read: 0x"));
         Serial.println(chopconf, HEX);
     }
 
@@ -119,9 +119,9 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F(" - CHOPCONF register read failed"));
+            Serial.println(F("CHOPCONF register read failed"));
 
-            Serial.println(F(" - connection failed!\r\n"));
+            Serial.println(F("connection failed!\r\n"));
         }
 
         // Turn off the driver
@@ -137,7 +137,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.print(F(" - GCONF write/read test: Original = 0x"));
+        Serial.print(F("GCONF write/read test: Original = 0x"));
         Serial.print(gconf, HEX);
         Serial.print(F(", Readback = 0x"));
         Serial.println(readback, HEX);
@@ -147,8 +147,8 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F(" - GCONF register write/read mismatch"));
-            Serial.println(F(" - connection failed!\r\n"));
+            Serial.println(F("GCONF register write/read mismatch"));
+            Serial.println(F("connection failed!\r\n"));
         }
 
         // Turn off the driver
@@ -159,7 +159,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.print(F(" - Communication test passed (Version: 0x"));
+        Serial.print(F("Communication test passed (Version: 0x"));
         Serial.print(version, HEX);
         Serial.println(F(")"));
     }
@@ -252,16 +252,23 @@ bool TMC5160Manager::configureDriver()
     uint32_t gconf = _driver->read(0x00);
     delay(5);
     // Print configuration
-    Serial.print(F("\r\n[configureDriver] Driver "));
+    Serial.print(F("[configureDriver] Driver "));
     Serial.print(_driverIndex + 1);
     Serial.println(F(" configured:"));
-    Serial.printf(" - Current: %d mA\r\n", DEFAULT_CURRENT);
-    Serial.printf(" - Microsteps: %d\r\n", MICROSTEPS);
-    Serial.printf(" - Mode: STEP/DIR with spreadCycle\r\n");
-    Serial.printf(" - Hardware configured for Step & Dir mode: %s\r\n", sd_mode ? "true" : "false");
-    Serial.printf(" - Hardware enabled: %s\r\n", drv_enn ? "true" : "false");
-    Serial.printf(" - DRV_STATUS: 0x%08X\r\n", drv_status);
-    Serial.printf(" - GCONF: 0x%08X\r\n\r\n", gconf);
+    Serial.printf("Current: %d mA\r\n", DEFAULT_CURRENT);
+    Serial.printf("Microsteps: %d\r\n", MICROSTEPS);
+    Serial.printf("Mode: STEP/DIR with spreadCycle\r\n");
+    Serial.printf("Hardware configured for Step & Dir mode: %s\r\n", sd_mode ? "true" : "false");
+    Serial.printf("Hardware enabled: %s\r\n", drv_enn ? "true" : "false");
+    Serial.printf("DRV_STATUS: 0x%08X\r\n", drv_status);
+    Serial.printf("GCONF: 0x%08X\r\n\r\n", gconf);
+
+    Serial.println();
+    Serial.printf("┌───────────┬──────────────┬────────────┬─────────────┬─────────────────┬──────────────────┬────────────┬────────────┐\n");
+    Serial.printf("│ Driver Id │ Current (mA) │ Microsteps │      Mode   │ Step & Dir mode │ Hardware enabled │ DRV_STATUS │   GCONF    |\n");
+    Serial.printf("├───────────┼──────────────┼────────────┼─────────────┼─────────────────┼──────────────────┼────────────┼────────────┤\n");
+    Serial.printf("│ %-9d │ %-12d │ %-10d │ %-13s │ %-15d │ %-16d │ 0x%08X │ 0x%08X │\n", _driverIndex + 1, DEFAULT_CURRENT, MICROSTEPS, "SpreadCycle", drv_enn ? 1 : 0, sd_mode ? 1 : 0, drv_status, gconf);
+    Serial.printf("└───────────┴──────────────┴────────────┴─────────────┴─────────────────┴──────────────────┴────────────┴────────────┘\n");
 
     // Turn off the driver
     DriverOff();
@@ -487,29 +494,29 @@ void TMC5160Manager::logDriverStatus()
     Serial.println(F(" status:"));
 
     uint32_t version = _driver->version();
-    Serial.printf(" - Version: 0x%08X\n", version);
+    Serial.printf("Version: 0x%08X\n", version);
 
     bool driverEnabled = !_driver->drv_enn();  // ENN pin: active LOW
-    Serial.printf(" - Driver Enabled (ENN pin LOW): %s\n", driverEnabled ? "YES" : "NO");
+    Serial.printf("Driver Enabled (ENN pin LOW): %s\n", driverEnabled ? "YES" : "NO");
 
     bool stealthChop = _driver->en_pwm_mode();
-    Serial.printf(" - StealthChop Mode Enabled: %s\n", stealthChop ? "YES" : "NO");
+    Serial.printf("StealthChop Mode Enabled: %s\n", stealthChop ? "YES" : "NO");
 
     uint32_t drv_status = _driver->DRV_STATUS();
-    Serial.printf(" - DRV_STATUS:  0x%08X\n", drv_status);
+    Serial.printf("DRV_STATUS:  0x%08X\n", drv_status);
 
     uint32_t gconf = _driver->GCONF();
-    Serial.printf(" - GCONF:       0x%08X\n", gconf);
+    Serial.printf("GCONF:       0x%08X\n", gconf);
 
     uint16_t current = _driver->rms_current();
-    Serial.printf(" - RMS Current: %d mA\n", current);
+    Serial.printf("RMS Current: %d mA\n", current);
 
     uint8_t irun  = _driver->irun();
     uint8_t ihold = _driver->ihold();
-    Serial.printf(" - IRUN: %d, IHOLD: %d\n", irun, ihold);
+    Serial.printf("IRUN: %d, IHOLD: %d\n", irun, ihold);
 
     uint16_t tpwmthrs = _driver->TPWMTHRS();
-    Serial.printf(" - TPWMTHRS (Stealth Threshold): %u\n", tpwmthrs);
+    Serial.printf("TPWMTHRS (Stealth Threshold): %u\n", tpwmthrs);
 
     // Decode DRV_STATUS bits
     bool otpw = drv_status & (1UL << 26);
@@ -519,7 +526,7 @@ void TMC5160Manager::logDriverStatus()
     bool ola  = drv_status & (1UL << 18);
     bool olb  = drv_status & (1UL << 16);
 
-    Serial.printf(" - Warnings:\n");
+    Serial.printf("Warnings:\n");
     Serial.printf(" | - Overtemperature Warning:     %s\n", otpw ? "YES" : "NO");
     Serial.printf(" | - Overtemperature Shutdown:    %s\n", ot ? "YES" : "NO");
     Serial.printf(" | - Short to GND on A:           %s\n", s2ga ? "YES" : "NO");

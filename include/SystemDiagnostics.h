@@ -12,16 +12,12 @@
 class SystemDiagnostics
 {
 public:
-    static void initialize();
     static void printSystemInfo();
     static void printSystemStatus();
 
 private:
-    static void printChipInfo();
-    static void printMemoryInfo();
-    static void printResetReason();
-    static void printTaskInfo();
-
+    static void        printChipInfo();
+    static void        printMemoryInfo();
     static const char* getResetReason(esp_reset_reason_t reason);
     static const char* getChipModel();
 };

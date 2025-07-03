@@ -20,17 +20,12 @@ struct MotorContext
     int32_t errorPulses;
 };
 
-TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]),
-                            TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
-MotorSpeedController motor[4] = {
-    MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]),
-    MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
-    MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
-    MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
+MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]), MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]), MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
+                                 MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
 
-MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1),
-                          MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Task handles
 TaskHandle_t encoderUpdateTaskHandle = NULL;
@@ -117,7 +112,6 @@ void setup()
     initializeCLI();
 
     // Initialize and print system diagnostics
-    SystemDiagnostics::initialize();
     SystemDiagnostics::printSystemInfo();
     SystemDiagnostics::printSystemStatus();
 
@@ -328,8 +322,7 @@ MotorContext getMotorContext()
     MotorType      type   = motor[currentIndex].getMotorType();
 
     motCtx.currentPosition = (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
-    motCtx.error =
-        motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
+    motCtx.error           = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
 
     if (type == MotorType::ROTATIONAL)
         motCtx.error = motor[currentIndex].wrapAngle180(motCtx.error);
