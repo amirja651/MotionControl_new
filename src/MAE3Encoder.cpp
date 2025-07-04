@@ -149,8 +149,8 @@ void MAE3Encoder::processPWM(bool print)
         return;
 
     _bufferUpdated  = false;
-    int64_t width_h = get_median_width_high();
-    int64_t width_l = get_median_width_low();
+    int64_t width_h = _r_pulse.high;  // get_median_width_high();
+    int64_t width_l = _r_pulse.low;   // get_median_width_low();
     int64_t period  = width_h + width_l;
 
     if (period == 0)

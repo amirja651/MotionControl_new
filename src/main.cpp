@@ -376,7 +376,7 @@ void encoderUpdateTask(void* pvParameters)  // amir
 // Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(4);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(2);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     static bool     isDriverConnectedMessageShown = false;
