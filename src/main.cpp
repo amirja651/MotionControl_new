@@ -512,6 +512,8 @@ void linearMotorUpdate()
         // Execute movement
         Serial.print(F("[Info][M105] Motor "));
         Serial.print(currentIndex + 1);
+        Serial.print(F(", deltaPulse = "));
+        Serial.print(deltaPulse);
         Serial.print(F(", error = "));
         Serial.print(motCtx.error, 2);
         Serial.print(F(" um, speed = "));
@@ -544,13 +546,14 @@ void rotaryMotorUpdate()
         return;
 
     // Rotary motor specific constants
-    static const float   POSITION_THRESHOLD_DEG_FORWARD = 0.01f;  // Acceptable error range for rotary motors
-    static const float   FINE_MOVE_THRESHOLD_DEG        = 1.0f;   // Fine movement threshold for rotary motors
-    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD   = 3;      // Maximum correction pulses for rotary
-    static const int     MIN_SPEED                      = 8;      // Start and end speed
-    static const int     MAX_SPEED                      = 8;      // Maximum speed
-    static const int     FINE_MOVE_SPEED                = 8;      // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT           = 5.0f;   // 5% segments for speed changes
+    static const float POSITION_THRESHOLD_DEG_FORWARD =
+        0.1f;  // Acceptable error range for rotary motors (increased from 0.01f)
+    static const float   FINE_MOVE_THRESHOLD_DEG      = 1.0f;  // Fine movement threshold for rotary motors
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD = 3;     // Maximum correction pulses for rotary
+    static const int     MIN_SPEED                    = 8;     // Start and end speed
+    static const int     MAX_SPEED                    = 8;     // Maximum speed
+    static const int     FINE_MOVE_SPEED              = 8;     // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT         = 5.0f;  // 5% segments for speed changes
 
     // Validate Target P. is within rotary motor limits (0.01 to 359.9 degrees)
     float target = targetPosition[currentIndex];
@@ -580,6 +583,14 @@ void rotaryMotorUpdate()
         // Check if we've reached the Target P.
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
         {
+            Serial.print(F("[DEBUG] Stop condition 1 met: absError="));
+            Serial.print(absError, 3);
+            Serial.print(F(", threshold="));
+            Serial.print(positionThreshold, 3);
+            Serial.print(F(", deltaPulse="));
+            Serial.print(abs(deltaPulse));
+            Serial.print(F(", maxPulse="));
+            Serial.println(maxMicroMovePulse);
             motorStopAndSavePosition("M106");
             return;
         }
@@ -587,6 +598,10 @@ void rotaryMotorUpdate()
         // Additional stop condition: if error is very small and no movement is needed
         if (absError <= 0.05f && abs(deltaPulse) <= 1)
         {
+            Serial.print(F("[DEBUG] Stop condition 2 met: absError="));
+            Serial.print(absError, 3);
+            Serial.print(F(", deltaPulse="));
+            Serial.println(abs(deltaPulse));
             motorStopAndSavePosition("M106");
             return;
         }
@@ -629,6 +644,8 @@ void rotaryMotorUpdate()
         // Execute movement
         Serial.print(F("[Info][M106] Motor "));
         Serial.print(currentIndex + 1);
+        Serial.print(F(", deltaPulse = "));
+        Serial.print(deltaPulse);
         Serial.print(F(", error = "));
         Serial.print(motCtx.error, 2);
         Serial.print(F(" deg, speed = "));
