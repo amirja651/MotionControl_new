@@ -347,7 +347,7 @@ MotorContext getMotorContext()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Motor Update Task (M104)
-void encoderUpdateTask(void* pvParameters)
+void encoderUpdateTask(void* pvParameters)  // amir
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(1000);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
@@ -355,8 +355,11 @@ void encoderUpdateTask(void* pvParameters)
     while (1)
     {
         if (diagnosticsRun)
-            encoder[currentIndex].processPWM();
-        // printSerial();
+        {
+            encoder[currentIndex].processPWM(false);
+            printSerial();
+        }
+
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }

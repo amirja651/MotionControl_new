@@ -30,47 +30,71 @@ bool TMC5160Manager::testConnection(bool print)
 
     delay(1);
 
-    Serial.println();
-    Serial.print(F("[TestConnection] Driver: "));
-    Serial.println(_driverIndex + 1);
+    if (print)
+    {
+        Serial.println();
+        Serial.print(F("[TestConnection] Driver: "));
+        Serial.println(_driverIndex + 1);
+    }
 
     static bool connection_failed = false;
     if (version == 0xFF || version == 0)
     {
-        Serial.print(F("Invalid version (0x"));
-        Serial.print(version, HEX);
-        Serial.println(F(")"));
+        if (print)
+        {
+            Serial.print(F("Invalid version (0x"));
+            Serial.print(version, HEX);
+            Serial.println(F(")"));
+        }
         connection_failed = true;
     }
     else if (gconf == 0xFFFFFFFF)
     {
-        Serial.println(F("GCONF register read failed"));
+        if (print)
+        {
+            Serial.println(F("GCONF register read failed"));
+        }
         connection_failed = true;
     }
     else if (status == 0xFFFFFFFF)
     {
-        Serial.println(F("DRV_STATUS register read failed"));
+        if (print)
+        {
+            Serial.println(F("DRV_STATUS register read failed"));
+        }
         connection_failed = true;
     }
     else if (chopconf == 0xFFFFFFFF)
     {
-        Serial.println(F("CHOPCONF register read failed"));
+        if (print)
+        {
+            Serial.println(F("CHOPCONF register read failed"));
+        }
         connection_failed = true;
     }
     else if (readback != gconf)
     {
-        Serial.println(F("GCONF register write/read mismatch"));
+        if (print)
+        {
+            Serial.println(F("GCONF register write/read mismatch"));
+        }
     }
     if (connection_failed)
     {
-        Serial.println(F("connection failed!\r\n"));
-        Serial.println();
+        if (print)
+        {
+            Serial.println(F("connection failed!\r\n"));
+            Serial.println();
+        }
         DriverOff();
         return false;
     }
 
-    Serial.println(F("✅ connected successfully"));
-    Serial.println();
+    if (print)
+    {
+        Serial.println(F("✅ connected successfully"));
+        Serial.println();
+    }
 
     DriverOff();
     return true;
