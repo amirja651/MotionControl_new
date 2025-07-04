@@ -454,12 +454,6 @@ void linearMotorUpdate()
     static const int     FINE_MOVE_SPEED               = 12;    // Fine movement speed
     static const float   SEGMENT_SIZE_PERCENT          = 5.0f;  // 5% segments for speed changes
 
-    // Add DEBUG_MAIN logging for state variables
-    // Serial.println(F("[DEBUG_MAIN][MotorUpdate] State check - motorMoving: %d, newTargetReceived: %d,
-    // initialDistance:
-    // %.2f\r\n", motorMoving[currentIndex], newTargetpositionReceived[currentIndex],
-    // initialTotalDistance[currentIndex]);
-
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
         MotorContext motCtx = getMotorContext();
