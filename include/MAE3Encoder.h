@@ -117,9 +117,6 @@ private:
     volatile int64_t _lastFallingEdgeTime;
     volatile int64_t _lastRisingEdgeTime;
 
-    // Interrupt handling
-    volatile bool _newPulseAvailable;
-
     // Flag to indicate buffer was updated (set in processInterrupt, cleared after processPWM)
     volatile bool _bufferUpdated;
     volatile bool _newData;
