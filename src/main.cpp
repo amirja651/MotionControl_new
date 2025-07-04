@@ -11,6 +11,8 @@
 #include <esp_task_wdt.h>
 #include <memory>
 
+#define MAIN_ENCODER_TASK_DEBUG false
+
 struct MotorContext
 {
     float   currentPosition;
@@ -20,17 +22,24 @@ struct MotorContext
     int32_t errorPulses;
 };
 
-TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]),
+                            TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
-MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]), MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]), MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
-                                 MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
+MotorSpeedController motor[4] = {
+    MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]),
+    MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
+    MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
+    MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
 
-MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1),
+                          MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Task handles
+#if MAIN_ENCODER_TASK_DEBUG
 TaskHandle_t encoderUpdateTaskHandle = NULL;
-TaskHandle_t motorUpdateTaskHandle   = NULL;
-TaskHandle_t serialReadTaskHandle    = NULL;
+#endif
+TaskHandle_t motorUpdateTaskHandle = NULL;
+TaskHandle_t serialReadTaskHandle  = NULL;
 
 static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
@@ -62,7 +71,9 @@ static unsigned int highWaterMark = 0;
 // ============================
 // Function Declarations
 // ============================
-void         encoderUpdateTask(void* pvParameters);
+#if MAIN_ENCODER_TASK_DEBUG
+void encoderUpdateTask(void* pvParameters);
+#endif
 void         motorUpdateTask(void* pvParameters);
 void         serialReadTask(void* pvParameters);
 bool         isValidNumber(const String& str);
@@ -164,15 +175,16 @@ void setup()
     }
 
     // Core 1 - For time-sensitive tasks (precise control)
+#if MAIN_ENCODER_TASK_DEBUG
     xTaskCreatePinnedToCore(encoderUpdateTask, "EncoderUpdateTask", 4096, NULL, 5, &encoderUpdateTaskHandle, 1);
+    esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
+#endif
     xTaskCreatePinnedToCore(motorUpdateTask, "MotorUpdateTask", 4096, NULL, 3, &motorUpdateTaskHandle, 1);
+    esp_task_wdt_add(motorUpdateTaskHandle);  // Register with WDT
+
     // Core 0 - For less time-sensitive tasks (such as I/O)
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
-
-    // esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
-    esp_task_wdt_add(encoderUpdateTaskHandle);  // Register with WDT
-    esp_task_wdt_add(motorUpdateTaskHandle);    // Register with WDT
-    esp_task_wdt_add(serialReadTaskHandle);     // Register with WDT
+    esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
     Serial.println();
     Serial.flush();
@@ -322,7 +334,8 @@ MotorContext getMotorContext()
     MotorType      type   = motor[currentIndex].getMotorType();
 
     motCtx.currentPosition = (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
-    motCtx.error           = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
+    motCtx.error =
+        motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
 
     if (type == MotorType::ROTATIONAL)
         motCtx.error = motor[currentIndex].wrapAngle180(motCtx.error);
@@ -346,6 +359,7 @@ MotorContext getMotorContext()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if MAIN_ENCODER_TASK_DEBUG
 // Motor Update Task (M104)
 void encoderUpdateTask(void* pvParameters)  // amir
 {
@@ -364,25 +378,29 @@ void encoderUpdateTask(void* pvParameters)  // amir
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
-
+#endif
 // Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(4);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
-    static bool     isDriverConnectedMessageShown_enc = false;
-    static bool     isDriverConnectedMessageShown_mtr = false;
-    static int      lastReportedIndex                 = -1;
-    static uint32_t counter                           = 0;
+    static bool     isDriverConnectedMessageShown = false;
+    static uint32_t counter                       = 0;
 
     while (1)
     {
-        // if driver is not connected, show the message
-        bool isEnabled = driverEnabled[currentIndex];
-        if (!isEnabled && !isDriverConnectedMessageShown_enc)
+        if (!diagnosticsRun)
         {
-            isDriverConnectedMessageShown_enc = true;
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+            continue;
+        }
+
+        // if driver is not connected, show the message
+        if (!driverEnabled[currentIndex] && !isDriverConnectedMessageShown)
+        {
+            isDriverConnectedMessageShown = true;
             Serial.print(F("[Error][M104] Driver's connection failed!: "));
             Serial.println(currentIndex + 1);
             esp_task_wdt_reset();
@@ -391,61 +409,27 @@ void motorUpdateTask(void* pvParameters)
         }
 
         // if driver is connected, don't show the message again
-        isDriverConnectedMessageShown_enc = isEnabled && isDriverConnectedMessageShown_enc;
+        isDriverConnectedMessageShown = driverEnabled[currentIndex] && isDriverConnectedMessageShown;
 
+        // Enable/Disable encoder based on currentIndex
         for (uint8_t index = 0; index < 4; index++)
         {
-            // Enable/Disable encoder based on currentIndex
-            if (index == currentIndex)
-            {
-                if (encoder[index].isDisabled())
-                    encoder[index].enable();
-            }
-            else
-            {
-                if (encoder[index].isEnabled())
-                    encoder[index].disable();
-            }
+            if (index != currentIndex && encoder[index].isEnabled())
+                encoder[index].disable();
         }
 
-        // Process PWM if the driver is enabled
-        if (currentIndex < 4 && isEnabled)
-        {
-            // encoder[currentIndex].processPWM();
-            esp_task_wdt_reset();
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
-        }
+        if (encoder[currentIndex].isDisabled())
+            encoder[currentIndex].enable();
 
-        if (!isEnabled && !isDriverConnectedMessageShown_mtr)
-        {
-            isDriverConnectedMessageShown_mtr = true;
-            Serial.print(F("[Error][M104] Driver's connection failed!: "));
-            Serial.println(currentIndex + 1);
-            esp_task_wdt_reset();
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
-            continue;
-        }
+        encoder[currentIndex].processPWM();
 
-        // if driver is connected, don't show the message again
-        isDriverConnectedMessageShown_mtr = isEnabled && isDriverConnectedMessageShown_mtr;
+        // Call appropriate motor update function based on motor type
+        // Linear motor (index 0) and Rotary motors (indices 1-3)
+        if (motor[currentIndex].getMotorType() == MotorType::LINEAR)
+            linearMotorUpdate();
 
-        if (isEnabled)
-        {
-            isDriverConnectedMessageShown_mtr = false;
-
-            if (lastReportedIndex != currentIndex)
-            {
-                printMotorStatus();
-                lastReportedIndex = currentIndex;
-            }
-
-            // Call appropriate motor update function based on motor type
-            if (currentIndex == 0)  // Linear motor (index 0)
-                linearMotorUpdate();
-
-            else  // Rotary motors (indices 1-3)
-                rotaryMotorUpdate();
-        }
+        else
+            rotaryMotorUpdate();
 
         esp_task_wdt_reset();
         if (++counter % 1000 == 0)  // Only check and print once every 1000
