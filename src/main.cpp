@@ -197,13 +197,6 @@ void loop()
     // Handle movement complete outside ISR
     motor[currentIndex].handleMovementComplete();
 
-    // Run diagnostics first (only once)
-    if (!diagnosticsRun)
-    {
-        encoder[currentIndex].diagnoseEncoderSignals();
-        diagnosticsRun = true;
-    }
-
     esp_task_wdt_reset();
     vTaskDelay(300);
 }
@@ -273,6 +266,8 @@ void setTargetPosition(String targetPos)
         return;
     }
 
+    diagnosticsRun = false;  // set diagnosticsRun to false for new index
+
     // ✅ The value is valid
     if (currentIndex == (uint8_t)MotorType::LINEAR)
         driver[currentIndex].configureDriver_Nema11_1004H(true);
@@ -340,7 +335,6 @@ MotorContext getMotorContext()
     if (type == MotorType::ROTATIONAL)
         motCtx.error = motor[currentIndex].wrapAngle180(motCtx.error);
 
-    // amir
     //  Use appropriate pulse conversion based on motor type
     if (type == MotorType::LINEAR)
     {
@@ -390,12 +384,17 @@ void motorUpdateTask(void* pvParameters)
 
     while (1)
     {
+#if MAIN_ENCODER_TASK_DEBUG
+        // Run diagnostics first (only once)
         if (!diagnosticsRun)
         {
+            encoder[currentIndex].diagnoseEncoderSignals();
+            diagnosticsRun = true;
             esp_task_wdt_reset();
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         }
+#endif
 
         // if driver is not connected, show the message
         if (!driverEnabled[currentIndex] && !isDriverConnectedMessageShown)
@@ -511,16 +510,21 @@ void linearMotorUpdate()
         }
 
         // Execute movement
-        Serial.print(F("[Info][M105] deltaPulse = "));
-        Serial.print((long)deltaPulse);
+        Serial.print(F("[Info][M105] Motor "));
+        Serial.print(currentIndex + 1);
         Serial.print(F(", error = "));
         Serial.print(motCtx.error, 2);
         Serial.print(F(" um, speed = "));
         Serial.print(moveSpeed);
         Serial.print(F(", progress = "));
-        Serial.print((1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, 1);
-        Serial.print(F("%, isMotorEnabled = "));
-        Serial.println(motor[currentIndex].isEnabled());
+        // Calculate progress with bounds checking
+        float progressPercent = 0.0f;
+        if (initialTotalDistance[currentIndex] > 0.0f)
+        {
+            progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+            progressPercent = constrain(progressPercent, 0.0f, 1.0f);  // Clamp between 0 and 1
+        }
+        Serial.println(progressPercent * 100.0f, 1);
 
         motor[currentIndex].move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
@@ -580,6 +584,13 @@ void rotaryMotorUpdate()
             return;
         }
 
+        // Additional stop condition: if error is very small and no movement is needed
+        if (absError <= 0.05f && abs(deltaPulse) <= 1)
+        {
+            motorStopAndSavePosition("M106");
+            return;
+        }
+
         // Set movement direction
         motor[currentIndex].setDirection(motCtx.error > 0);
 
@@ -618,16 +629,19 @@ void rotaryMotorUpdate()
         // Execute movement
         Serial.print(F("[Info][M106] Motor "));
         Serial.print(currentIndex + 1);
-        Serial.print(F(": deltaPulse = "));
-        Serial.print((long)deltaPulse);
         Serial.print(F(", error = "));
         Serial.print(motCtx.error, 2);
         Serial.print(F(" deg, speed = "));
         Serial.print(moveSpeed);
         Serial.print(F(", progress = "));
-        Serial.print((1.0f - (absError / initialTotalDistance[currentIndex])) * 100.0f, 1);
-        Serial.print(F("%, isMotorEnabled = "));
-        Serial.println(motor[currentIndex].isEnabled());
+        // Calculate progress with bounds checking
+        float progressPercent = 0.0f;
+        if (initialTotalDistance[currentIndex] > 0.0f)
+        {
+            progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+            progressPercent = constrain(progressPercent, 0.0f, 1.0f);  // Clamp between 0 and 1
+        }
+        Serial.println(progressPercent * 100.0f, 1);
 
         motor[currentIndex].move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = moveSpeed;
