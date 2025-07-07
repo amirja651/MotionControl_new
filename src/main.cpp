@@ -571,10 +571,6 @@ void rotaryMotorUpdate()
         // Register callback for movement completion
         motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
 
-        // Limit pulses for micro-movement
-        if (abs(deltaPulsPosition) > maxMicroMovePulse)
-            deltaPulsPosition = (deltaPulsPosition > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
-
         // Calculate speed based on smooth stepped profile
         int targetSpeed;
         if (absError <= FINE_MOVE_THRESHOLD_DEG)

@@ -29,11 +29,11 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
     if (!_moving && _stepsRemaining <= 0)
         return;
 
-    /*else if (_moving && _stepsRemaining <= 0)
+    else if (_moving && _stepsRemaining <= 0)
     {
         stopTimer();
         return;
-    }*/
+    }
 
     _tickCounter++;
     if (_tickCounter >= _ticksPerStep)
@@ -45,8 +45,8 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
         digitalWrite(_STEP_PIN, LOW);
         _stepsRemaining--;
 
-        /*if (_stepsRemaining == 0)
-            stopTimer();*/
+        if (_stepsRemaining == 0)
+            stopTimer();
     }
 }
 
