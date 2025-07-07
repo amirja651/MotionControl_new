@@ -13,7 +13,7 @@
 
 #define MAIN_ENCODER_TASK_DEBUG false
 
-struct MotorContext
+struct MotorContext2
 {
     float   currentPosition;
     float   error;
@@ -73,24 +73,23 @@ static unsigned int highWaterMark = 0;
 #if MAIN_ENCODER_TASK_DEBUG
 void encoderUpdateTask(void* pvParameters);
 #endif
-void         motorUpdateTask(void* pvParameters);
-void         serialReadTask(void* pvParameters);
-bool         isValidNumber(const String& str);
-void         setTargetPosition(String targetPos);
-void         setMotorId(String motorId);
-float        getMotorPosition();
-MotorContext getMotorContext();
-void         motorUpdateTask(void* pvParameters);
-void         linearMotorUpdate();
-void         rotaryMotorUpdate();
-int          calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
-void         demonstrateSpeedProfile();
-void         motorStopAndSavePosition(String callerFunctionName);
-void         resetMotorState(uint8_t id);
-void         clearLine();
-void         serialReadTask(void* pvParameters);
-void         printSerial();
-void         printMotorStatus();
+void          motorUpdateTask(void* pvParameters);
+void          serialReadTask(void* pvParameters);
+bool          isValidNumber(const String& str);
+void          setTargetPosition(String targetPos);
+void          setMotorId(String motorId);
+float         getMotorPosition();
+MotorContext2 getMotorContext2();
+void          motorUpdateTask(void* pvParameters);
+void          linearMotorUpdate();
+void          rotaryMotorUpdate();
+int           calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
+void          motorStopAndSavePosition(String callerFunctionName);
+void          resetMotorState(uint8_t id);
+void          clearLine();
+void          serialReadTask(void* pvParameters);
+void          printSerial();
+void          printMotorStatus();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -279,8 +278,8 @@ void setTargetPosition(String targetPos)
     if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
         firstTime = false;
 
-    Serial.print(F("[Info][M100] Target P. set to motor "));
-    Serial.println(currentIndex + 1);
+    // Serial.print(F("[Info][M100] Target P. set to motor "));
+    // Serial.println(currentIndex + 1);
 }
 
 // Motor Id is 1-4 (0-3) (M101)
@@ -307,8 +306,8 @@ void setMotorId(String motorId)
     }
 
     currentIndex = index - 1;
-    Serial.print(F("[Info][M101] Motor is selected: "));
-    Serial.println(index);
+    // Serial.print(F("[Info][M101] Motor is selected: "));
+    // Serial.println(index);
 }
 
 // Get motor position (M102)
@@ -320,36 +319,29 @@ float getMotorPosition()
 }
 
 // Get motor context (M103)
-MotorContext getMotorContext()
+MotorContext2 getMotorContext2()
 {
-    MotorContext   motCtx = {};  // Zero-initialize all members
-    EncoderContext encCtx = encoder[currentIndex].getEncoderContext();
-    MotorType      type   = motor[currentIndex].getMotorType();
+    MotorContext2  motCtx2 = {};  // Zero-initialize all members
+    EncoderContext encCtx  = encoder[currentIndex].getEncoderContext();
+    MotorType      type    = motor[currentIndex].getMotorType();
 
     //  Use appropriate pulse conversion based on motor type
     if (type == MotorType::LINEAR)
     {
-        motCtx.currentPositionPulses = encoder[currentIndex].umToPulses(motCtx.currentPosition);
-        motCtx.targetPositionPulses  = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
-        motCtx.error                 = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
-        motCtx.errorPulses           = encoder[currentIndex].umToPulses(motCtx.error);
+        motCtx2.currentPositionPulses = encoder[currentIndex].umToPulses(motCtx2.currentPosition);
+        motCtx2.targetPositionPulses  = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
+        motCtx2.error                 = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx2.currentPosition);
+        motCtx2.errorPulses           = encoder[currentIndex].umToPulses(motCtx2.error);
     }
     else  // ROTATIONAL
     {
-        motCtx.currentPositionPulses = encoder[currentIndex].degreesToPulses(encCtx.position_degrees);
-        motCtx.targetPositionPulses  = encoder[currentIndex].degreesToPulses(targetPosition[currentIndex]);
-        motCtx.error                 = motor[currentIndex].calculateDegreesPositionError(targetPosition[currentIndex], encCtx.position_degrees);
-        motCtx.errorPulses           = encoder[currentIndex].degreesToPulses(motCtx.error);
-
-        Serial.print(F("[DEBUG] Error: "));
-        Serial.println(motCtx.error);
-        Serial.print(F("[DEBUG] Current Position: "));
-        Serial.print(F(encCtx.position_degrees));
-        Serial.print(F(", Target Position: "));
-        Serial.println(targetPosition[currentIndex]);
+        motCtx2.currentPositionPulses = encoder[currentIndex].degreesToPulses(encCtx.position_degrees);
+        motCtx2.targetPositionPulses  = encoder[currentIndex].degreesToPulses(targetPosition[currentIndex]);
+        motCtx2.error                 = motor[currentIndex].calculateDegreesPositionError(targetPosition[currentIndex], encCtx.position_degrees);
+        motCtx2.errorPulses           = encoder[currentIndex].degreesToPulses(motCtx2.error);
     }
 
-    return motCtx;
+    return motCtx2;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -455,14 +447,14 @@ void linearMotorUpdate()
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        MotorContext motCtx       = getMotorContext();
-        float        absError     = fabs(motCtx.error);
-        int32_t      targetPulse  = motCtx.targetPositionPulses;
-        int32_t      currentPulse = motCtx.currentPositionPulses;
-        int32_t      deltaPulse   = targetPulse - currentPulse;
+        MotorContext2 motCtx2      = getMotorContext2();
+        float         absError     = fabs(motCtx2.error);
+        int32_t       targetPulse  = motCtx2.targetPositionPulses;
+        int32_t       currentPulse = motCtx2.currentPositionPulses;
+        int32_t       deltaPulse   = targetPulse - currentPulse;
 
-        float   positionThreshold = (motCtx.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
-        int32_t maxMicroMovePulse = (motCtx.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
+        float   positionThreshold = (motCtx2.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
+        int32_t maxMicroMovePulse = (motCtx2.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
 
         // Check if we've reached the Target P.
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
@@ -472,7 +464,7 @@ void linearMotorUpdate()
         }
 
         // Set movement direction
-        motor[currentIndex].setDirection(motCtx.error > 0);
+        motor[currentIndex].setDirection(motCtx2.error > 0);
 
         if (!motor[currentIndex].isEnabled())
             motor[currentIndex].enable();
@@ -512,7 +504,7 @@ void linearMotorUpdate()
         Serial.print(F(", deltaPulse = "));
         Serial.print(deltaPulse);
         Serial.print(F(", error = "));
-        Serial.print(motCtx.error, 2);
+        Serial.print(motCtx2.error, 2);
         Serial.print(F(" um, speed = "));
         Serial.print(moveSpeed);
         Serial.print(F(", progress = "));
@@ -543,66 +535,35 @@ void rotaryMotorUpdate()
         return;
 
     // Rotary motor specific constants
-    static const float   POSITION_THRESHOLD_DEG_FORWARD = 0.1f;  // Acceptable error range for rotary motors (increased from 0.01f)
-    static const float   FINE_MOVE_THRESHOLD_DEG        = 1.0f;  // Fine movement threshold for rotary motors
-    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD   = 3;     // Maximum correction pulses for rotary
-    static const int     MIN_SPEED                      = 8;     // Start and end speed
-    static const int     MAX_SPEED                      = 8;     // Maximum speed
-    static const int     FINE_MOVE_SPEED                = 8;     // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT           = 5.0f;  // 5% segments for speed changes
-
-    // Validate Target P. is within rotary motor limits (0.01 to 359.9 degrees)
-    float target = targetPosition[currentIndex];
-    if (target < 0.01f || target > 359.9f)
-    {
-        Serial.print(F("[Error][M106] Target P. is out of range 0.01/359.9 (deg): "));
-        Serial.println(target);
-        newTargetpositionReceived[currentIndex] = false;
-        return;
-    }
+    static const float   POSITION_THRESHOLD_DEG  = 0.1f;  // Acceptable error range for rotary motors (increased from 0.01f)
+    static const float   FINE_MOVE_THRESHOLD_DEG = 1.0f;  // Fine movement threshold for rotary motors
+    static const int32_t MAX_MICRO_MOVE_PULSE    = 3;     // Maximum correction pulses for rotary
+    static const int     MIN_SPEED               = 25;    // Start and end speed
+    static const int     MAX_SPEED               = 25;    // Maximum speed
+    static const int     FINE_MOVE_SPEED         = 25;    // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT    = 5.0f;  // 5% segments for speed changes
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        MotorContext motCtx   = getMotorContext();
-        float        absError = fabs(motCtx.error);
-
-        // Convert degrees to pulses for rotary motor
-        int32_t targetPulse  = motCtx.targetPositionPulses;
-        int32_t currentPulse = motCtx.currentPositionPulses;
-        int32_t deltaPulse   = targetPulse - currentPulse;
+        MotorContext2 motCtx2           = getMotorContext2();
+        float         absError          = fabs(motCtx2.error);
+        int32_t       targetPulse       = motCtx2.targetPositionPulses;
+        int32_t       currentPulse      = motCtx2.currentPositionPulses;
+        int32_t       deltaPulsPosition = targetPulse - currentPulse;
 
         // Use symmetric thresholds for rotary motors
-        float   positionThreshold = POSITION_THRESHOLD_DEG_FORWARD;
-        int32_t maxMicroMovePulse = MAX_MICRO_MOVE_PULSE_FORWARD;
+        float   positionThreshold = POSITION_THRESHOLD_DEG;
+        int32_t maxMicroMovePulse = MAX_MICRO_MOVE_PULSE;
 
         // Check if we've reached the Target P.
-        if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
+        if (absError <= positionThreshold && abs(deltaPulsPosition) < maxMicroMovePulse)
         {
-            Serial.print(F("[DEBUG] Stop condition 1 met: absError="));
-            Serial.print(absError, 3);
-            Serial.print(F(", threshold="));
-            Serial.print(positionThreshold, 3);
-            Serial.print(F(", deltaPulse="));
-            Serial.print(abs(deltaPulse));
-            Serial.print(F(", maxPulse="));
-            Serial.println(maxMicroMovePulse);
-            motorStopAndSavePosition("M106");
-            return;
-        }
-
-        // Additional stop condition: if error is very small and no movement is needed
-        if (absError <= 0.05f && abs(deltaPulse) <= 1)
-        {
-            Serial.print(F("[DEBUG] Stop condition 2 met: absError="));
-            Serial.print(absError, 3);
-            Serial.print(F(", deltaPulse="));
-            Serial.println(abs(deltaPulse));
             motorStopAndSavePosition("M106");
             return;
         }
 
         // Set movement direction
-        motor[currentIndex].setDirection(motCtx.error > 0);
+        motor[currentIndex].setDirection(motCtx2.error > 0);
 
         if (!motor[currentIndex].isEnabled())
             motor[currentIndex].enable();
@@ -611,15 +572,15 @@ void rotaryMotorUpdate()
         motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
 
         // Limit pulses for micro-movement
-        if (abs(deltaPulse) > maxMicroMovePulse)
-            deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
+        if (abs(deltaPulsPosition) > maxMicroMovePulse)
+            deltaPulsPosition = (deltaPulsPosition > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
 
         // Calculate speed based on smooth stepped profile
-        int moveSpeed;
+        int targetSpeed;
         if (absError <= FINE_MOVE_THRESHOLD_DEG)
         {
             // Fine movement - low speed
-            moveSpeed = FINE_MOVE_SPEED;
+            targetSpeed = FINE_MOVE_SPEED;
         }
         else
         {
@@ -633,31 +594,43 @@ void rotaryMotorUpdate()
             float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
 
             // Calculate speed based on stepped profile
-            moveSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+            targetSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
         }
 
-        // Execute movement
-        Serial.print(F("[Info][M106] Motor "));
-        Serial.print(currentIndex + 1);
-        Serial.print(F(", deltaPulse = "));
-        Serial.print(deltaPulse);
-        Serial.print(F(", error = "));
-        Serial.print(motCtx.error, 2);
-        Serial.print(F(" deg, speed = "));
-        Serial.print(moveSpeed);
-        Serial.print(F(", progress = "));
-        // Calculate progress with bounds checking
-        float progressPercent = 0.0f;
+        float progressPercent = 0.0f;  // Calculate progress with bounds checking
         if (initialTotalDistance[currentIndex] > 0.0f)
         {
             progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
             progressPercent = constrain(progressPercent, 0.0f, 1.0f);  // Clamp between 0 and 1
         }
-        Serial.println(progressPercent * 100.0f, 1);
 
-        motor[currentIndex].move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
-        lastSpeed[currentIndex]   = moveSpeed;
+        Serial.println();
+        printf("┌─%-51s─┐\n", "─");
+        printf("│ %-2s | %-11s │ %-11s │ %-5s │ %-8s │\n", "Id", "Delta Pulse", "Error (deg)", "Speed", "Progress");
+        printf("├─%-51s─┤\n", "─");
+        printf("│ %-2d | %-11d │ %-11.2f │ %-5d │ %-8.2f │\n", currentIndex + 1, deltaPulsPosition, motCtx2.error, targetSpeed, progressPercent * 100.0f);
+        printf("└─%-51s─┘\n", "─");
+
+        motor[currentIndex].move(deltaPulsPosition, targetSpeed, lastSpeed[currentIndex]);
+        lastSpeed[currentIndex]   = targetSpeed;
         motorMoving[currentIndex] = true;
+
+        MotorContext        motCtx = motor[currentIndex].getMotorContext();
+        static MotorContext motCtx_temp;
+
+        // if (memcmp(&motCtx, &motCtx_temp, sizeof(MotorContext)) != 0)
+        //{
+        printf("┌─%-136s─┐\n", "─");
+        printf("│ %-2s | %-6s │ %-15s │ %-5s │ %-12s │ %-15s │ %-10s │ %-16s │ %-14s │ %-12s │\n", "Id", "Moving", "Steps Remaining", "Speed", "Target Speed",
+               "Target Position", "Last Speed", "Current Position", "Ticks Per Step", "Tick Counter");
+        printf("├─%-136s─┤\n", "─");
+        printf("│ %-2d | %-6s │ %-15d │ %-5.2f │ %-12.2f │ %-15.2f │ %-10.2f │ %-16.2f │ %-14d │ %-12d │\n", currentIndex + 1, motCtx.moving ? "YES" : "NO",
+               motCtx.stepsRemaining, motCtx.speed, motCtx.targetSpeed, motCtx.targetPosition, motCtx.lastSpeed, motCtx.currentPosition, motCtx.ticksPerStep,
+               motCtx.tickCounter);
+        printf("└─%-136s─┘\n", "─");
+
+        motCtx_temp = motCtx;
+        //}
     }
     else
     {
@@ -706,28 +679,6 @@ int calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, flo
         speed = maxSpeed;
 
     return speed;
-}
-
-// Function to demonstrate speed profile (for testing)
-void demonstrateSpeedProfile()
-{
-    Serial.println(F("\r\n=== Speed Profile Demonstration ==="));
-    Serial.println(F("Progress% | Segment | Speed"));
-    Serial.println(F("----------|---------|------"));
-
-    const int   minSpeed    = 20;
-    const int   maxSpeed    = 200;
-    const float segmentSize = 5.0f;
-
-    for (int i = 0; i <= 100; i += 5)
-    {
-        float progress = i / 100.0f;
-        int   segment  = static_cast<int>(progress * 100.0f / segmentSize);
-        int   speed    = calculateSteppedSpeed(progress, minSpeed, maxSpeed, segmentSize);
-
-        Serial.printf("%8d%% | %7d | %5d\r\n", i, segment, speed);
-    }
-    Serial.println(F("=====================================\r\n"));
 }
 
 // Motor Stop and Save Position (M107)
@@ -999,13 +950,6 @@ void serialReadTask(void* pvParameters)
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;
             }
-            else if (c == cmdSpeedProfile)
-            {
-                demonstrateSpeedProfile();
-                esp_task_wdt_reset();
-                vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                continue;
-            }
             else if (c == cmdReset)
             {
                 resetMotorState(currentIndex);
@@ -1044,8 +988,8 @@ void printSerial()
     Serial.print(highWaterMark * 4);
     Serial.print(F(" bytes)\n"));
 
-    EncoderContext encCtx = encoder[currentIndex].getEncoderContext();
-    MotorContext   motCtx = getMotorContext();
+    EncoderContext encCtx  = encoder[currentIndex].getEncoderContext();
+    MotorContext2  motCtx2 = getMotorContext2();
 
     MotorType type = motor[currentIndex].getMotorType();
     String    unit = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
@@ -1068,20 +1012,20 @@ void printSerial()
     Serial.print(F("      "));
     Serial.print(F("CUR POS "));
     Serial.print(unit);
-    Serial.print(type == MotorType::LINEAR ? motCtx.currentPosition : encCtx.position_degrees);
+    Serial.print(type == MotorType::LINEAR ? motCtx2.currentPosition : encCtx.position_degrees);
     // Serial.print(F("\t"));
     // Serial.print(F("CUR POS (p): "));
-    // Serial.print(motCtx.currentPositionPulses, 0);
+    // Serial.print(motCtx2.currentPositionPulses, 0);
     Serial.print(F("      "));
     Serial.print(F("TGT POS: "));
     Serial.print(unit);
     Serial.print(targetPosition[currentIndex]);
     // Serial.print(F("\t"));
     // Serial.print(F("TGT POS (p): "));
-    // Serial.print(firstTime ? 0 : motCtx.targetPositionPulses, 0);
+    // Serial.print(firstTime ? 0 : motCtx2.targetPositionPulses, 0);
     Serial.print(F("      "));
     Serial.print(F("ERR: "));
-    Serial.print(firstTime ? 0 : motCtx.error, 0);
+    Serial.print(firstTime ? 0 : motCtx2.error, 0);
     // Serial.print(F("\t"));
     // Serial.print(F("newTargetpositionReceived: "));
     // Serial.print(newTargetpositionReceived[currentIndex]);

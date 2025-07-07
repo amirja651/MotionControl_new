@@ -9,46 +9,132 @@ void IRAM_ATTR MotorSpeedController::onTimerISR0()
     if (_motorInstances[0] && _motorInstances[0]->_enabled)
         _motorInstances[0]->onTimerISR();
 }
-
 void IRAM_ATTR MotorSpeedController::onTimerISR1()
 {
     if (_motorInstances[1] && _motorInstances[1]->_enabled)
         _motorInstances[1]->onTimerISR();
 }
-
 void IRAM_ATTR MotorSpeedController::onTimerISR2()
 {
     if (_motorInstances[2] && _motorInstances[2]->_enabled)
         _motorInstances[2]->onTimerISR();
 }
-
 void IRAM_ATTR MotorSpeedController::onTimerISR3()
 {
     if (_motorInstances[3] && _motorInstances[3]->_enabled)
         _motorInstances[3]->onTimerISR();
 }
+void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
+{
+    if (!_moving && _stepsRemaining <= 0)
+        return;
 
-MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
-                                           uint16_t EN_PIN)
+    /*else if (_moving && _stepsRemaining <= 0)
+    {
+        stopTimer();
+        return;
+    }*/
+
+    _tickCounter++;
+    if (_tickCounter >= _ticksPerStep)
+    {
+        _tickCounter = 0;
+
+        digitalWrite(_STEP_PIN, HIGH);
+        __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");  // Short pulse, must be >1us for most drivers
+        digitalWrite(_STEP_PIN, LOW);
+        _stepsRemaining--;
+
+        /*if (_stepsRemaining == 0)
+            stopTimer();*/
+    }
+}
+
+void MotorSpeedController::attachInterruptHandler()
+{
+    if (_timer == nullptr && _motorId < 4)
+    {
+        _timer = timerBegin(_motorId, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
+        switch (_motorId)
+        {
+            case 0:
+                timerAttachInterrupt(_timer, &onTimerISR0, false);
+                break;
+            case 1:
+                timerAttachInterrupt(_timer, &onTimerISR1, false);
+                break;
+            case 2:
+                timerAttachInterrupt(_timer, &onTimerISR2, false);
+                break;
+            case 3:
+                timerAttachInterrupt(_timer, &onTimerISR3, false);
+                break;
+        }
+
+        Serial.println("Timer attached");
+    }
+
+    startTimer();
+}
+void MotorSpeedController::detachInterruptHandler()
+{
+    if (_timer == nullptr)
+        return;
+
+    timerDetachInterrupt(_timer);
+    _timer = nullptr;
+    Serial.println("Timer detached");
+}
+
+void MotorSpeedController::startTimer()
+{
+    if (_timer)
+    {
+        Serial.println("Timer started");
+        timerAlarmWrite(_timer, _timerTick_us, true);  // Default 10: 100KHz and 1000: 1KHz, will be set in move()
+        timerAlarmEnable(_timer);
+    }
+}
+void MotorSpeedController::stopTimer()
+{
+    if (_timer)
+    {
+        timerAlarmDisable(_timer);
+        _moving               = false;
+        _movementCompleteFlag = true;
+        Serial.println("Timer stopped");
+    }
+}
+
+MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
     : _driver(driver),
       _DIR_PIN(DIR_PIN),
       _STEP_PIN(STEP_PIN),
       _EN_PIN(EN_PIN),
       _motorId(motorId),
+
       _stepsRemaining(0),
       _moving(false),
       _speed(0),
+      _lastSpeed(0),
+      _targetSpeed(0),
       _targetPosition(0),
       _currentPosition(0),
+
       _timer(nullptr),
       _enabled(false),
-      _onComplete(nullptr)
+
+      _onComplete(nullptr),
+      _movementCompleteFlag(false),
+
+      _ticksPerStep(0),
+      _tickCounter(0),
+
+      _motorContext{}
 {
     _mux                      = portMUX_INITIALIZER_UNLOCKED;
     _motorInstances[_motorId] = this;
-    _movementCompleteFlag     = false;
 }
-
 MotorSpeedController::~MotorSpeedController()
 {
     disable();
@@ -64,17 +150,14 @@ bool MotorSpeedController::begin()
 
     // Default state
     digitalWrite(_EN_PIN, HIGH);  // Disable driver initially
-    digitalWrite(_DIR_PIN, LOW);
-    digitalWrite(_STEP_PIN, LOW);
+    digitalWrite(_DIR_PIN, HIGH);
+    digitalWrite(_STEP_PIN, HIGH);
 
     // Initialize motor
     disable();
 
     // Store instance for interrupt handling
     _motorInstances[_motorId] = this;
-
-    // Allocate timer
-    attachInterruptHandler();
 
     return true;
 }
@@ -88,7 +171,6 @@ void MotorSpeedController::enable()
     digitalWrite(_EN_PIN, LOW);
     attachInterruptHandler();
 }
-
 void MotorSpeedController::disable()
 {
     if (!_enabled)
@@ -99,130 +181,58 @@ void MotorSpeedController::disable()
     detachInterruptHandler();
 }
 
-void MotorSpeedController::attachInterruptHandler()
+bool MotorSpeedController::isEnabled() const
 {
-    // Allocate timer
-    if (_timer == nullptr && _motorId < 4)
-    {
-        _timer = timerBegin(_motorId, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
-        switch (_motorId)
-        {
-            case 0:
-
-                timerAttachInterrupt(_timer, &onTimerISR0, false);
-
-                break;
-            case 1:
-
-                timerAttachInterrupt(_timer, &onTimerISR1, false);
-
-                break;
-            case 2:
-
-                timerAttachInterrupt(_timer, &onTimerISR2, false);
-
-                break;
-            case 3:
-
-                timerAttachInterrupt(_timer, &onTimerISR3, false);
-
-                break;
-        }
-        timerAlarmWrite(_timer, 1000000, true);  // Default 1Hz, will be set in move()
-        timerAlarmDisable(_timer);
-    }
+    return _enabled;
 }
-
-void MotorSpeedController::detachInterruptHandler()
+bool MotorSpeedController::isDisabled() const
 {
-    if (_timer)
-        timerDetachInterrupt(_timer);
-    _timer = nullptr;
+    return !_enabled;
 }
 
 void MotorSpeedController::setDirection(bool forward)
 {
     digitalWrite(_DIR_PIN, forward ? HIGH : LOW);
 }
-
-void MotorSpeedController::move(float position, float speed, float lastSpeed)
+void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, float lastSpeed)  // amir 1402/04/21
 {
-    if (_timer == nullptr || speed <= 0)
-        return;
-    int32_t steps = static_cast<int32_t>(position);  // position in steps
-    if (steps == 0)
+    if (_timer == nullptr || targetSpeed <= 0 || deltaPulsPosition == 0)
         return;
 
-    portENTER_CRITICAL(&_mux);
-    _stepsRemaining = abs(steps);
+    _stepsRemaining = abs(deltaPulsPosition);
+    _targetPosition = deltaPulsPosition;
+    _targetSpeed    = targetSpeed;
+    _lastSpeed      = lastSpeed;
     _moving         = true;
-    _speed          = speed;
-    _targetPosition = position;
-    portEXIT_CRITICAL(&_mux);
 
-    setDirection(steps > 0);
-    enable();
-
-    if (lastSpeed != speed)
+    if (lastSpeed != targetSpeed)
     {
-        lastSpeed = speed;
-
-        uint32_t interval_us = static_cast<uint32_t>(1e6f / speed);
-        timerAlarmWrite(_timer, interval_us, true);
-        timerAlarmEnable(_timer);
+        lastSpeed = targetSpeed;
+        // updateSpeedGradually();
+        setSpeed(targetSpeed);
     }
 }
-
 void MotorSpeedController::stop()
 {
     stopTimer();
     if (getMotorType() == MotorType::ROTATIONAL)
         disable();
 
-    portENTER_CRITICAL(&_mux);
-    _moving         = false;
     _stepsRemaining = 0;
-    portEXIT_CRITICAL(&_mux);
-}
-
-void MotorSpeedController::stopTimer()
-{
-    if (_timer)
-        timerAlarmDisable(_timer);
-}
-
-void MotorSpeedController::startTimer(uint32_t interval_us)
-{
-    if (_timer)
-    {
-        timerAlarmWrite(_timer, interval_us, true);
-        timerAlarmEnable(_timer);
-    }
-}
-
-void IRAM_ATTR MotorSpeedController::onTimerISR()
-{
-    portENTER_CRITICAL_ISR(&_mux);
-    if (_stepsRemaining > 0)
-    {
-        digitalWrite(_STEP_PIN, HIGH);
-        // Short pulse, must be >1us for most drivers
-        __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
-        digitalWrite(_STEP_PIN, LOW);
-        _stepsRemaining--;
-    }
-    if (_stepsRemaining <= 0 && _moving)
-    {
-        timerAlarmDisable(_timer);
-        _moving               = false;
-        _movementCompleteFlag = true;
-    }
-    portEXIT_CRITICAL_ISR(&_mux);
 }
 
 void MotorSpeedController::attachOnComplete(void (*callback)())
 {
     _onComplete = callback;
+}
+void MotorSpeedController::handleMovementComplete()
+{
+    if (_movementCompleteFlag)
+    {
+        _movementCompleteFlag = false;
+        if (_onComplete)
+            _onComplete();
+    }
 }
 
 MotorType MotorSpeedController::getMotorType() const
@@ -241,25 +251,60 @@ float MotorSpeedController::wrapAngle180(float value)
         value += 360.0f;
     return value;
 }
-
 float MotorSpeedController::calculateDegreesPositionError(float target, float current)
 {
     float diff = fmodf(target - current + 540.0f, 360.0f) - 180.0f;
     return diff;
 }
-
 float MotorSpeedController::calculateSignedPositionError(float targetPos, float currentPos)
 {
     float error = targetPos - currentPos;
     return error;
 }
 
-void MotorSpeedController::handleMovementComplete()
+void MotorSpeedController::setTargetSpeed(float targetSpeed)
 {
-    if (_movementCompleteFlag)
-    {
-        _movementCompleteFlag = false;
-        if (_onComplete)
-            _onComplete();
-    }
+    _targetSpeed = targetSpeed;
+}
+void MotorSpeedController::setSpeed(float speedStepsPerSec)
+{
+    _speed        = speedStepsPerSec;
+    _ticksPerStep = static_cast<uint32_t>(1e6f / (speedStepsPerSec * _timerTick_us));
+}
+void MotorSpeedController::updateSpeedGradually()
+{
+    static uint32_t lastUpdate = 0;
+    if (millis() - lastUpdate < 10)
+        return;
+    lastUpdate = millis();
+
+    float currentSpeed = (_ticksPerStep == 0) ? 0 : 1e6f / (_ticksPerStep * _timerTick_us);
+    float deltaSpeed   = _targetSpeed - currentSpeed;
+
+    if (fabs(deltaSpeed) < 0.01f)
+        return;
+
+    float accel     = 1000.0f;        // steps/sec^2
+    float speedStep = accel * 0.01f;  // because we update every 10ms
+
+    if (deltaSpeed > 0)
+        currentSpeed += speedStep;
+    else
+        currentSpeed -= speedStep;
+
+    // setSpeed(currentSpeed);
+}
+
+MotorContext& MotorSpeedController::getMotorContext() const
+{
+    _motorContext.stepsRemaining  = _stepsRemaining;
+    _motorContext.moving          = _moving;
+    _motorContext.speed           = _speed;
+    _motorContext.lastSpeed       = _lastSpeed;
+    _motorContext.targetSpeed     = _targetSpeed;
+    _motorContext.targetPosition  = _targetPosition;
+    _motorContext.currentPosition = _currentPosition;
+    _motorContext.ticksPerStep    = _ticksPerStep;
+    _motorContext.tickCounter     = _tickCounter;
+    return _motorContext;
 }
