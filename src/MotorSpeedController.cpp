@@ -28,10 +28,23 @@ void IRAM_ATTR MotorSpeedController::onTimerISR3()
         _motorInstances[3]->onTimerISR();
 }
 
-MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
-    : _driver(driver), _DIR_PIN(DIR_PIN), _STEP_PIN(STEP_PIN), _EN_PIN(EN_PIN), _motorId(motorId), _stepsRemaining(0), _moving(false), _speed(0), _targetPosition(0), _currentPosition(0), _timer(nullptr), _enabled(false), _onComplete(nullptr)
+MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
+                                           uint16_t EN_PIN)
+    : _driver(driver),
+      _DIR_PIN(DIR_PIN),
+      _STEP_PIN(STEP_PIN),
+      _EN_PIN(EN_PIN),
+      _motorId(motorId),
+      _stepsRemaining(0),
+      _moving(false),
+      _speed(0),
+      _targetPosition(0),
+      _currentPosition(0),
+      _timer(nullptr),
+      _enabled(false),
+      _onComplete(nullptr)
 {
-    _mux = portMUX_INITIALIZER_UNLOCKED;
+    _mux                      = portMUX_INITIALIZER_UNLOCKED;
     _motorInstances[_motorId] = this;
     _movementCompleteFlag     = false;
 }
@@ -39,7 +52,7 @@ MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driv
 MotorSpeedController::~MotorSpeedController()
 {
     disable();
-        _motorInstances[_motorId] = nullptr;
+    _motorInstances[_motorId] = nullptr;
 }
 
 bool MotorSpeedController::begin()
@@ -227,6 +240,12 @@ float MotorSpeedController::wrapAngle180(float value)
     else if (value < -180.0f)
         value += 360.0f;
     return value;
+}
+
+float MotorSpeedController::calculateDegreesPositionError(float target, float current)
+{
+    float diff = fmodf(target - current + 540.0f, 360.0f) - 180.0f;
+    return diff;
 }
 
 float MotorSpeedController::calculateSignedPositionError(float targetPos, float currentPos)

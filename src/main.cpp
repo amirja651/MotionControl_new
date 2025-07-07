@@ -22,17 +22,16 @@ struct MotorContext
     int32_t errorPulses;
 };
 
-TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]),
-                            TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]),
+                            TMC5160Manager(3, DriverPins::CS[3])};
 
-MotorSpeedController motor[4] = {
-    MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]),
-    MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
-    MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
-    MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
+MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]),
+                                 MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
+                                 MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
+                                 MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
 
-MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1),
-                          MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2),
+                          MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Task handles
 #if MAIN_ENCODER_TASK_DEBUG
@@ -323,30 +322,31 @@ float getMotorPosition()
 // Get motor context (M103)
 MotorContext getMotorContext()
 {
-    MotorContext motCtx = {};  // Zero-initialize all members
-
+    MotorContext   motCtx = {};  // Zero-initialize all members
     EncoderContext encCtx = encoder[currentIndex].getEncoderContext();
     MotorType      type   = motor[currentIndex].getMotorType();
-
-    motCtx.currentPosition = (type == MotorType::LINEAR) ? encCtx.total_travel_um : encCtx.position_degrees;
-    motCtx.error =
-        motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
-
-    if (type == MotorType::ROTATIONAL)
-        motCtx.error = motor[currentIndex].wrapAngle180(motCtx.error);
 
     //  Use appropriate pulse conversion based on motor type
     if (type == MotorType::LINEAR)
     {
         motCtx.currentPositionPulses = encoder[currentIndex].umToPulses(motCtx.currentPosition);
         motCtx.targetPositionPulses  = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
+        motCtx.error                 = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx.currentPosition);
         motCtx.errorPulses           = encoder[currentIndex].umToPulses(motCtx.error);
     }
     else  // ROTATIONAL
     {
-        motCtx.currentPositionPulses = encoder[currentIndex].degreesToPulses(motCtx.currentPosition);
+        motCtx.currentPositionPulses = encoder[currentIndex].degreesToPulses(encCtx.position_degrees);
         motCtx.targetPositionPulses  = encoder[currentIndex].degreesToPulses(targetPosition[currentIndex]);
+        motCtx.error                 = motor[currentIndex].calculateDegreesPositionError(targetPosition[currentIndex], encCtx.position_degrees);
         motCtx.errorPulses           = encoder[currentIndex].degreesToPulses(motCtx.error);
+
+        Serial.print(F("[DEBUG] Error: "));
+        Serial.println(motCtx.error);
+        Serial.print(F("[DEBUG] Current Position: "));
+        Serial.print(F(encCtx.position_degrees));
+        Serial.print(F(", Target Position: "));
+        Serial.println(targetPosition[currentIndex]);
     }
 
     return motCtx;
@@ -455,14 +455,11 @@ void linearMotorUpdate()
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        MotorContext motCtx = getMotorContext();
-
-        float absError = fabs(motCtx.error);
-        float target   = targetPosition[currentIndex];
-
-        int32_t targetPulse  = encoder[currentIndex].umToPulses(target);
-        int32_t currentPulse = encoder[currentIndex].umToPulses(motCtx.currentPosition);
-        int32_t deltaPulse   = targetPulse - currentPulse;
+        MotorContext motCtx       = getMotorContext();
+        float        absError     = fabs(motCtx.error);
+        int32_t      targetPulse  = motCtx.targetPositionPulses;
+        int32_t      currentPulse = motCtx.currentPositionPulses;
+        int32_t      deltaPulse   = targetPulse - currentPulse;
 
         float   positionThreshold = (motCtx.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
         int32_t maxMicroMovePulse = (motCtx.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
@@ -546,14 +543,13 @@ void rotaryMotorUpdate()
         return;
 
     // Rotary motor specific constants
-    static const float POSITION_THRESHOLD_DEG_FORWARD =
-        0.1f;  // Acceptable error range for rotary motors (increased from 0.01f)
-    static const float   FINE_MOVE_THRESHOLD_DEG      = 1.0f;  // Fine movement threshold for rotary motors
-    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD = 3;     // Maximum correction pulses for rotary
-    static const int     MIN_SPEED                    = 8;     // Start and end speed
-    static const int     MAX_SPEED                    = 8;     // Maximum speed
-    static const int     FINE_MOVE_SPEED              = 8;     // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT         = 5.0f;  // 5% segments for speed changes
+    static const float   POSITION_THRESHOLD_DEG_FORWARD = 0.1f;  // Acceptable error range for rotary motors (increased from 0.01f)
+    static const float   FINE_MOVE_THRESHOLD_DEG        = 1.0f;  // Fine movement threshold for rotary motors
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD   = 3;     // Maximum correction pulses for rotary
+    static const int     MIN_SPEED                      = 8;     // Start and end speed
+    static const int     MAX_SPEED                      = 8;     // Maximum speed
+    static const int     FINE_MOVE_SPEED                = 8;     // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT           = 5.0f;  // 5% segments for speed changes
 
     // Validate Target P. is within rotary motor limits (0.01 to 359.9 degrees)
     float target = targetPosition[currentIndex];
@@ -567,13 +563,12 @@ void rotaryMotorUpdate()
 
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
-        MotorContext motCtx = getMotorContext();
-
-        float absError = fabs(motCtx.error);
+        MotorContext motCtx   = getMotorContext();
+        float        absError = fabs(motCtx.error);
 
         // Convert degrees to pulses for rotary motor
-        int32_t targetPulse  = encoder[currentIndex].degreesToPulses(target);
-        int32_t currentPulse = encoder[currentIndex].degreesToPulses(motCtx.currentPosition);
+        int32_t targetPulse  = motCtx.targetPositionPulses;
+        int32_t currentPulse = motCtx.currentPositionPulses;
         int32_t deltaPulse   = targetPulse - currentPulse;
 
         // Use symmetric thresholds for rotary motors
@@ -1073,7 +1068,7 @@ void printSerial()
     Serial.print(F("      "));
     Serial.print(F("CUR POS "));
     Serial.print(unit);
-    Serial.print(motCtx.currentPosition);
+    Serial.print(type == MotorType::LINEAR ? motCtx.currentPosition : encCtx.position_degrees);
     // Serial.print(F("\t"));
     // Serial.print(F("CUR POS (p): "));
     // Serial.print(motCtx.currentPositionPulses, 0);

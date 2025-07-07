@@ -16,7 +16,8 @@ class MotorSpeedController
 {
 public:
     // Constructor
-    MotorSpeedController(uint8_t motorIndex, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN);
+    MotorSpeedController(uint8_t motorIndex, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
+                         uint16_t EN_PIN);
     ~MotorSpeedController();
 
     // Initialize the controller
@@ -43,6 +44,7 @@ public:
 
     MotorType getMotorType() const;
     float     wrapAngle180(float value);
+    float     calculateDegreesPositionError(float target, float current);
     float     calculateSignedPositionError(float targetPos, float currentPos);
 
     void handleMovementComplete();

@@ -219,7 +219,7 @@ EncoderContext& MAE3Encoder::getEncoderContext() const
     _encoderContext.lap_id        = _lap.id;
     _encoderContext.lap_period    = _lap.period[_lap.id + 10];  // 10: laps offset
 
-    _encoderContext.position_degrees = _state.current_pulse * (360.0f / 4096);
+    _encoderContext.position_degrees = _state.degrees;
     _encoderContext.position_mm      = _encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / 4096);
     _encoderContext.total_travel_mm  = (_lap.id * LEAD_SCREW_PITCH_MM) + _encoderContext.position_mm;
     _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
