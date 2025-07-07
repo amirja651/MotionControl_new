@@ -535,15 +535,15 @@ void rotaryMotorUpdate()
         return;
 
     // Rotary motor specific constants
-    static const float   POSITION_THRESHOLD_DEG  = 0.1f;  // Acceptable error range for rotary motors (increased from 0.01f)
-    static const float   FINE_MOVE_THRESHOLD_DEG = 1.0f;  // Fine movement threshold for rotary motors
-    static const int32_t MAX_MICRO_MOVE_PULSE    = 3;     // Maximum correction pulses for rotary
-    static const int     MIN_SPEED               = 25;    // Start and end speed
-    static const int     MAX_SPEED               = 25;    // Maximum speed
-    static const int     FINE_MOVE_SPEED         = 25;    // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT    = 5.0f;  // 5% segments for speed changes
+    static const float   POSITION_THRESHOLD_DEG  = 0.1f;   // Acceptable error range for rotary motors (increased from 0.01f)
+    static const float   FINE_MOVE_THRESHOLD_DEG = 10.0f;  // Fine movement threshold for rotary motors
+    static const int32_t MAX_MICRO_MOVE_PULSE    = 3;      // Maximum correction pulses for rotary
+    static const int     MIN_SPEED               = 1;      // Start and end speed
+    static const int     MAX_SPEED               = 200;    // Maximum speed
+    static const int     FINE_MOVE_SPEED         = 7;      // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT    = 1.0f;   // 5% segments for speed changes
 
-    if (!motorMoving[currentIndex])  // Only when motor is stopped
+    // if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
         MotorContext2 motCtx2           = getMotorContext2();
         float         absError          = fabs(motCtx2.error);
@@ -591,6 +591,9 @@ void rotaryMotorUpdate()
 
             // Calculate speed based on stepped profile
             targetSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+            Serial.print(progressPercent);
+            Serial.print(", ");
+            Serial.println(targetSpeed);
         }
 
         float progressPercent = 0.0f;  // Calculate progress with bounds checking
@@ -600,35 +603,29 @@ void rotaryMotorUpdate()
             progressPercent = constrain(progressPercent, 0.0f, 1.0f);  // Clamp between 0 and 1
         }
 
-        Serial.println();
+        /*Serial.println();
         printf("┌─%-51s─┐\n", "─");
         printf("│ %-2s | %-11s │ %-11s │ %-5s │ %-8s │\n", "Id", "Delta Pulse", "Error (deg)", "Speed", "Progress");
         printf("├─%-51s─┤\n", "─");
         printf("│ %-2d | %-11d │ %-11.2f │ %-5d │ %-8.2f │\n", currentIndex + 1, deltaPulsPosition, motCtx2.error, targetSpeed, progressPercent * 100.0f);
-        printf("└─%-51s─┘\n", "─");
+        printf("└─%-51s─┘\n", "─");*/
 
         motor[currentIndex].move(deltaPulsPosition, targetSpeed, lastSpeed[currentIndex]);
         lastSpeed[currentIndex]   = targetSpeed;
         motorMoving[currentIndex] = true;
 
-        MotorContext        motCtx = motor[currentIndex].getMotorContext();
-        static MotorContext motCtx_temp;
+        // MotorContext motCtx = motor[currentIndex].getMotorContext();
 
-        // if (memcmp(&motCtx, &motCtx_temp, sizeof(MotorContext)) != 0)
-        //{
-        printf("┌─%-136s─┐\n", "─");
+        /*printf("┌─%-136s─┐\n", "─");
         printf("│ %-2s | %-6s │ %-15s │ %-5s │ %-12s │ %-15s │ %-10s │ %-16s │ %-14s │ %-12s │\n", "Id", "Moving", "Steps Remaining", "Speed", "Target Speed",
                "Target Position", "Last Speed", "Current Position", "Ticks Per Step", "Tick Counter");
         printf("├─%-136s─┤\n", "─");
         printf("│ %-2d | %-6s │ %-15d │ %-5.2f │ %-12.2f │ %-15.2f │ %-10.2f │ %-16.2f │ %-14d │ %-12d │\n", currentIndex + 1, motCtx.moving ? "YES" : "NO",
                motCtx.stepsRemaining, motCtx.speed, motCtx.targetSpeed, motCtx.targetPosition, motCtx.lastSpeed, motCtx.currentPosition, motCtx.ticksPerStep,
                motCtx.tickCounter);
-        printf("└─%-136s─┘\n", "─");
-
-        motCtx_temp = motCtx;
-        //}
+        printf("└─%-136s─┘\n", "─");*/
     }
-    else
+    // else
     {
         // When motor is moving, don't reset the total distance
         // Only reset when movement is complete in motorStopAndSavePosition
