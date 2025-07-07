@@ -368,7 +368,7 @@ void encoderUpdateTask(void* pvParameters)  // amir
 // Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(2);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(1);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     static bool     isDriverConnectedMessageShown = false;
@@ -591,9 +591,15 @@ void rotaryMotorUpdate()
 
             // Calculate speed based on stepped profile
             targetSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
-            Serial.print(progressPercent);
-            Serial.print(", ");
-            Serial.println(targetSpeed);
+
+            static int targetSpeed_tmp = 0;
+            if (targetSpeed != targetSpeed_tmp)
+            {
+                Serial.print(progressPercent);
+                Serial.print(", ");
+                Serial.println(targetSpeed);
+                targetSpeed_tmp = targetSpeed;
+            }
         }
 
         float progressPercent = 0.0f;  // Calculate progress with bounds checking
