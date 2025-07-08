@@ -93,6 +93,7 @@ int           calculateSteppedSpeed(float progressPercent, int minSpeed, int max
 void          motorStopAndSavePosition(String callerFunctionName);
 void          resetMotorState(uint8_t id);
 void          clearLine();
+bool          isPrintable(char c);
 void          serialReadTask(void* pvParameters);
 void          printSerial();
 void          printMotorStatus();
@@ -848,11 +849,14 @@ void resetMotorState(uint8_t id)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void clearLine()
 {
-    Serial.print(F("\r"));  // Go to the beginning of the line
-    Serial.print(F("> "));
-    for (int i = 0; i < 50; ++i)
-        Serial.print(F(" "));  // More space
-    Serial.print(F("\r> "));
+    Serial.print(F("\r"));                                                                                // Go to the beginning of the line
+    Serial.print(F("                                                                                "));  // About 80 characters
+    Serial.print(F("\r"));
+}
+
+bool isPrintable(char c)
+{
+    return c >= 32 && c <= 126;
 }
 
 // Serial Read Task (M109)
@@ -911,16 +915,13 @@ void serialReadTask(void* pvParameters)
                         inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
                         clearLine();
                         Serial.print(inputBuffer);
-                        clearLine();
-                        Serial.print(inputBuffer);
                     }
-                    else if (historyIndex == 0)
+                    else if (historyIndex == 0 && isPrintable(c))
                     {
                         historyIndex = -1;
                         inputBuffer  = lastInput;
-                        Serial.print(F("\r> "));
-                        Serial.print(inputBuffer);
-                        Serial.print(F("           \r> "));
+                        clearLine();
+                        Serial.print(F("> "));
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
@@ -1053,6 +1054,8 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("e").isSet())
                 {
                     motor[currentIndex].enable(true);
+                    motor[currentIndex].attachInterruptHandler();
+                    motor[currentIndex].startTimer();
                     esp_task_wdt_reset();
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
