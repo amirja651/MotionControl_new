@@ -35,8 +35,8 @@ public:
     // Initialize the controller
     bool begin();
 
-    void enable();
-    void disable();
+    void enable(bool force = false);
+    void disable(bool force = false);
 
     bool isEnabled() const;
     bool isDisabled() const;

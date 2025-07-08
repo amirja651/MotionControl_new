@@ -20,6 +20,7 @@ void initializeCLI()
     cmdMotor.addArg("p", "0.0");  // positional argument (um or deg)
     cmdMotor.addFlagArg("c");     // current position
     cmdMotor.addFlagArg("d");     // disable flag
+    cmdMotor.addFlagArg("e");     // enable flag
 
     cmdMotor.setDescription("Control motor movement\r\n"
                             "Usage: motor -n <number> [-p <position>] [-c] [-d]\r\n"
@@ -31,7 +32,8 @@ void initializeCLI()
                             "  motor -n 1 -p 100.0    # Move motor 1 to 100 um\r\n"
                             "  motor -n 2 -p 45.0     # Move motor 2 to 45 degrees\r\n"
                             "  motor -n 1 -c          # Get current position of motor 1\r\n"
-                            "  motor -n 1 -d          # Disable motor 1\r\n");
+                            "  motor -n 1 -d          # Disable motor 1\r\n"
+                            "  motor -n 1 -e          # Enable motor 1\r\n");
 
     cmdRestart = cli.addCmd("restart");
     cmdRestart.setDescription("Restart the ESP32 system");

@@ -192,18 +192,20 @@ bool MotorSpeedController::begin()
     return true;
 }
 
-void MotorSpeedController::enable()
+void MotorSpeedController::enable(bool force)
 {
-    if (_enabled)
+    if (_enabled && !force)
         return;
 
     _enabled = true;
     digitalWrite(_EN_PIN, LOW);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
+    Serial.print("Motor enabled: ");
+    Serial.println(_motorId + 1);
 }
-void MotorSpeedController::disable()
+void MotorSpeedController::disable(bool force)
 {
-    if (!_enabled)
+    if (!_enabled && !force)
         return;
 
     _enabled = false;

@@ -1043,7 +1043,16 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("d").isSet())
                 {
                     motor[currentIndex].stop();
-                    motor[currentIndex].disable();
+                    motor[currentIndex].disable(true);
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+
+                // Handle enable command
+                if (c.getArgument("e").isSet())
+                {
+                    motor[currentIndex].enable(true);
                     esp_task_wdt_reset();
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
