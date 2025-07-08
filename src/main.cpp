@@ -69,6 +69,7 @@ static unsigned int highWaterMark = 0;
 
 static bool speedDetection        = false;  // For speed detection
 static bool speedDetectionStarted = false;  // For speed detection
+static bool isLongMove            = false;  // For short move
 
 // ============================
 // Function Declarations
@@ -270,7 +271,7 @@ void setTargetPosition(String targetPos)
     }
 
     diagnosticsRun = false;  // set diagnosticsRun to false for new index
-
+    isLongMove     = false;  // set shortMove to false for new index
     // ✅ The value is valid
     if (currentIndex == (uint8_t)MotorType::LINEAR)
         driver[currentIndex].configureDriver_Nema11_1004H(true);
@@ -746,9 +747,9 @@ void rotaryMotorUpdate()
     static const float   POSITION_THRESHOLD_DEG  = 0.1f;
     static const float   FINE_MOVE_THRESHOLD_DEG = 10.0f;
     static const int32_t MAX_MICRO_MOVE_PULSE    = 3;
-    static const int     MIN_SPEED               = 4;
-    static const int     MAX_SPEED               = 100;
-    static const int     FINE_MOVE_SPEED         = 4;
+    static const int     MIN_SPEED               = 1;
+    static int           MAX_SPEED               = 100;
+    static const int     FINE_MOVE_SPEED         = 8;
 
     MotorContext2 motCtx2           = getMotorContext2();
     float         absError          = fabs(motCtx2.error);
@@ -785,16 +786,18 @@ void rotaryMotorUpdate()
 
     // Calculate speed
     int targetSpeed;
-    // if (absError <= FINE_MOVE_THRESHOLD_DEG)
+    if (absError <= FINE_MOVE_THRESHOLD_DEG && !isLongMove)
     {
-        // targetSpeed = FINE_MOVE_SPEED;
+        MAX_SPEED = FINE_MOVE_SPEED;
     }
-    // else
+    else
     {
-        targetSpeed = calculateTriangularSpeed(progressPercent, MIN_SPEED, MAX_SPEED);
+        MAX_SPEED  = 100;
+        isLongMove = true;
     }
 
     // Final safety check
+    targetSpeed = calculateTriangularSpeed(progressPercent, MIN_SPEED, MAX_SPEED);
     targetSpeed = constrain(targetSpeed, MIN_SPEED, MAX_SPEED);
 
     // Debug (optional)

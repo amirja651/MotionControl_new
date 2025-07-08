@@ -195,6 +195,7 @@ void MotorSpeedController::enable()
 
     _enabled = true;
     digitalWrite(_EN_PIN, LOW);
+    __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
     attachInterruptHandler();
     startTimer();  // Start timer after attaching interrupt
 }
@@ -205,6 +206,7 @@ void MotorSpeedController::disable()
 
     _enabled = false;
     digitalWrite(_EN_PIN, HIGH);
+    __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
     detachInterruptHandler();
 }
 
