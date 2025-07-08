@@ -1015,6 +1015,16 @@ void serialReadTask(void* pvParameters)
                     continue;
                 }
 
+                // Handle position commands
+                if (c.getArgument("p").isSet())
+                {
+                    String targetPosition = c.getArgument("p").getValue();
+                    setTargetPosition(targetPosition);
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
+                }
+
                 // Handle Get motor position command
                 if (c.getArgument("c").isSet())
                 {
@@ -1029,11 +1039,11 @@ void serialReadTask(void* pvParameters)
                     continue;
                 }
 
-                // Handle position commands
-                if (c.getArgument("p").isSet())
+                // Handle disable command
+                if (c.getArgument("d").isSet())
                 {
-                    String targetPosition = c.getArgument("p").getValue();
-                    setTargetPosition(targetPosition);
+                    motor[currentIndex].stop();
+                    motor[currentIndex].disable();
                     esp_task_wdt_reset();
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
                     continue;
