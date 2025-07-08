@@ -67,6 +67,9 @@ static float initialTotalDistance[4] = {0.0f};
 // Static variable to store high water mark
 static unsigned int highWaterMark = 0;
 
+static bool speedDetection        = false;  // For speed detection
+static bool speedDetectionStarted = false;  // For speed detection
+
 // ============================
 // Function Declarations
 // ============================
@@ -82,6 +85,7 @@ float         getMotorPosition();
 MotorContext2 getMotorContext2();
 void          motorUpdateTask(void* pvParameters);
 void          linearMotorUpdate();
+void          detectRotaryMotorSpeed();
 void          rotaryMotorUpdate();
 int           calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void          motorStopAndSavePosition(String callerFunctionName);
@@ -414,13 +418,19 @@ void motorUpdateTask(void* pvParameters)
 
         encoder[currentIndex].processPWM();
 
-        // Call appropriate motor update function based on motor type
-        // Linear motor (index 0) and Rotary motors (indices 1-3)
-        if (motor[currentIndex].getMotorType() == MotorType::LINEAR)
-            linearMotorUpdate();
+        if (speedDetection)
+            detectRotaryMotorSpeed();
 
         else
-            rotaryMotorUpdate();
+        {
+            // Call appropriate motor update function based on motor type
+            // Linear motor (index 0) and Rotary motors (indices 1-3)
+            if (motor[currentIndex].getMotorType() == MotorType::LINEAR)
+                linearMotorUpdate();
+
+            else
+                rotaryMotorUpdate();
+        }
 
         esp_task_wdt_reset();
         if (++counter % 1000 == 0)  // Only check and print once every 1000
@@ -525,6 +535,100 @@ void linearMotorUpdate()
     {
         // When motor is moving, don't reset the total distance
         // Only reset when movement is complete in motorStopAndSavePosition
+    }
+}
+
+// Speed Detection for Rotary Motor (M105.5)
+void detectRotaryMotorSpeed()
+{
+    static int                 currentTestSpeed       = 1;
+    static int32_t             initialEncoderPosition = 0;
+    static const int           MAX_TEST_SPEED         = 200;
+    static const int           SPEED_INCREMENT        = 1;
+    static const unsigned long SPEED_TEST_DURATION    = 1000;  // 1 second test duration
+    static unsigned long       testStartTime          = 0;
+
+    // Initialize speed detection if not started
+    if (!speedDetectionStarted)
+    {
+        Serial.println(F("[Info][M105.5] Starting rotary motor speed detection..."));
+        Serial.println(F("[Info][M105.5] Motor will start from speed 1 and increase until encoder position changes"));
+
+        // Enable motor and set direction
+        if (!motor[currentIndex].isEnabled())
+            motor[currentIndex].enable();
+
+        motor[currentIndex].setDirection(true);  // Forward direction
+
+        // Get initial encoder position
+        EncoderContext encCtx  = encoder[currentIndex].getEncoderContext();
+        initialEncoderPosition = encCtx.current_pulse;
+
+        // Start with speed 1
+        currentTestSpeed      = 1;
+        testStartTime         = millis();
+        speedDetectionStarted = true;
+
+        Serial.print(F("[Info][M105.5] Testing speed: "));
+        Serial.println(currentTestSpeed);
+
+        // Start motor movement
+        motor[currentIndex].move(5, currentTestSpeed, 0.0f);  // Move 1000 steps at current speed
+        return;
+    }
+
+    // Check if current speed test duration has elapsed
+    if (millis() - testStartTime >= SPEED_TEST_DURATION)
+    {
+        // Get current encoder position
+        EncoderContext encCtx                 = encoder[currentIndex].getEncoderContext();
+        int32_t        currentEncoderPosition = encCtx.current_pulse;
+
+        // Check if encoder position has changed
+        if (abs(currentEncoderPosition - initialEncoderPosition) > 11)
+        {
+            // Speed detection successful - motor started moving
+            Serial.print(F("[Success][M105.5] Motor started moving at speed: "));
+            Serial.println(currentTestSpeed);
+            Serial.print(F("[Info][M105.5] Encoder position changed from: "));
+            Serial.print(initialEncoderPosition);
+            Serial.print(F(" to: "));
+            Serial.println(currentEncoderPosition);
+
+            // Stop motor and reset detection
+            motor[currentIndex].stop();
+            speedDetectionStarted = false;
+            speedDetection        = false;
+            currentTestSpeed      = 1;
+            return;
+        }
+
+        // Motor didn't move at current speed, try next speed
+        currentTestSpeed += SPEED_INCREMENT;
+
+        if (currentTestSpeed > MAX_TEST_SPEED)
+        {
+            // Reached maximum test speed without movement
+            Serial.println(F("[Warning][M105.5] Motor did not move even at maximum speed (200)"));
+            Serial.println(F("[Info][M105.5] Check motor connections, driver settings, or mechanical issues"));
+
+            // Stop motor and reset detection
+            motor[currentIndex].stop();
+            speedDetectionStarted = false;
+            speedDetection        = false;
+            currentTestSpeed      = 1;
+            return;
+        }
+
+        // Update initial position for next test
+        initialEncoderPosition = currentEncoderPosition;
+        testStartTime          = millis();
+
+        Serial.print(F("[Info][M105.5] Testing speed: "));
+        Serial.println(currentTestSpeed);
+
+        // Start motor movement at new speed
+        motor[currentIndex].move(1000, currentTestSpeed, 0.0f);
     }
 }
 
@@ -694,6 +798,9 @@ void motorStopAndSavePosition(String callerFunctionName)
     motorMoving[currentIndex]               = false;  // ✅ CRITICAL: Reset motor moving flag
     initialTotalDistance[currentIndex]      = 0.0f;   // ✅ Reset distance for speed profile
     lastSpeed[currentIndex]                 = 0.0f;
+
+    speedDetectionStarted = false;  // For speed detection
+    speedDetection        = false;  // For speed detection
 
     motor[currentIndex].stop();
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -945,6 +1052,13 @@ void serialReadTask(void* pvParameters)
             else if (c == cmdDrive)
             {
                 driver[currentIndex].logDriverStatus();
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
+            }
+            else if (c == cmdMinSpeedDetect)
+            {
+                speedDetection = true;
                 esp_task_wdt_reset();
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
                 continue;

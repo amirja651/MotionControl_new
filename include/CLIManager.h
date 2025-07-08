@@ -9,7 +9,7 @@ Command   cmdRestart;
 Command   cmdStop;
 Command   cmdShow;
 Command   cmdDrive;
-Command   cmdSpeedProfile;
+Command   cmdMinSpeedDetect;
 Command   cmdReset;
 Command   cmdHelp;
 
@@ -46,8 +46,8 @@ void initializeCLI()
     cmdDrive = cli.addCmd("drv");
     cmdDrive.setDescription("Show the drive status");
 
-    cmdSpeedProfile = cli.addCmd("speed");
-    cmdSpeedProfile.setDescription("Demonstrate the stepped speed profile");
+    cmdMinSpeedDetect = cli.addCmd("speed");
+    cmdMinSpeedDetect.setDescription("Demonstrate the stepped speed profile");
 
     cmdReset = cli.addCmd("reset");
     cmdReset.setDescription("Reset the motor");
