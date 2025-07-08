@@ -87,6 +87,7 @@ void          motorUpdateTask(void* pvParameters);
 void          linearMotorUpdate();
 void          detectRotaryMotorSpeed();
 void          rotaryMotorUpdate();
+int           calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed);
 int           calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
 void          motorStopAndSavePosition(String callerFunctionName);
 void          resetMotorState(uint8_t id);
@@ -372,7 +373,7 @@ void encoderUpdateTask(void* pvParameters)  // amir
 // Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(1);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(10);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     static bool     isDriverConnectedMessageShown = false;
@@ -633,7 +634,7 @@ void detectRotaryMotorSpeed()
 }
 
 // Rotary Motor Update (M106)
-void rotaryMotorUpdate()
+void rotaryMotorUpdate2()
 {
     if (!newTargetpositionReceived[currentIndex])
         return;
@@ -642,10 +643,10 @@ void rotaryMotorUpdate()
     static const float   POSITION_THRESHOLD_DEG  = 0.1f;   // Acceptable error range for rotary motors (increased from 0.01f)
     static const float   FINE_MOVE_THRESHOLD_DEG = 10.0f;  // Fine movement threshold for rotary motors
     static const int32_t MAX_MICRO_MOVE_PULSE    = 3;      // Maximum correction pulses for rotary
-    static const int     MIN_SPEED               = 1;      // Start and end speed
+    static const int     MIN_SPEED               = 4;      // Start and end speed
     static const int     MAX_SPEED               = 200;    // Maximum speed
-    static const int     FINE_MOVE_SPEED         = 7;      // Fine movement speed
-    static const float   SEGMENT_SIZE_PERCENT    = 1.0f;   // 5% segments for speed changes
+    static const int     FINE_MOVE_SPEED         = 4;      // Fine movement speed
+    // static const float   SEGMENT_SIZE_PERCENT    = 1.0f;   // 5% segments for speed changes
 
     // if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
@@ -655,12 +656,8 @@ void rotaryMotorUpdate()
         int32_t       currentPulse      = motCtx2.currentPositionPulses;
         int32_t       deltaPulsPosition = targetPulse - currentPulse;
 
-        // Use symmetric thresholds for rotary motors
-        float   positionThreshold = POSITION_THRESHOLD_DEG;
-        int32_t maxMicroMovePulse = MAX_MICRO_MOVE_PULSE;
-
         // Check if we've reached the Target P.
-        if (absError <= positionThreshold && abs(deltaPulsPosition) < maxMicroMovePulse)
+        if (absError <= POSITION_THRESHOLD_DEG && abs(deltaPulsPosition) < MAX_MICRO_MOVE_PULSE)
         {
             motorStopAndSavePosition("M106");
             return;
@@ -668,7 +665,6 @@ void rotaryMotorUpdate()
 
         // Set movement direction
         motor[currentIndex].setDirection(motCtx2.error > 0);
-
         if (!motor[currentIndex].isEnabled())
             motor[currentIndex].enable();
 
@@ -694,7 +690,7 @@ void rotaryMotorUpdate()
             float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
 
             // Calculate speed based on stepped profile
-            targetSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+            targetSpeed = calculateTriangularSpeed(progressPercent, MIN_SPEED, MAX_SPEED);
 
             static int targetSpeed_tmp = 0;
             if (targetSpeed != targetSpeed_tmp)
@@ -740,6 +736,109 @@ void rotaryMotorUpdate()
         // When motor is moving, don't reset the total distance
         // Only reset when movement is complete in motorStopAndSavePosition
     }
+}
+void rotaryMotorUpdate()
+{
+    if (!newTargetpositionReceived[currentIndex])
+        return;
+
+    // Constants
+    static const float   POSITION_THRESHOLD_DEG  = 0.1f;
+    static const float   FINE_MOVE_THRESHOLD_DEG = 10.0f;
+    static const int32_t MAX_MICRO_MOVE_PULSE    = 3;
+    static const int     MIN_SPEED               = 4;
+    static const int     MAX_SPEED               = 100;
+    static const int     FINE_MOVE_SPEED         = 4;
+
+    MotorContext2 motCtx2           = getMotorContext2();
+    float         absError          = fabs(motCtx2.error);
+    int32_t       targetPulse       = motCtx2.targetPositionPulses;
+    int32_t       currentPulse      = motCtx2.currentPositionPulses;
+    int32_t       deltaPulsPosition = targetPulse - currentPulse;
+
+    // Check if we've reached the Target
+    if (absError <= POSITION_THRESHOLD_DEG && abs(deltaPulsPosition) < MAX_MICRO_MOVE_PULSE)
+    {
+        motorStopAndSavePosition("M106");
+        return;
+    }
+
+    // Direction setup
+    motor[currentIndex].setDirection(motCtx2.error > 0);
+    if (!motor[currentIndex].isEnabled())
+        motor[currentIndex].enable();
+
+    motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
+
+    // Calculate progress
+    if (initialTotalDistance[currentIndex] == 0.0f)
+    {
+        initialTotalDistance[currentIndex] = absError;  // Set only once per move
+    }
+
+    float progressPercent = 0.0f;
+    if (initialTotalDistance[currentIndex] > 0.0f)
+    {
+        progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+        progressPercent = constrain(progressPercent, 0.0f, 1.0f);
+    }
+
+    // Calculate speed
+    int targetSpeed;
+    // if (absError <= FINE_MOVE_THRESHOLD_DEG)
+    {
+        // targetSpeed = FINE_MOVE_SPEED;
+    }
+    // else
+    {
+        targetSpeed = calculateTriangularSpeed(progressPercent, MIN_SPEED, MAX_SPEED);
+    }
+
+    // Final safety check
+    targetSpeed = constrain(targetSpeed, MIN_SPEED, MAX_SPEED);
+
+    // Debug (optional)
+    static int lastLoggedSpeed = -1;
+    if (targetSpeed != lastLoggedSpeed)
+    {
+        Serial.print(progressPercent, 2);
+        Serial.print(", ");
+        Serial.println(targetSpeed);
+        lastLoggedSpeed = targetSpeed;
+    }
+
+    // Move command
+    motor[currentIndex].move(deltaPulsPosition, targetSpeed, lastSpeed[currentIndex]);
+    lastSpeed[currentIndex]   = targetSpeed;
+    motorMoving[currentIndex] = true;
+}
+
+int calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed)
+{
+    // Clamp progress between 0.0 and 1.0
+    if (progressPercent <= 0.0f)
+        return minSpeed;
+    if (progressPercent >= 1.0f)
+        return minSpeed;
+
+    float peakProgress = 0.2f;  // Point of max speed
+    float speedRange   = static_cast<float>(maxSpeed - minSpeed);
+    float speed;
+
+    if (progressPercent <= peakProgress)
+    {
+        float rampUpRatio = progressPercent / peakProgress;
+        speed             = minSpeed + (speedRange * rampUpRatio);
+    }
+    else
+    {
+        float rampDownRatio = (1.0f - progressPercent) / (1.0f - peakProgress);
+        speed               = minSpeed + (speedRange * rampDownRatio);
+    }
+
+    // Always enforce bounds
+    speed = constrain(speed, (float)minSpeed, (float)maxSpeed);
+    return static_cast<int>(speed);
 }
 
 // Helper function to calculate stepped speed profile

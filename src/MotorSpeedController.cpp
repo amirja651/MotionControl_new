@@ -52,58 +52,84 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
 
 void MotorSpeedController::attachInterruptHandler()
 {
-    if (_timer == nullptr && _motorId < 4)
+    // Check if timer is already initialized
+    if (_timer != nullptr)
     {
-        _timer = timerBegin(_motorId, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
-        switch (_motorId)
-        {
-            case 0:
-                timerAttachInterrupt(_timer, &onTimerISR0, false);
-                break;
-            case 1:
-                timerAttachInterrupt(_timer, &onTimerISR1, false);
-                break;
-            case 2:
-                timerAttachInterrupt(_timer, &onTimerISR2, false);
-                break;
-            case 3:
-                timerAttachInterrupt(_timer, &onTimerISR3, false);
-                break;
-        }
-
-        Serial.println("Timer attached");
+        Serial.println("Timer already attached, skipping...");
+        return;
     }
 
-    startTimer();
+    if (_motorId >= 4)
+    {
+        Serial.println("Invalid motor ID for timer");
+        return;
+    }
+
+    // Create new timer instance
+    _timer = timerBegin(_motorId, 80, true);  // 80 prescaler: 1us tick (80MHz/80)
+
+    if (_timer == nullptr)
+    {
+        Serial.println("Failed to create timer!");
+        return;
+    }
+
+    switch (_motorId)
+    {
+        case 0:
+            timerAttachInterrupt(_timer, &onTimerISR0, false);
+            break;
+        case 1:
+            timerAttachInterrupt(_timer, &onTimerISR1, false);
+            break;
+        case 2:
+            timerAttachInterrupt(_timer, &onTimerISR2, false);
+            break;
+        case 3:
+            timerAttachInterrupt(_timer, &onTimerISR3, false);
+            break;
+    }
+
+    Serial.print("Timer attached for motor ");
+    Serial.println(_motorId);
 }
 void MotorSpeedController::detachInterruptHandler()
 {
     if (_timer == nullptr)
         return;
 
+    // Stop timer first
+    timerAlarmDisable(_timer);
     timerDetachInterrupt(_timer);
+
+    // Delete timer instance
+    timerEnd(_timer);
     _timer = nullptr;
-    Serial.println("Timer detached");
+
+    Serial.print("Timer detached for motor ");
+    Serial.println(_motorId);
 }
 
 void MotorSpeedController::startTimer()
 {
-    if (_timer)
-    {
-        Serial.println("Timer started");
-        timerAlarmWrite(_timer, _timerTick_us, true);  // Default 10: 100KHz and 1000: 1KHz, will be set in move()
-        timerAlarmEnable(_timer);
-    }
+    if (_timer == nullptr)
+        return;
+
+    Serial.print("Timer started for motor ");
+    Serial.println(_motorId);
+    timerAlarmWrite(_timer, _timerTick_us, true);  // Default 10: 100KHz and 1000: 1KHz, will be set in move()
+    timerAlarmEnable(_timer);
 }
 void MotorSpeedController::stopTimer()
 {
-    if (_timer)
-    {
-        timerAlarmDisable(_timer);
-        _moving               = false;
-        _movementCompleteFlag = true;
-        Serial.println("Timer stopped");
-    }
+    if (_timer == nullptr)
+        return;
+
+    timerAlarmDisable(_timer);
+    _moving               = false;
+    _movementCompleteFlag = true;
+    Serial.print("Timer stopped for motor ");
+    Serial.println(_motorId);
 }
 
 MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
@@ -170,6 +196,7 @@ void MotorSpeedController::enable()
     _enabled = true;
     digitalWrite(_EN_PIN, LOW);
     attachInterruptHandler();
+    startTimer();  // Start timer after attaching interrupt
 }
 void MotorSpeedController::disable()
 {
