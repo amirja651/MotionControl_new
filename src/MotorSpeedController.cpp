@@ -209,6 +209,8 @@ void MotorSpeedController::disable()
     _enabled = false;
     digitalWrite(_EN_PIN, HIGH);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
+    Serial.print("Motor disabled: ");
+    Serial.println(_motorId + 1);
 }
 
 bool MotorSpeedController::isEnabled() const
