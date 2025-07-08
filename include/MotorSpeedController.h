@@ -61,6 +61,12 @@ public:
 
     MotorContext& getMotorContext() const;
 
+    void attachInterruptHandler();
+    void detachInterruptHandler();
+
+    void startTimer();
+    void stopTimer();
+
 private:
     // Hardware driver and pins
     TMC5160Manager& _driver;
@@ -99,12 +105,6 @@ private:
     static void IRAM_ATTR onTimerISR2();
     static void IRAM_ATTR onTimerISR3();
     void IRAM_ATTR        onTimerISR();
-
-    void attachInterruptHandler();
-    void detachInterruptHandler();
-
-    void startTimer();
-    void stopTimer();
 };
 
 #endif  // MOTOR_SPEED_CONTROLLER_H

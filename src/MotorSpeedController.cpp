@@ -92,6 +92,7 @@ void MotorSpeedController::attachInterruptHandler()
 
     Serial.print("Timer attached for motor ");
     Serial.println(_motorId);
+    __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
 }
 void MotorSpeedController::detachInterruptHandler()
 {
@@ -108,6 +109,7 @@ void MotorSpeedController::detachInterruptHandler()
 
     Serial.print("Timer detached for motor ");
     Serial.println(_motorId);
+    __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
 }
 
 void MotorSpeedController::startTimer()
@@ -164,6 +166,8 @@ MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driv
 MotorSpeedController::~MotorSpeedController()
 {
     disable();
+    stopTimer();
+    detachInterruptHandler();
     _motorInstances[_motorId] = nullptr;
 }
 
@@ -196,8 +200,6 @@ void MotorSpeedController::enable()
     _enabled = true;
     digitalWrite(_EN_PIN, LOW);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
-    attachInterruptHandler();
-    startTimer();  // Start timer after attaching interrupt
 }
 void MotorSpeedController::disable()
 {
@@ -205,9 +207,8 @@ void MotorSpeedController::disable()
         return;
 
     _enabled = false;
-    // digitalWrite(_EN_PIN, HIGH);
+    digitalWrite(_EN_PIN, HIGH);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
-    detachInterruptHandler();
 }
 
 bool MotorSpeedController::isEnabled() const
@@ -244,9 +245,8 @@ void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, fl
 void MotorSpeedController::stop()
 {
     stopTimer();
-    if (getMotorType() == MotorType::ROTATIONAL)
-        disable();
-
+    detachInterruptHandler();
+    _enabled        = false;
     _stepsRemaining = 0;
 }
 

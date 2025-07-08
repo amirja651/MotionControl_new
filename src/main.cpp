@@ -479,7 +479,11 @@ void linearMotorUpdate()
         motor[currentIndex].setDirection(motCtx2.error > 0);
 
         if (!motor[currentIndex].isEnabled())
+        {
             motor[currentIndex].enable();
+            motor[currentIndex].attachInterruptHandler();
+            motor[currentIndex].startTimer();
+        }
 
         // Register callback for movement completion
         motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
@@ -558,7 +562,11 @@ void detectRotaryMotorSpeed()
 
         // Enable motor and set direction
         if (!motor[currentIndex].isEnabled())
+        {
             motor[currentIndex].enable();
+            motor[currentIndex].attachInterruptHandler();
+            motor[currentIndex].startTimer();
+        }
 
         motor[currentIndex].setDirection(true);  // Forward direction
 
@@ -664,7 +672,11 @@ void rotaryMotorUpdate()
     // Direction setup
     motor[currentIndex].setDirection(motCtx2.error > 0);
     if (!motor[currentIndex].isEnabled())
+    {
         motor[currentIndex].enable();
+        motor[currentIndex].attachInterruptHandler();
+        motor[currentIndex].startTimer();  // Start timer after attaching interrupt
+    }
 
     motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
 
