@@ -374,7 +374,7 @@ void encoderUpdateTask(void* pvParameters)  // amir
 // Motor Update Task (M104)
 void motorUpdateTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(10);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(4);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     static bool     isDriverConnectedMessageShown = false;
@@ -824,7 +824,7 @@ int calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed)
     if (progressPercent >= 1.0f)
         return minSpeed;
 
-    float peakProgress = 0.2f;  // Point of max speed
+    float peakProgress = 0.5f;  // Point of max speed
     float speedRange   = static_cast<float>(maxSpeed - minSpeed);
     float speed;
 

@@ -205,7 +205,7 @@ void MotorSpeedController::disable()
         return;
 
     _enabled = false;
-    digitalWrite(_EN_PIN, HIGH);
+    // digitalWrite(_EN_PIN, HIGH);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
     detachInterruptHandler();
 }
