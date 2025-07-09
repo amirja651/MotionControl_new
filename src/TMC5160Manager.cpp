@@ -345,3 +345,8 @@ uint8_t TMC5160Manager::calculateCurrentSetting(uint16_t desiredCurrent_mA, uint
 
     return (uint8_t)value;
 }
+
+uint16_t TMC5160Manager::getMicrosteps()
+{
+    return _microsteps;
+}

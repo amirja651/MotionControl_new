@@ -110,12 +110,13 @@ public:
 
     float calculateMirrorAngle(int currentPixel, int referencePixel);
     float calculateDistanceToMirror(int currentPixel, int referencePixel, float mirrorAngleDeg);
-    float calculateEncoderAngle(int currentCount, int previousCount, int ppr, float gearRatio = 1.0);
+    float calculateEncoderAngle(int currentCount, int previousCount, int encoderResolution = 4096, float gearRatio = 1.0);
 
     float pixelToMirrorAngle(int deltaPixel);
     int   mirrorAngleToPulses(float mirrorAngleDeg);
     int   pixelToPulses(int deltaPixel);
-    int   mirrorAngleToPulses(float mirrorAngleDeg, float gearRatio, int stepsPerRev, int microstep);
+    int   mirrorAngleToPulses(float mirrorAngleDeg, int microstep, int stepsPerRev = 200, float gearRatio = 1.0);
+    int   encoderToPulses(int encoderValue, int microstep, int stepsPerRev = 200, int encoderResolution = 4096);
 
 private:
     // Pin assignments

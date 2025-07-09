@@ -12,12 +12,13 @@
 #include <memory>
 
 #define MAIN_ENCODER_TASK_DEBUG false
+#define MAIN_TASK_SERIAL_PRINT  true
 
 struct MotorContext2
 {
     float   currentPosition;
-    float   error;
-    int32_t currentPositionPulses;
+    float   errorAngle;
+    int32_t currentEncoderPulses;
     int32_t targetPositionPulses;
     int32_t errorPulses;
 };
@@ -39,6 +40,10 @@ TaskHandle_t encoderUpdateTaskHandle = NULL;
 #endif
 TaskHandle_t motorUpdateTaskHandle = NULL;
 TaskHandle_t serialReadTaskHandle  = NULL;
+
+#if MAIN_TASK_SERIAL_PRINT
+TaskHandle_t serialPrintTaskHandle = NULL;
+#endif
 
 static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
@@ -70,6 +75,7 @@ static unsigned int highWaterMark = 0;
 static bool speedDetection        = false;  // For speed detection
 static bool speedDetectionStarted = false;  // For speed detection
 static bool isLongMove            = false;  // For short move
+static bool diagnosticsRun        = false;  // For diagnostics
 
 // ============================
 // Function Declarations
@@ -188,11 +194,14 @@ void setup()
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
+#if MAIN_TASK_SERIAL_PRINT
+    xTaskCreatePinnedToCore(serialPrintTask, "SerialPrintTask", 4096, NULL, 2, &serialPrintTaskHandle, 0);
+    esp_task_wdt_add(serialPrintTaskHandle);  // Register with WDT
+#endif
+
     Serial.println();
     Serial.flush();
 }
-
-static bool diagnosticsRun = false;
 
 void loop()
 {
@@ -323,24 +332,24 @@ float getMotorPosition()
 // Get motor context (M103)
 MotorContext2 getMotorContext2()
 {
-    MotorContext2  motCtx2 = {};  // Zero-initialize all members
-    EncoderContext encCtx  = encoder[currentIndex].getEncoderContext();
-    MotorType      type    = motor[currentIndex].getMotorType();
+    MotorContext2  motCtx2    = {};  // Zero-initialize all members
+    EncoderContext encCtx     = encoder[currentIndex].getEncoderContext();
+    MotorType      type       = motor[currentIndex].getMotorType();
+    uint16_t       microsteps = driver[currentIndex].getMicrosteps();
 
-    //  Use appropriate pulse conversion based on motor type
     if (type == MotorType::LINEAR)
     {
-        motCtx2.currentPositionPulses = encoder[currentIndex].umToPulses(motCtx2.currentPosition);
-        motCtx2.targetPositionPulses  = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
-        motCtx2.error                 = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx2.currentPosition);
-        motCtx2.errorPulses           = encoder[currentIndex].umToPulses(motCtx2.error);
+        motCtx2.currentEncoderPulses = encoder[currentIndex].umToPulses(motCtx2.currentPosition);
+        motCtx2.targetPositionPulses = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
+        motCtx2.errorAngle           = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx2.currentPosition);
+        motCtx2.errorPulses          = encoder[currentIndex].umToPulses(motCtx2.errorAngle);
     }
     else  // ROTATIONAL
     {
-        motCtx2.currentPositionPulses = encoder[currentIndex].degreesToPulses(encCtx.position_degrees);
-        motCtx2.targetPositionPulses  = encoder[currentIndex].degreesToPulses(targetPosition[currentIndex]);
-        motCtx2.error                 = motor[currentIndex].calculateDegreesPositionError(targetPosition[currentIndex], encCtx.position_degrees);
-        motCtx2.errorPulses           = encoder[currentIndex].degreesToPulses(motCtx2.error);
+        motCtx2.currentEncoderPulses = encoder[currentIndex].encoderToPulses(encCtx.current_pulse, microsteps);
+        motCtx2.targetPositionPulses = encoder[currentIndex].mirrorAngleToPulses(targetPosition[currentIndex], microsteps);
+        motCtx2.errorAngle           = encoder[currentIndex].calculateEncoderAngle(motCtx2.currentEncoderPulses, motCtx2.targetPositionPulses);
+        motCtx2.errorPulses          = motCtx2.currentEncoderPulses - motCtx2.targetPositionPulses;
     }
 
     return motCtx2;
@@ -456,13 +465,13 @@ void linearMotorUpdate()
     if (!motorMoving[currentIndex])  // Only when motor is stopped
     {
         MotorContext2 motCtx2      = getMotorContext2();
-        float         absError     = fabs(motCtx2.error);
+        float         absError     = fabs(motCtx2.errorAngle);
         int32_t       targetPulse  = motCtx2.targetPositionPulses;
-        int32_t       currentPulse = motCtx2.currentPositionPulses;
+        int32_t       currentPulse = motCtx2.currentEncoderPulses;
         int32_t       deltaPulse   = targetPulse - currentPulse;
 
-        float   positionThreshold = (motCtx2.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
-        int32_t maxMicroMovePulse = (motCtx2.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
+        float   positionThreshold = (motCtx2.errorAngle > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
+        int32_t maxMicroMovePulse = (motCtx2.errorAngle > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
 
         // Check if we've reached the Target P.
         if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
@@ -472,7 +481,7 @@ void linearMotorUpdate()
         }
 
         // Set movement direction
-        motor[currentIndex].setDirection(motCtx2.error > 0);
+        motor[currentIndex].setDirection(motCtx2.errorAngle > 0);
 
         if (!motor[currentIndex].isEnabled())
         {
@@ -516,7 +525,7 @@ void linearMotorUpdate()
         Serial.print(F(", deltaPulse = "));
         Serial.print(deltaPulse);
         Serial.print(F(", error = "));
-        Serial.print(motCtx2.error, 2);
+        Serial.print(motCtx2.errorAngle, 2);
         Serial.print(F(" um, speed = "));
         Serial.print(moveSpeed);
         Serial.print(F(", progress = "));
@@ -652,21 +661,23 @@ void rotaryMotorUpdate()
     static int           MAX_SPEED               = 100;
     static const int     FINE_MOVE_SPEED         = 8;
 
-    MotorContext2 motCtx2           = getMotorContext2();
-    float         absError          = fabs(motCtx2.error);
-    int32_t       targetPulse       = motCtx2.targetPositionPulses;
-    int32_t       currentPulse      = motCtx2.currentPositionPulses;
-    int32_t       deltaPulsPosition = targetPulse - currentPulse;
+    MotorContext2 motCtx2       = getMotorContext2();
+    float         absErrorAngle = fabs(motCtx2.errorAngle);
+    int32_t       targetPulse   = motCtx2.targetPositionPulses;
+    int32_t       currentPulse  = motCtx2.currentEncoderPulses;
+    int32_t       errorPulses   = motCtx2.errorPulses;
 
     // Check if we've reached the Target
-    if (absError <= POSITION_THRESHOLD_DEG && abs(deltaPulsPosition) < MAX_MICRO_MOVE_PULSE)
+    if (absErrorAngle <= POSITION_THRESHOLD_DEG && abs(errorPulses) < MAX_MICRO_MOVE_PULSE)
     {
         motorStopAndSavePosition("M106");
         return;
     }
 
     // Direction setup
-    motor[currentIndex].setDirection(motCtx2.error > 0);
+    motor[currentIndex].setDirection(motCtx2.errorAngle > 0);
+
+    // Enable motor
     if (!motor[currentIndex].isEnabled())
     {
         motor[currentIndex].enable();
@@ -674,24 +685,25 @@ void rotaryMotorUpdate()
         motor[currentIndex].startTimer();  // Start timer after attaching interrupt
     }
 
+    // Register callback for movement completion
     motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
 
     // Calculate progress
     if (initialTotalDistance[currentIndex] == 0.0f)
     {
-        initialTotalDistance[currentIndex] = absError;  // Set only once per move
+        initialTotalDistance[currentIndex] = absErrorAngle;  // Set only once per move
     }
 
     float progressPercent = 0.0f;
     if (initialTotalDistance[currentIndex] > 0.0f)
     {
-        progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+        progressPercent = 1.0f - (absErrorAngle / initialTotalDistance[currentIndex]);
         progressPercent = constrain(progressPercent, 0.0f, 1.0f);
     }
 
     // Calculate speed
     int targetSpeed;
-    if (absError <= FINE_MOVE_THRESHOLD_DEG && !isLongMove)
+    if (absErrorAngle <= FINE_MOVE_THRESHOLD_DEG && !isLongMove)
     {
         MAX_SPEED = FINE_MOVE_SPEED;
     }
@@ -716,7 +728,7 @@ void rotaryMotorUpdate()
     }
 
     // Move command
-    motor[currentIndex].move(deltaPulsPosition, targetSpeed, lastSpeed[currentIndex]);
+    motor[currentIndex].move(errorPulses, targetSpeed, lastSpeed[currentIndex]);
     lastSpeed[currentIndex]   = targetSpeed;
     motorMoving[currentIndex] = true;
 }
@@ -857,7 +869,7 @@ bool isPrintable(char c)
 // Serial Read Task (M109)
 void serialReadTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(100);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(300);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
     String           inputBuffer   = "";
     String           lastInput     = "";
@@ -1119,6 +1131,22 @@ void serialReadTask(void* pvParameters)
     }
 }
 
+#if MAIN_TASK_SERIAL_PRINT
+// Serial Print Task (M109)
+void serialPrintTask(void* pvParameters)
+{
+    const TickType_t xFrequency    = pdMS_TO_TICKS(800);
+    TickType_t       xLastWakeTime = xTaskGetTickCount();
+
+    while (1)
+    {
+        printSerial();
+        esp_task_wdt_reset();
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Print Serial (M110)
 void printSerial()
@@ -1135,48 +1163,48 @@ void printSerial()
     MotorType type = motor[currentIndex].getMotorType();
     String    unit = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
 
-    // if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
-    //{
-    //  Format all values into the buffer
-    Serial.print(F("============================================================================================\r\n"));
-    Serial.print(F("MOT: "));
-    Serial.print((currentIndex + 1));
-    Serial.print(F("   "));
-    Serial.print(F("DIR: "));
-    Serial.print(encCtx.direction);
-    Serial.print(F("   "));
-    Serial.print(F("LAP: "));
-    Serial.print(encCtx.lap_id);
-    // Serial.print(F("\t"));
-    // Serial.print(F("CUR PULSE: "));
-    // Serial.print(encCtx.current_pulse);
-    Serial.print(F("      "));
-    Serial.print(F("CUR POS "));
-    Serial.print(unit);
-    Serial.print(type == MotorType::LINEAR ? motCtx2.currentPosition : encCtx.position_degrees);
-    // Serial.print(F("\t"));
-    // Serial.print(F("CUR POS (p): "));
-    // Serial.print(motCtx2.currentPositionPulses, 0);
-    Serial.print(F("      "));
-    Serial.print(F("TGT POS: "));
-    Serial.print(unit);
-    Serial.print(targetPosition[currentIndex]);
-    // Serial.print(F("\t"));
-    // Serial.print(F("TGT POS (p): "));
-    // Serial.print(firstTime ? 0 : motCtx2.targetPositionPulses, 0);
-    Serial.print(F("      "));
-    Serial.print(F("ERR: "));
-    Serial.print(firstTime ? 0 : motCtx2.error, 0);
-    // Serial.print(F("\t"));
-    // Serial.print(F("newTargetpositionReceived: "));
-    // Serial.print(newTargetpositionReceived[currentIndex]);
-    // Serial.print(F("\t"));
-    // Serial.print(F("driverEnabled: "));
-    // Serial.print(driverEnabled[currentIndex]);
-    Serial.print(F("\r\n\r\n"));
+    if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
+    {
+        //  Format all values into the buffer
+        Serial.print(F("============================================================================================\r\n"));
+        Serial.print(F("MOT: "));
+        Serial.print((currentIndex + 1));
+        Serial.print(F("   "));
+        Serial.print(F("DIR: "));
+        Serial.print(encCtx.direction);
+        Serial.print(F("   "));
+        Serial.print(F("LAP: "));
+        Serial.print(encCtx.lap_id);
+        // Serial.print(F("\t"));
+        // Serial.print(F("CUR PULSE: "));
+        // Serial.print(encCtx.current_pulse);
+        Serial.print(F("      "));
+        Serial.print(F("CUR POS "));
+        Serial.print(unit);
+        Serial.print(type == MotorType::LINEAR ? motCtx2.currentPosition : encCtx.position_degrees);
+        // Serial.print(F("\t"));
+        // Serial.print(F("CUR POS (p): "));
+        // Serial.print(motCtx2.currentPositionPulses, 0);
+        Serial.print(F("      "));
+        Serial.print(F("TGT POS: "));
+        Serial.print(unit);
+        Serial.print(targetPosition[currentIndex]);
+        // Serial.print(F("\t"));
+        // Serial.print(F("TGT POS (p): "));
+        // Serial.print(firstTime ? 0 : motCtx2.targetPositionPulses, 0);
+        Serial.print(F("      "));
+        Serial.print(F("ERR: "));
+        Serial.print(firstTime ? 0 : motCtx2.errorAngle, 0);
+        // Serial.print(F("\t"));
+        // Serial.print(F("newTargetpositionReceived: "));
+        // Serial.print(newTargetpositionReceived[currentIndex]);
+        // Serial.print(F("\t"));
+        // Serial.print(F("driverEnabled: "));
+        // Serial.print(driverEnabled[currentIndex]);
+        Serial.print(F("\r\n\r\n"));
 
-    lastPulse[currentIndex] = encCtx.current_pulse;
-    // }
+        lastPulse[currentIndex] = encCtx.current_pulse;
+    }
 }
 
 // Print Motor Status (M111)

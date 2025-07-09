@@ -542,13 +542,13 @@ float MAE3Encoder::calculateDistanceToMirror(int currentPixel, int referencePixe
     return L;  // in millimeters
 }
 
-float MAE3Encoder::calculateEncoderAngle(int currentCount, int previousCount, int ppr, float gearRatio)
+float MAE3Encoder::calculateEncoderAngle(int currentCount, int previousCount, int encoderResolution, float gearRatio)
 {
     // Encoder difference between two moments
     int deltaCount = currentCount - previousCount;
 
     // Calculate motor rotation angle (degrees)
-    float motorAngle = (deltaCount * 360.0) / ppr;
+    float motorAngle = (deltaCount * 360.0) / encoderResolution;
 
     // Apply gear ratio (optional, if exists)
     float mirrorAngle = motorAngle * gearRatio;
@@ -577,10 +577,18 @@ int MAE3Encoder::pixelToPulses(int deltaPixel)
     return mirrorAngleToPulses(angle);
 }
 
-int MAE3Encoder::mirrorAngleToPulses(float mirrorAngleDeg, float gearRatio, int stepsPerRev, int microstep)
+int MAE3Encoder::mirrorAngleToPulses(float mirrorAngleDeg, int microstep, int stepsPerRev, float gearRatio)
 {
     float motorAngleDeg = mirrorAngleDeg / gearRatio;
     float pulsesPerRev  = stepsPerRev * microstep;
     float pulses        = (motorAngleDeg / 360.0f) * pulsesPerRev;
+    return (int)round(pulses);
+}
+
+int MAE3Encoder::encoderToPulses(int encoderValue, int microstep, int stepsPerRev, int encoderResolution)
+{
+    float pulsesPerRev = stepsPerRev * microstep;
+    float motorAngle   = ((float)encoderValue / (float)encoderResolution) * 360.0f;
+    float pulses       = (motorAngle / 360.0f) * pulsesPerRev;
     return (int)round(pulses);
 }

@@ -39,14 +39,10 @@ public:
 
     DriverStatus getDriverStatus();
 
-    // Motor Control
-    void setCurrent(uint16_t current);
-    void setMicrosteps(uint16_t microsteps);
-
-    // Driver Configuration
-    void configureDriver_All_Motors(bool useStealth);
-    void logDriverStatus();
-    void DriverOff();
+    uint16_t getMicrosteps();
+    void     configureDriver_All_Motors(bool useStealth);
+    void     logDriverStatus();
+    void     DriverOff();
 
 private:
     TMC5160StepperExtended* _driver;
