@@ -454,6 +454,8 @@ void motorUpdateTask(void* pvParameters)
     }
 }
 
+void detectRotaryMotorSpeed() {}
+
 void linearMotorUpdate() {}
 
 // Rotary Motor Update (M106)
@@ -1004,18 +1006,6 @@ void printSerial2()
     float          currentPosition = getMotorPosition();
     String         unit            = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
     String         space           = " | ";
-
-    Serial.print(F("counter1: "));
-    Serial.print(MotorSpeedController::counter1);
-    Serial.print(F(" counter2: "));
-    Serial.print(MotorSpeedController::counter2);
-    Serial.print(F(" counter3: "));
-    Serial.print(MotorSpeedController::counter3);
-    Serial.print(F(" counter4: "));
-    Serial.print(MotorSpeedController::counter4);
-    Serial.print(F(" counter5: "));
-    Serial.print(MotorSpeedController::counter5);
-    Serial.println();
 
     if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
     {

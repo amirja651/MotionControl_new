@@ -66,12 +66,6 @@ public:
     void startTimer();
     void stopTimer();
 
-    static long int counter1;
-    static long int counter2;
-    static long int counter3;
-    static long int counter4;
-    static long int counter5;
-
 private:
     // Hardware driver and pins
     TMC5160Manager& _driver;

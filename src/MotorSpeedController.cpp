@@ -3,12 +3,6 @@
 // Initialize static member
 MotorSpeedController* MotorSpeedController::_motorInstances[4] = {nullptr};
 
-long int MotorSpeedController::counter1 = 0;
-long int MotorSpeedController::counter2 = 0;
-long int MotorSpeedController::counter3 = 0;
-long int MotorSpeedController::counter4 = 0;
-long int MotorSpeedController::counter5 = 0;
-
 // Static ISR handlers
 void IRAM_ATTR MotorSpeedController::onTimerISR0()
 {
@@ -37,7 +31,6 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
 
     else if (_moving && _stepsRemaining <= 0)
     {
-        counter4++;
         stopTimer();
         return;
     }
@@ -54,7 +47,6 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
 
         if (_stepsRemaining == 0)
         {
-            counter5++;
             stopTimer();
         }
     }
@@ -126,7 +118,6 @@ void MotorSpeedController::stopTimer()
     _enabled              = false;
     _moving               = false;
     _movementCompleteFlag = true;
-    counter1++;
 }
 
 MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
@@ -161,7 +152,6 @@ MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driv
 MotorSpeedController::~MotorSpeedController()
 {
     disable();
-    counter2++;
     stopTimer();
     _motorInstances[_motorId] = nullptr;
 }
