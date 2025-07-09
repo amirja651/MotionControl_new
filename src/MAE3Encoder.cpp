@@ -213,9 +213,7 @@ void MAE3Encoder::processPWM(bool print)
 EncoderContext& MAE3Encoder::getEncoderContext() const
 {
     _encoderContext.current_pulse = _state.current_pulse;
-    _encoderContext.direction     = _state.direction == Direction::UNKNOWN     ? "   "
-                                    : _state.direction == Direction::CLOCKWISE ? " CW"
-                                                                               : "CCW";
+    _encoderContext.direction     = _state.direction == Direction::UNKNOWN ? "   " : _state.direction == Direction::CLOCKWISE ? " CW" : "CCW";
     _encoderContext.lap_id        = _lap.id;
     _encoderContext.lap_period    = _lap.period[_lap.id + 10];  // 10: laps offset
 
@@ -413,8 +411,7 @@ void MAE3Encoder::diagnoseEncoderSignals()
 
     // Interrupt Status
     bool interruptAttached = (digitalPinToInterrupt(_signalPin) != NOT_AN_INTERRUPT);
-    printf("│ %-25s │ %-15s │ %-24s │\n", "Interrupt Attached", interruptAttached ? "YES" : "NO",
-           interruptAttached ? "✅ OK" : "❌ FAIL");
+    printf("│ %-25s │ %-15s │ %-24s │\n", "Interrupt Attached", interruptAttached ? "YES" : "NO", interruptAttached ? "✅ OK" : "❌ FAIL");
 
     // Pin State
     bool pinState = digitalRead(_signalPin);
@@ -432,8 +429,7 @@ void MAE3Encoder::diagnoseEncoderSignals()
 
     // Frequency Status
     bool freqOK = (frequency >= 220.0 && frequency <= 268.0);
-    printf("│ %-25s │ %-15s │ %-24s │\n", "Frequency Status", freqOK ? "IN RANGE" : "OUT OF RANGE",
-           freqOK ? "✅ PASS" : "❌ FAIL");
+    printf("│ %-25s │ %-15s │ %-24s │\n", "Frequency Status", freqOK ? "IN RANGE" : "OUT OF RANGE", freqOK ? "✅ PASS" : "❌ FAIL");
 
     // Low Activity Warning
     if (transitions < 100)
@@ -457,8 +453,7 @@ validateResult MAE3Encoder::validatePWMValues(bool print)
     printf("├───────────────────────────────────────────────────────────────────────┤\n");
     printf("│ %-15s │ %-15s │ %-15s │ %-15s │\n", "Parameter", "High Pulse", "Low Pulse", "Total Period");
     printf("├───────────────────────────────────────────────────────────────────────┤\n");
-    printf("│ %-15s │ %-15lld │ %-15lld │ %-15lld │\n", "Duration (us)", _r_pulse.high, _r_pulse.low,
-           _vResult.totalPeriod);
+    printf("│ %-15s │ %-15lld │ %-15lld │ %-15lld │\n", "Duration (us)", _r_pulse.high, _r_pulse.low, _vResult.totalPeriod);
     printf("└───────────────────────────────────────────────────────────────────────┘\n");
 #endif
 
@@ -489,8 +484,7 @@ validateResult MAE3Encoder::validatePWMValues(bool print)
     printf("│ %-25s │ %-10s │ %-28s │\n", "High pulse validation", _vResult.highOK ? "PASS" : "FAIL", "1-4097 us");
     printf("│ %-25s │ %-10s │ %-28s │\n", "Low pulse validation", _vResult.lowOK ? "PASS" : "FAIL", "1-4097 us");
     printf("│ %-25s │ %-10s │ %-28s │\n", "Total period validation", _vResult.totalOK ? "PASS" : "FAIL", "> 0 us");
-    printf("│ %-25s │ %-10s │ %-28s │\n", "Period range validation", _vResult.periodOK ? "PASS" : "FAIL",
-           "3731-4545 us");
+    printf("│ %-25s │ %-10s │ %-28s │\n", "Period range validation", _vResult.periodOK ? "PASS" : "FAIL", "3731-4545 us");
     printf("│ %-25s │ %-10s │ %-29s │\n", "Overall validation", _vResult.overall ? "PASS" : "FAIL", "✅");
     printf("└───────────────────────────────────────────────────────────────────────┘\n");
 #endif
@@ -508,4 +502,93 @@ void MAE3Encoder::resetValidatePwmResult()
     _vResult.totalOK     = false;
     _vResult.periodOK    = false;
     _vResult.overall     = false;
+}
+
+float MAE3Encoder::calculateMirrorAngle(int currentPixel, int referencePixel)
+{
+    // Constants
+    const float pixelSize_mm = 0.0052;  // Size of each pixel in millimeters (5.2 micrometers)
+    const float distance_mm  = 195.0;   // Distance from mirror to camera in millimeters
+
+    // Pixel difference
+    int deltaPixel = currentPixel - referencePixel;
+
+    // Convert pixel difference to millimeters
+    float displacement_mm = deltaPixel * pixelSize_mm;
+
+    // Calculate angle in degrees
+    float angleRad       = atan(displacement_mm / distance_mm);  // Angle of deviation of the beam (2θ)
+    float mirrorAngleDeg = (angleRad * 180.0 / PI) / 2.0;        // Divide by 2 → mirror rotation angle
+
+    return mirrorAngleDeg;
+}
+
+float MAE3Encoder::calculateDistanceToMirror(int currentPixel, int referencePixel, float mirrorAngleDeg)
+{
+    const float pixelSize_mm = 0.0052;  // Size of each pixel (millimeters)
+
+    int   deltaPixel      = currentPixel - referencePixel;
+    float displacement_mm = deltaPixel * pixelSize_mm;
+
+    // Beam angle = 2 * mirror angle
+    float beamAngleRad = 2.0 * mirrorAngleDeg * PI / 180.0;
+
+    // Prevent division by zero or very small tangent
+    if (abs(tan(beamAngleRad)) < 1e-6)
+        return -1;  // Error or infinite value
+
+    // Calculate distance L in millimeters
+    float L = displacement_mm / tan(beamAngleRad);
+    return L;  // in millimeters
+}
+
+float MAE3Encoder::calculateEncoderAngle(int currentCount, int previousCount, int encoderResolution, float gearRatio)
+{
+    // Encoder difference between two moments
+    int deltaCount = currentCount - previousCount;
+
+    // Calculate motor rotation angle (degrees)
+    float motorAngle = (deltaCount * 360.0) / encoderResolution;
+
+    // Apply gear ratio (optional, if exists)
+    float mirrorAngle = motorAngle * gearRatio;
+
+    return mirrorAngle;  // in degrees
+}
+
+float MAE3Encoder::pixelToMirrorAngle(int deltaPixel)
+{
+    float dx_mm          = deltaPixel * PIXEL_SIZE_MM;
+    float beamAngleRad   = atan(dx_mm / L_MM);
+    float mirrorAngleDeg = (beamAngleRad * 180.0 / PI) / 2.0;
+    return mirrorAngleDeg;
+}
+
+int MAE3Encoder::mirrorAngleToPulses(float mirrorAngleDeg)
+{
+    float motorAngleDeg = mirrorAngleDeg / GEAR_RATIO;
+    float pulses        = (motorAngleDeg / 360.0f) * TOTAL_PULSES_PER_REV;
+    return (int)round(pulses);
+}
+
+int MAE3Encoder::pixelToPulses(int deltaPixel)
+{
+    float angle = pixelToMirrorAngle(deltaPixel);
+    return mirrorAngleToPulses(angle);
+}
+
+int MAE3Encoder::mirrorAngleToPulses(float mirrorAngleDeg, int microstep, int stepsPerRev, float gearRatio)
+{
+    float motorAngleDeg = mirrorAngleDeg / gearRatio;
+    float pulsesPerRev  = stepsPerRev * microstep;
+    float pulses        = (motorAngleDeg / 360.0f) * pulsesPerRev;
+    return (int)round(pulses);
+}
+
+int MAE3Encoder::encoderToPulses(int encoderValue, int microstep, int stepsPerRev, int encoderResolution)
+{
+    float pulsesPerRev = stepsPerRev * microstep;
+    float motorAngle   = ((float)encoderValue / (float)encoderResolution) * 360.0f;
+    float pulses       = (motorAngle / 360.0f) * pulsesPerRev;
+    return (int)round(pulses);
 }

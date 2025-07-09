@@ -12,6 +12,7 @@
 #include <memory>
 
 #define MAIN_ENCODER_TASK_DEBUG false
+#define MAIN_TASK_SERIAL_PRINT  true
 
 struct MotorContext2
 {
@@ -39,17 +40,19 @@ TaskHandle_t encoderUpdateTaskHandle = NULL;
 #endif
 TaskHandle_t motorUpdateTaskHandle = NULL;
 TaskHandle_t serialReadTaskHandle  = NULL;
-
+#if MAIN_TASK_SERIAL_PRINT
+TaskHandle_t serialPrintTaskHandle = NULL;
+#endif
 static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
 static uint8_t currentIndex = 0;  // Current driver index
 static int32_t lastPulse[4] = {0};
 
-static float targetPosition[4] = {0};
+static float targetPosition[4]     = {0};
+static float beforeMovePosition[4] = {0};
 
 static bool driverEnabled[4]             = {false};
 static bool newTargetpositionReceived[4] = {false};
-static bool firstTime                    = true;
 
 // Command history support
 #define HISTORY_SIZE 10
@@ -74,29 +77,33 @@ static bool isLongMove            = false;  // For short move
 // ============================
 // Function Declarations
 // ============================
+MotorContext2 getMotorContext2();
 #if MAIN_ENCODER_TASK_DEBUG
 void encoderUpdateTask(void* pvParameters);
 #endif
-void          motorUpdateTask(void* pvParameters);
-void          serialReadTask(void* pvParameters);
-bool          isValidNumber(const String& str);
-void          setTargetPosition(String targetPos);
-void          setMotorId(String motorId);
-float         getMotorPosition();
-MotorContext2 getMotorContext2();
-void          motorUpdateTask(void* pvParameters);
-void          linearMotorUpdate();
-void          detectRotaryMotorSpeed();
-void          rotaryMotorUpdate();
-int           calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed);
-int           calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
-void          motorStopAndSavePosition(String callerFunctionName);
-void          resetMotorState(uint8_t id);
-void          clearLine();
-bool          isPrintable(char c);
-void          serialReadTask(void* pvParameters);
-void          printSerial();
-void          printMotorStatus();
+void  motorUpdateTask(void* pvParameters);
+void  serialReadTask(void* pvParameters);
+bool  isValidNumber(const String& str);
+void  setTargetPosition(String targetPos);
+void  setMotorId(String motorId);
+float getMotorPosition();
+void  motorUpdateTask(void* pvParameters);
+void  linearMotorUpdate();
+void  detectRotaryMotorSpeed();
+void  rotaryMotorUpdate();
+int   calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed);
+int   calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
+void  motorStopAndSavePosition(String callerFunctionName);
+void  resetMotorState(uint8_t id);
+void  clearLine();
+bool  isPrintable(char c);
+void  serialReadTask(void* pvParameters);
+#if MAIN_TASK_SERIAL_PRINT
+void serialPrintTask(void* pvParameters);
+#endif
+void printSerial();
+void printSerial2();
+void printMotorStatus();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -191,6 +198,11 @@ void setup()
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
+#if MAIN_TASK_SERIAL_PRINT
+    xTaskCreatePinnedToCore(serialPrintTask, "SerialPrintTask", 4096, NULL, 2, &serialPrintTaskHandle, 0);
+    esp_task_wdt_add(serialPrintTaskHandle);  // Register with WDT
+#endif
+
     Serial.println();
     Serial.flush();
 }
@@ -281,12 +293,7 @@ void setTargetPosition(String targetPos)
 
     targetPosition[currentIndex]            = value;
     newTargetpositionReceived[currentIndex] = true;
-
-    if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
-        firstTime = false;
-
-    // Serial.print(F("[Info][M100] Target P. set to motor "));
-    // Serial.println(currentIndex + 1);
+    beforeMovePosition[currentIndex]        = getMotorPosition();
 }
 
 // Motor Id is 1-4 (0-3) (M101)
@@ -711,14 +718,14 @@ void rotaryMotorUpdate()
     targetSpeed = constrain(targetSpeed, MIN_SPEED, MAX_SPEED);
 
     // Debug (optional)
-    static int lastLoggedSpeed = -1;
+    /*static int lastLoggedSpeed = -1;
     if (targetSpeed != lastLoggedSpeed)
     {
         Serial.print(progressPercent, 2);
         Serial.print(", ");
         Serial.println(targetSpeed);
         lastLoggedSpeed = targetSpeed;
-    }
+    }*/
 
     // Move command
     motor[currentIndex].move(deltaPulsPosition, targetSpeed, lastSpeed[currentIndex]);
@@ -1124,6 +1131,22 @@ void serialReadTask(void* pvParameters)
     }
 }
 
+#if MAIN_TASK_SERIAL_PRINT
+// Serial Print Task (M109)
+void serialPrintTask(void* pvParameters)
+{
+    const TickType_t xFrequency    = pdMS_TO_TICKS(1000);
+    TickType_t       xLastWakeTime = xTaskGetTickCount();
+
+    while (1)
+    {
+        printSerial2();
+        esp_task_wdt_reset();
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Print Serial (M110)
 void printSerial()
@@ -1143,7 +1166,7 @@ void printSerial()
     // if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
     //{
     //  Format all values into the buffer
-    Serial.print(F("============================================================================================\r\n"));
+    Serial.println(F("--------------------------------------------------------------------------------------------------------------------------------------"));
     Serial.print(F("MOT: "));
     Serial.print((currentIndex + 1));
     Serial.print(F("   "));
@@ -1171,17 +1194,80 @@ void printSerial()
     // Serial.print(firstTime ? 0 : motCtx2.targetPositionPulses, 0);
     Serial.print(F("      "));
     Serial.print(F("ERR: "));
-    Serial.print(firstTime ? 0 : motCtx2.error, 0);
+    Serial.print(motCtx2.error, 0);
     // Serial.print(F("\t"));
     // Serial.print(F("newTargetpositionReceived: "));
     // Serial.print(newTargetpositionReceived[currentIndex]);
     // Serial.print(F("\t"));
     // Serial.print(F("driverEnabled: "));
     // Serial.print(driverEnabled[currentIndex]);
-    Serial.print(F("\r\n\r\n"));
+    Serial.println();
+    // lastPulse[currentIndex] = encCtx.current_pulse;
+    //  }
+}
 
-    lastPulse[currentIndex] = encCtx.current_pulse;
-    // }
+// Print Serial (M110)
+void printSerial2()
+{
+    MotorType      type            = motor[currentIndex].getMotorType();
+    EncoderContext encCtx          = encoder[currentIndex].getEncoderContext();
+    MotorContext2  motCtx2         = getMotorContext2();
+    float          beforeMove      = beforeMovePosition[currentIndex];
+    float          currentPosition = getMotorPosition();
+    String         unit            = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
+    String         space           = " | ";
+
+    if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
+    {
+        //  Format all values into the buffer
+        Serial.println(
+            F("--------------------------------------------------------------------------------------------------------------------------------------"));
+        Serial.print(F("MOT: "));
+        Serial.print((currentIndex + 1));
+
+        Serial.print(space);
+        Serial.print(F("DIR: "));
+        Serial.print(encCtx.direction);
+
+        Serial.print(space);
+        Serial.print(F("LAP: "));
+        Serial.print(encCtx.lap_id);
+
+        Serial.print(space);
+        Serial.print(F("BEF POS "));
+        Serial.print(unit);
+        Serial.print(beforeMove);
+
+        Serial.print(space);
+        Serial.print(F("CUR POS "));
+        Serial.print(unit);
+        Serial.print(currentPosition);
+
+        Serial.print(space);
+        Serial.print(F("TGT POS: "));
+        Serial.print(unit);
+        Serial.print(targetPosition[currentIndex]);
+
+        Serial.print(space);
+        Serial.print(F("ERR: "));
+        Serial.print(motCtx2.error, 0);
+        Serial.print(F(" ("));
+        Serial.print(motCtx2.errorPulses);
+        Serial.print(F(")"));
+
+        Serial.print(space);
+        Serial.print(F("HighWaterMark: "));
+        Serial.print(highWaterMark);
+
+        Serial.print(space);
+        Serial.print(F(" words ("));
+        Serial.print(highWaterMark * 4);
+        Serial.print(F(" bytes)"));
+
+        Serial.println();
+
+        lastPulse[currentIndex] = encCtx.current_pulse;
+    }
 }
 
 // Print Motor Status (M111)
