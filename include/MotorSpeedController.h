@@ -43,7 +43,6 @@ public:
 
     void setDirection(bool forward);
     void move(int32_t deltaPulsPosition, float targetSpeed, float lastSpeed);  // position: steps, speed: steps/sec
-    void stop();
 
     // Optional: attach a callback to be called when movement completes
     void attachOnComplete(void (*callback)());
@@ -66,6 +65,12 @@ public:
 
     void startTimer();
     void stopTimer();
+
+    static long int counter1;
+    static long int counter2;
+    static long int counter3;
+    static long int counter4;
+    static long int counter5;
 
 private:
     // Hardware driver and pins

@@ -348,8 +348,10 @@ void readPWMEncodersInterrupt()
 
     // Print bypass statistics
     printf("\n=== BYPASS STATISTICS ===\n");
-    printf("Pin 36 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts36, bypassedCount36, (totalInterrupts36 > 0) ? (float)bypassedCount36 * 100.0f / totalInterrupts36 : 0.0f);
-    printf("Pin 39 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts39, bypassedCount39, (totalInterrupts39 > 0) ? (float)bypassedCount39 * 100.0f / totalInterrupts39 : 0.0f);
+    printf("Pin 36 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts36, bypassedCount36,
+           (totalInterrupts36 > 0) ? (float)bypassedCount36 * 100.0f / totalInterrupts36 : 0.0f);
+    printf("Pin 39 - Total interrupts: %lu, Bypassed: %lu (%.1f%%)\n", totalInterrupts39, bypassedCount39,
+           (totalInterrupts39 > 0) ? (float)bypassedCount39 * 100.0f / totalInterrupts39 : 0.0f);
 
     // Print raw values before validation
     printf("\n===  Raw PWM Values ===\n");
@@ -443,8 +445,10 @@ void readPWMEncodersInterrupt()
         printf("├────────────────────────────────────────────────────────────────────────────────────────────────────────────┤\n");
         printf("│ Pin │ Position │ Degrees  │ High Pulse │ Low Pulse │ Total Period │ Status │ Transition │ Bypassed │ Delta |\n");
         printf("├─────┼──────────┼──────────┼────────────┼───────────┼──────────────┼────────┼────────────┼──────────────────┤\n");
-        printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │ %10d │ %8lu │ %5d │\n", valid36.position, valid36.degrees, pulseHigh36, pulseLow36, valid36.totalPeriod, valid36.overall ? "OK    " : "ERR   ", pulseTransitionCounter36, bypassedCount36, valid36.delta);
-        printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │ %10d │ %8lu │ %5d │\n", valid39.position, valid39.degrees, pulseHigh39, pulseLow39, valid39.totalPeriod, valid39.overall ? "OK    " : "ERR   ", pulseTransitionCounter39, bypassedCount39, valid39.delta);
+        printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │ %10d │ %8lu │ %5d │\n", valid36.position, valid36.degrees, pulseHigh36, pulseLow36,
+               valid36.totalPeriod, valid36.overall ? "OK    " : "ERR   ", pulseTransitionCounter36, bypassedCount36, valid36.delta);
+        printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %s │ %10d │ %8lu │ %5d │\n", valid39.position, valid39.degrees, pulseHigh39, pulseLow39,
+               valid39.totalPeriod, valid39.overall ? "OK    " : "ERR   ", pulseTransitionCounter39, bypassedCount39, valid39.delta);
         printf("└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n");
     }
 
@@ -541,9 +545,11 @@ void readPWMEncoders()
     unsigned long medianPeriod39 = medianHigh39 + medianLow39;
 
     // Validate pulse widths according to MAE3 specifications
-    bool valid36 = (medianHigh36 >= MIN_PULSE_US && medianHigh36 <= MAX_PULSE_US && medianLow36 >= MIN_PULSE_US && medianLow36 <= MAX_PULSE_US && medianPeriod36 > 0 && medianPeriod36 <= 4098);
+    bool valid36 = (medianHigh36 >= MIN_PULSE_US && medianHigh36 <= MAX_PULSE_US && medianLow36 >= MIN_PULSE_US && medianLow36 <= MAX_PULSE_US &&
+                    medianPeriod36 > 0 && medianPeriod36 <= 4098);
 
-    bool valid39 = (medianHigh39 >= MIN_PULSE_US && medianHigh39 <= MAX_PULSE_US && medianLow39 >= MIN_PULSE_US && medianLow39 <= MAX_PULSE_US && medianPeriod39 > 0 && medianPeriod39 <= 4098);
+    bool valid39 = (medianHigh39 >= MIN_PULSE_US && medianHigh39 <= MAX_PULSE_US && medianLow39 >= MIN_PULSE_US && medianLow39 <= MAX_PULSE_US &&
+                    medianPeriod39 > 0 && medianPeriod39 <= 4098);
 
     // Calculate position using MAE3 PWM formula for 12-bit with validation
     int position36 = 0, position39 = 0;
@@ -575,8 +581,10 @@ void readPWMEncoders()
     printf("├─────────────────────────────────────────────────────────────────────────────────────┤\n");
     printf("│ Pin │ Position │ Degrees  │ High Pulse │ Low Pulse │ Total Period │ StdDev │ Status │\n");
     printf("├─────┼──────────┼──────────┼────────────┼───────────┼──────────────┼────────┼────────┤\n");
-    printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %6.1f │ %s │\n", position36, degrees36, medianHigh36, medianLow36, medianPeriod36, stdDev36, valid36 ? "OK    " : "ERR   ");
-    printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %6.1f │ %s │\n", position39, degrees39, medianHigh39, medianLow39, medianPeriod39, stdDev39, valid39 ? "OK    " : "ERR   ");
+    printf("│ 36  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %6.1f │ %s │\n", position36, degrees36, medianHigh36, medianLow36, medianPeriod36, stdDev36,
+           valid36 ? "OK    " : "ERR   ");
+    printf("│ 39  │ %8d │ %7.2f° │ %10lu │ %9lu │ %12lu │ %6.1f │ %s │\n", position39, degrees39, medianHigh39, medianLow39, medianPeriod39, stdDev39,
+           valid39 ? "OK    " : "ERR   ");
     printf("└─────────────────────────────────────────────────────────────────────────────────────┘\n");
 }
 
@@ -631,3 +639,211 @@ float calculateStandardDeviation(unsigned long arr[], int size)
     // Return standard deviation
     return sqrt(variance);
 }
+
+#if 0
+// Linear Motor Update (M105)
+void linearMotorUpdate()
+{
+    if (!newTargetpositionReceived[currentIndex])
+        return;
+
+    static const float   POSITION_THRESHOLD_UM_FORWARD = 0.1f;  // Acceptable error range
+    static const float   POSITION_THRESHOLD_UM_REVERSE = 0.3f;  // Acceptable error range
+    static const float   FINE_MOVE_THRESHOLD_UM        = 2.5f;  // Fine movement threshold
+    static const int32_t MAX_MICRO_MOVE_PULSE_FORWARD  = 5;     // Maximum correction pulses
+    static const int32_t MAX_MICRO_MOVE_PULSE_REVERSE  = 7;     // Maximum correction pulses
+    static const int     MIN_SPEED                     = 20;    // Start and end speed
+    static const int     MAX_SPEED                     = 200;   // Maximum speed
+    static const int     FINE_MOVE_SPEED               = 12;    // Fine movement speed
+    static const float   SEGMENT_SIZE_PERCENT          = 5.0f;  // 5% segments for speed changes
+
+    if (!motorMoving[currentIndex])  // Only when motor is stopped
+    {
+        MotorContext2 motCtx2      = getMotorContext2();
+        float         absError     = fabs(motCtx2.error);
+        int32_t       targetPulse  = motCtx2.targetPositionPulses;
+        int32_t       currentPulse = motCtx2.currentPositionPulses;
+        int32_t       deltaPulse   = targetPulse - currentPulse;
+
+        float   positionThreshold = (motCtx2.error > 0) ? POSITION_THRESHOLD_UM_FORWARD : POSITION_THRESHOLD_UM_REVERSE;
+        int32_t maxMicroMovePulse = (motCtx2.error > 0) ? MAX_MICRO_MOVE_PULSE_FORWARD : MAX_MICRO_MOVE_PULSE_REVERSE;
+
+        // Check if we've reached the Target P.
+        if (absError <= positionThreshold && abs(deltaPulse) < maxMicroMovePulse)
+        {
+            motorStopAndSavePosition("M105");
+            return;
+        }
+
+        // Set movement direction
+        motor[currentIndex].setDirection(motCtx2.error > 0);
+
+        if (!motor[currentIndex].isEnabled())
+        {
+            motor[currentIndex].enable();
+            motor[currentIndex].attachInterruptHandler();
+            motor[currentIndex].startTimer();
+        }
+
+        // Register callback for movement completion
+        motor[currentIndex].attachOnComplete([]() { motorMoving[currentIndex] = false; });
+
+        // Limit pulses for micro-movement
+        if (abs(deltaPulse) > maxMicroMovePulse)
+            deltaPulse = (deltaPulse > 0) ? maxMicroMovePulse : -maxMicroMovePulse;
+
+        // Calculate speed based on smooth stepped profile
+        int moveSpeed;
+        if (absError <= FINE_MOVE_THRESHOLD_UM)
+        {
+            // Fine movement - low speed
+            moveSpeed = FINE_MOVE_SPEED;
+        }
+        else
+        {
+            // Store total distance at the beginning of movement
+            if (initialTotalDistance[currentIndex] == 0)
+            {
+                initialTotalDistance[currentIndex] = absError;
+            }
+
+            // Calculate progress percentage (0.0 to 1.0)
+            float progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+
+            // Calculate speed based on stepped profile
+            moveSpeed = calculateSteppedSpeed(progressPercent, MIN_SPEED, MAX_SPEED, SEGMENT_SIZE_PERCENT);
+        }
+
+        // Execute movement
+        Serial.print(F("[Info][M105] Motor "));
+        Serial.print(currentIndex + 1);
+        Serial.print(F(", deltaPulse = "));
+        Serial.print(deltaPulse);
+        Serial.print(F(", error = "));
+        Serial.print(motCtx2.error, 2);
+        Serial.print(F(" um, speed = "));
+        Serial.print(moveSpeed);
+        Serial.print(F(", progress = "));
+        // Calculate progress with bounds checking
+        float progressPercent = 0.0f;
+        if (initialTotalDistance[currentIndex] > 0.0f)
+        {
+            progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+            progressPercent = constrain(progressPercent, 0.0f, 1.0f);  // Clamp between 0 and 1
+        }
+        Serial.println(progressPercent * 100.0f, 1);
+
+        motor[currentIndex].move(deltaPulse, moveSpeed, lastSpeed[currentIndex]);
+        lastSpeed[currentIndex]   = moveSpeed;
+        motorMoving[currentIndex] = true;
+    }
+    else
+    {
+        // When motor is moving, don't reset the total distance
+        // Only reset when movement is complete in motorStopAndSavePosition
+    }
+}
+
+
+// Speed Detection for Rotary Motor (M105.5)
+void detectRotaryMotorSpeed()
+{
+    static int                 currentTestSpeed       = 1;
+    static int32_t             initialEncoderPosition = 0;
+    static const int           MAX_TEST_SPEED         = 200;
+    static const int           SPEED_INCREMENT        = 1;
+    static const unsigned long SPEED_TEST_DURATION    = 1000;  // 1 second test duration
+    static unsigned long       testStartTime          = 0;
+
+    // Microstep scaling factor for speed compensation
+    static const float SPEED_SCALE_FACTOR = static_cast<float>(256) / 16;  // 256 microsteps / 16 base microsteps
+
+    // Initialize speed detection if not started
+    if (!speedDetectionStarted)
+    {
+        Serial.println(F("[Info][M105.5] Starting rotary motor speed detection..."));
+        Serial.println(F("[Info][M105.5] Motor will start from speed 1 and increase until encoder position changes"));
+
+        // Enable motor and set direction
+        if (!motor[currentIndex].isEnabled())
+        {
+            motor[currentIndex].enable();
+            motor[currentIndex].attachInterruptHandler();
+            motor[currentIndex].startTimer();
+        }
+
+        motor[currentIndex].setDirection(true);  // Forward direction
+
+        // Get initial encoder position
+        EncoderContext encCtx  = encoder[currentIndex].getEncoderContext();
+        initialEncoderPosition = encCtx.current_pulse;
+
+        // Start with speed 1 (scaled for microsteps)
+        currentTestSpeed      = static_cast<int>(1 * SPEED_SCALE_FACTOR);
+        testStartTime         = millis();
+        speedDetectionStarted = true;
+
+        Serial.print(F("[Info][M105.5] Testing speed: "));
+        Serial.println(currentTestSpeed);
+
+        // Start motor movement
+        motor[currentIndex].move(5, currentTestSpeed, 0.0f);  // Move 1000 steps at current speed
+        return;
+    }
+
+    // Check if current speed test duration has elapsed
+    if (millis() - testStartTime >= SPEED_TEST_DURATION)
+    {
+        // Get current encoder position
+        EncoderContext encCtx                 = encoder[currentIndex].getEncoderContext();
+        int32_t        currentEncoderPosition = encCtx.current_pulse;
+
+        // Check if encoder position has changed
+        if (abs(currentEncoderPosition - initialEncoderPosition) > 11)
+        {
+            // Speed detection successful - motor started moving
+            Serial.print(F("[Success][M105.5] Motor started moving at speed: "));
+            Serial.println(currentTestSpeed);
+            Serial.print(F("[Info][M105.5] Encoder position changed from: "));
+            Serial.print(initialEncoderPosition);
+            Serial.print(F(" to: "));
+            Serial.println(currentEncoderPosition);
+
+            // Stop motor and reset detection
+            motor[currentIndex].stop();
+            speedDetectionStarted = false;
+            speedDetection        = false;
+            currentTestSpeed      = static_cast<int>(1 * SPEED_SCALE_FACTOR);
+            return;
+        }
+
+        // Motor didn't move at current speed, try next speed
+        currentTestSpeed += static_cast<int>(SPEED_INCREMENT * SPEED_SCALE_FACTOR);
+
+        if (currentTestSpeed > static_cast<int>(MAX_TEST_SPEED * SPEED_SCALE_FACTOR))
+        {
+            // Reached maximum test speed without movement
+            Serial.println(F("[Warning][M105.5] Motor did not move even at maximum speed (200)"));
+            Serial.println(F("[Info][M105.5] Check motor connections, driver settings, or mechanical issues"));
+
+            // Stop motor and reset detection
+            motor[currentIndex].stop();
+            speedDetectionStarted = false;
+            speedDetection        = false;
+            currentTestSpeed      = static_cast<int>(1 * SPEED_SCALE_FACTOR);
+            return;
+        }
+
+        // Update initial position for next test
+        initialEncoderPosition = currentEncoderPosition;
+        testStartTime          = millis();
+
+        Serial.print(F("[Info][M105.5] Testing speed: "));
+        Serial.println(currentTestSpeed);
+
+        // Start motor movement at new speed
+        motor[currentIndex].move(1000, currentTestSpeed, 0.0f);
+    }
+}
+
+#endif

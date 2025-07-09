@@ -163,7 +163,8 @@ bool TMC5160Manager::configureDriver()
     Serial.printf("┌───────────┬──────────────┬────────────┬─────────────┬─────────────────┬──────────────────┬────────────┬────────────┐\n");
     Serial.printf("│ Driver Id │ Current (mA) │ Microsteps │     Mode    │ Step & Dir mode │ Hardware enabled │ DRV_STATUS │   GCONF    │\n");
     Serial.printf("├───────────┼──────────────┼────────────┼─────────────┼─────────────────┼──────────────────┼────────────┼────────────┤\n");
-    Serial.printf("│ %-9d │ %-12d │ %-10d │ %-11s │ %-15d │ %-16d │ 0x%08X │ 0x%08X │\n", _driverIndex + 1, DEFAULT_CURRENT, MICROSTEPS, "SpreadCycle", sd_mode ? 1 : 0, drv_enn ? 1 : 0, drv_status, gconf);
+    Serial.printf("│ %-9d │ %-12d │ %-10d │ %-11s │ %-15d │ %-16d │ 0x%08X │ 0x%08X │\n", _driverIndex + 1, DEFAULT_CURRENT, MICROSTEPS, "SpreadCycle",
+                  sd_mode ? 1 : 0, drv_enn ? 1 : 0, drv_status, gconf);
     Serial.printf("└───────────┴──────────────┴────────────┴─────────────┴─────────────────┴──────────────────┴────────────┴────────────┘\n");
 
     // Turn off the driver
@@ -295,14 +296,14 @@ void TMC5160Manager::configureDriver_Pancake()
     // ---------------------------
     // 3. Microstepping & Interpolation
     // ---------------------------
-    _driver->microsteps(16);  // Increased microstepping for smoother holding
-    _driver->intpol(true);    // Smooth motion
+    _driver->microsteps(ROTARY_MICROSTEPS);  // Use rotary microstep setting
+    _driver->intpol(true);                   // Smooth motion
     delay(5);
 
     // ---------------------------
     // 4. StealthChop Settings (Enable for holding/low speed)
     // ---------------------------
-    _driver->TPWMTHRS(0xFFFF);  // StealthChop active at low speeds (including holding)
+    _driver->TPWMTHRS(0xFFFF);
     _driver->pwm_autoscale(true);
     _driver->pwm_autograd(true);
     _driver->pwm_ofs(36);

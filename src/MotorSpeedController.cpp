@@ -3,6 +3,12 @@
 // Initialize static member
 MotorSpeedController* MotorSpeedController::_motorInstances[4] = {nullptr};
 
+long int MotorSpeedController::counter1 = 0;
+long int MotorSpeedController::counter2 = 0;
+long int MotorSpeedController::counter3 = 0;
+long int MotorSpeedController::counter4 = 0;
+long int MotorSpeedController::counter5 = 0;
+
 // Static ISR handlers
 void IRAM_ATTR MotorSpeedController::onTimerISR0()
 {
@@ -31,6 +37,7 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
 
     else if (_moving && _stepsRemaining <= 0)
     {
+        counter4++;
         stopTimer();
         return;
     }
@@ -46,7 +53,10 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
         _stepsRemaining--;
 
         if (_stepsRemaining == 0)
+        {
+            counter5++;
             stopTimer();
+        }
     }
 }
 
@@ -89,27 +99,16 @@ void MotorSpeedController::attachInterruptHandler()
             timerAttachInterrupt(_timer, &onTimerISR3, false);
             break;
     }
-
-    Serial.print("Timer attached for motor ");
-    Serial.println(_motorId);
-    __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
 }
 void MotorSpeedController::detachInterruptHandler()
 {
     if (_timer == nullptr)
         return;
 
-    // Stop timer first
     timerAlarmDisable(_timer);
     timerDetachInterrupt(_timer);
-
-    // Delete timer instance
     timerEnd(_timer);
     _timer = nullptr;
-
-    Serial.print("Timer detached for motor ");
-    Serial.println(_motorId);
-    __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
 }
 
 void MotorSpeedController::startTimer()
@@ -117,21 +116,17 @@ void MotorSpeedController::startTimer()
     if (_timer == nullptr)
         return;
 
-    Serial.print("Timer started for motor ");
-    Serial.println(_motorId);
     timerAlarmWrite(_timer, _timerTick_us, true);  // Default 10: 100KHz and 1000: 1KHz, will be set in move()
     timerAlarmEnable(_timer);
 }
 void MotorSpeedController::stopTimer()
 {
-    if (_timer == nullptr)
-        return;
-
-    timerAlarmDisable(_timer);
+    detachInterruptHandler();
+    _stepsRemaining       = 0;
+    _enabled              = false;
     _moving               = false;
     _movementCompleteFlag = true;
-    Serial.print("Timer stopped for motor ");
-    Serial.println(_motorId);
+    counter1++;
 }
 
 MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
@@ -166,8 +161,8 @@ MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driv
 MotorSpeedController::~MotorSpeedController()
 {
     disable();
+    counter2++;
     stopTimer();
-    detachInterruptHandler();
     _motorInstances[_motorId] = nullptr;
 }
 
@@ -245,13 +240,6 @@ void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, fl
         updateSpeedGradually();
         // setSpeed(targetSpeed);
     }
-}
-void MotorSpeedController::stop()
-{
-    stopTimer();
-    detachInterruptHandler();
-    _enabled        = false;
-    _stepsRemaining = 0;
 }
 
 void MotorSpeedController::attachOnComplete(void (*callback)())

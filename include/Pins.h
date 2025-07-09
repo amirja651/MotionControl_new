@@ -3,6 +3,11 @@
 
 #include <Arduino.h>
 
+// Microstep configuration
+#define LINEAR_MICROSTEPS 16   // Microsteps for linear motor
+#define ROTARY_MICROSTEPS 256  // Microsteps for rotary motors
+#define BASE_MICROSTEPS   16   // Base microstep setting for calculations
+
 struct DriverPins
 {
     static const uint16_t DIR[4];
