@@ -7,16 +7,16 @@ TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : 
     {
         _rms_current_mA = DEFAULT_CURRENT_NEMA11_1004H;
         _microsteps     = MICROSTEPS_NEMA11_1004H;
-        _irun           = calculateCurrentSetting(350, DEFAULT_CURRENT_NEMA11_1004H);
-        _ihold          = calculateCurrentSetting(180, DEFAULT_CURRENT_NEMA11_1004H);
+        _irun           = 350;  // calculateCurrentSetting(350, DEFAULT_CURRENT_NEMA11_1004H);
+        _ihold          = 180;  // calculateCurrentSetting(180, DEFAULT_CURRENT_NEMA11_1004H);
         _iholddelay     = 8;
     }
     else
     {
         _rms_current_mA = DEFAULT_CURRENT_PANCAKE;
         _microsteps     = MICROSTEPS_PANCAKE;
-        _irun           = calculateCurrentSetting(350, DEFAULT_CURRENT_PANCAKE);
-        _ihold          = calculateCurrentSetting(150, DEFAULT_CURRENT_PANCAKE);
+        _irun           = 200;  //= calculateCurrentSetting(200, DEFAULT_CURRENT_PANCAKE);
+        _ihold          = 100;  //= calculateCurrentSetting(100, DEFAULT_CURRENT_PANCAKE);
         _iholddelay     = 1;
     }
 }
@@ -349,4 +349,15 @@ uint8_t TMC5160Manager::calculateCurrentSetting(uint16_t desiredCurrent_mA, uint
 uint16_t TMC5160Manager::getMicrosteps()
 {
     return _microsteps;
+}
+
+MotorConfig TMC5160Manager::getMotorConfig()
+{
+    MotorConfig config;
+    config.rms_current_mA = _rms_current_mA;
+    config.irun           = _irun;
+    config.ihold          = _ihold;
+    config.iholddelay     = _iholddelay;
+    config.microsteps     = _microsteps;
+    return config;
 }

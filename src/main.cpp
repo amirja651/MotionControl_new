@@ -50,11 +50,11 @@ static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 static uint8_t currentIndex = 0;  // Current driver index
 static int32_t lastPulse[4] = {0};
 
-static float targetPosition[4] = {0};
+static float targetPosition[4]     = {0};
+static float beforeMovePosition[4] = {0};
 
 static bool driverEnabled[4]             = {false};
 static bool newTargetpositionReceived[4] = {false};
-static bool firstTime                    = true;
 
 // Command history support
 #define HISTORY_SIZE 10
@@ -80,29 +80,34 @@ static bool diagnosticsRun        = false;  // For diagnostics
 // ============================
 // Function Declarations
 // ============================
+MotorContext2 getMotorContext2();
+
 #if MAIN_ENCODER_TASK_DEBUG
 void encoderUpdateTask(void* pvParameters);
 #endif
-void          motorUpdateTask(void* pvParameters);
-void          serialReadTask(void* pvParameters);
-bool          isValidNumber(const String& str);
-void          setTargetPosition(String targetPos);
-void          setMotorId(String motorId);
-float         getMotorPosition();
-MotorContext2 getMotorContext2();
-void          motorUpdateTask(void* pvParameters);
-void          linearMotorUpdate();
-void          detectRotaryMotorSpeed();
-void          rotaryMotorUpdate();
-int           calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed);
-int           calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
-void          motorStopAndSavePosition(String callerFunctionName);
-void          resetMotorState(uint8_t id);
-void          clearLine();
-bool          isPrintable(char c);
-void          serialReadTask(void* pvParameters);
-void          printSerial();
-void          printMotorStatus();
+void  motorUpdateTask(void* pvParameters);
+void  serialReadTask(void* pvParameters);
+bool  isValidNumber(const String& str);
+void  setTargetPosition(String targetPos);
+void  setMotorId(String motorId);
+float getMotorPosition();
+void  motorUpdateTask(void* pvParameters);
+void  linearMotorUpdate();
+void  detectRotaryMotorSpeed();
+void  rotaryMotorUpdate();
+int   calculateTriangularSpeed(float progressPercent, int minSpeed, int maxSpeed);
+int   calculateSteppedSpeed(float progressPercent, int minSpeed, int maxSpeed, float segmentSizePercent);
+void  motorStopAndSavePosition(String callerFunctionName);
+void  resetMotorState(uint8_t id);
+void  clearLine();
+bool  isPrintable(char c);
+void  serialReadTask(void* pvParameters);
+#if MAIN_TASK_SERIAL_PRINT
+void serialPrintTask(void* pvParameters);
+#endif
+void printSerial();
+void printMotorStatus();
+void printMotorConfig();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup()
@@ -158,6 +163,7 @@ void setup()
 
             // Configure motor parameters
             driver[index].configureDriver_All_Motors(true);
+            printMotorConfig();
 
             // Initialize all motor controllers
             motor[index].begin();
@@ -282,15 +288,11 @@ void setTargetPosition(String targetPos)
 
     // ✅ The value is valid
     driver[currentIndex].configureDriver_All_Motors(true);
+    printMotorConfig();
 
     targetPosition[currentIndex]            = value;
+    beforeMovePosition[currentIndex]        = getMotorPosition();
     newTargetpositionReceived[currentIndex] = true;
-
-    if (firstTime)  // Only print the first time (to avoid printing the error message before the motor is initialized)
-        firstTime = false;
-
-    // Serial.print(F("[Info][M100] Target P. set to motor "));
-    // Serial.println(currentIndex + 1);
 }
 
 // Motor Id is 1-4 (0-3) (M101)
@@ -663,8 +665,6 @@ void rotaryMotorUpdate()
 
     MotorContext2 motCtx2       = getMotorContext2();
     float         absErrorAngle = fabs(motCtx2.errorAngle);
-    int32_t       targetPulse   = motCtx2.targetPositionPulses;
-    int32_t       currentPulse  = motCtx2.currentEncoderPulses;
     int32_t       errorPulses   = motCtx2.errorPulses;
 
     // Check if we've reached the Target
@@ -718,14 +718,14 @@ void rotaryMotorUpdate()
     targetSpeed = constrain(targetSpeed, MIN_SPEED, MAX_SPEED);
 
     // Debug (optional)
-    static int lastLoggedSpeed = -1;
-    if (targetSpeed != lastLoggedSpeed)
-    {
-        Serial.print(progressPercent, 2);
-        Serial.print(", ");
-        Serial.println(targetSpeed);
-        lastLoggedSpeed = targetSpeed;
-    }
+    // static int lastLoggedSpeed = -1;
+    // if (targetSpeed != lastLoggedSpeed)
+    //{
+    //    Serial.print(progressPercent, 2);
+    //   Serial.print(", ");
+    //    Serial.println(targetSpeed);
+    //    lastLoggedSpeed = targetSpeed;
+    //}
 
     // Move command
     motor[currentIndex].move(errorPulses, targetSpeed, lastSpeed[currentIndex]);
@@ -869,7 +869,7 @@ bool isPrintable(char c)
 // Serial Read Task (M109)
 void serialReadTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(300);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(100);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
     String           inputBuffer   = "";
     String           lastInput     = "";
@@ -1135,7 +1135,7 @@ void serialReadTask(void* pvParameters)
 // Serial Print Task (M109)
 void serialPrintTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(800);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(1000);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     while (1)
@@ -1151,17 +1151,13 @@ void serialPrintTask(void* pvParameters)
 // Print Serial (M110)
 void printSerial()
 {
-    Serial.print(F("[M110] HighWaterMark: "));
-    Serial.print(highWaterMark);
-    Serial.print(F(" words ("));
-    Serial.print(highWaterMark * 4);
-    Serial.print(F(" bytes)\n"));
-
-    EncoderContext encCtx  = encoder[currentIndex].getEncoderContext();
-    MotorContext2  motCtx2 = getMotorContext2();
-
-    MotorType type = motor[currentIndex].getMotorType();
-    String    unit = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
+    MotorType      type            = motor[currentIndex].getMotorType();
+    EncoderContext encCtx          = encoder[currentIndex].getEncoderContext();
+    MotorContext2  motCtx2         = getMotorContext2();
+    float          beforeMove      = beforeMovePosition[currentIndex];
+    float          currentPosition = getMotorPosition();
+    String         unit            = (type == MotorType::LINEAR ? "(um): " : "(deg): ");
+    String         space           = " | ";
 
     if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
     {
@@ -1169,39 +1165,47 @@ void printSerial()
         Serial.print(F("============================================================================================\r\n"));
         Serial.print(F("MOT: "));
         Serial.print((currentIndex + 1));
-        Serial.print(F("   "));
+
+        Serial.print(space);
         Serial.print(F("DIR: "));
         Serial.print(encCtx.direction);
-        Serial.print(F("   "));
+
+        Serial.print(space);
         Serial.print(F("LAP: "));
         Serial.print(encCtx.lap_id);
-        // Serial.print(F("\t"));
-        // Serial.print(F("CUR PULSE: "));
-        // Serial.print(encCtx.current_pulse);
-        Serial.print(F("      "));
+
+        Serial.print(space);
+        Serial.print(F("BEF POS "));
+        Serial.print(unit);
+        Serial.print(beforeMove);
+
+        Serial.print(space);
         Serial.print(F("CUR POS "));
         Serial.print(unit);
-        Serial.print(type == MotorType::LINEAR ? motCtx2.currentPosition : encCtx.position_degrees);
-        // Serial.print(F("\t"));
-        // Serial.print(F("CUR POS (p): "));
-        // Serial.print(motCtx2.currentPositionPulses, 0);
-        Serial.print(F("      "));
+        Serial.print(currentPosition);
+
+        Serial.print(space);
         Serial.print(F("TGT POS: "));
         Serial.print(unit);
         Serial.print(targetPosition[currentIndex]);
-        // Serial.print(F("\t"));
-        // Serial.print(F("TGT POS (p): "));
-        // Serial.print(firstTime ? 0 : motCtx2.targetPositionPulses, 0);
-        Serial.print(F("      "));
+
+        Serial.print(space);
         Serial.print(F("ERR: "));
-        Serial.print(firstTime ? 0 : motCtx2.errorAngle, 0);
-        // Serial.print(F("\t"));
-        // Serial.print(F("newTargetpositionReceived: "));
-        // Serial.print(newTargetpositionReceived[currentIndex]);
-        // Serial.print(F("\t"));
-        // Serial.print(F("driverEnabled: "));
-        // Serial.print(driverEnabled[currentIndex]);
-        Serial.print(F("\r\n\r\n"));
+        Serial.print(motCtx2.errorAngle, 0);
+        Serial.print(F(" ("));
+        Serial.print(motCtx2.errorPulses);
+        Serial.print(F(")"));
+
+        Serial.print(space);
+        Serial.print(F("HighWaterMark: "));
+        Serial.print(highWaterMark);
+
+        Serial.print(space);
+        Serial.print(F(" words ("));
+        Serial.print(highWaterMark * 4);
+        Serial.print(F(" bytes)"));
+
+        Serial.println();
 
         lastPulse[currentIndex] = encCtx.current_pulse;
     }
@@ -1220,4 +1224,35 @@ void printMotorStatus()
     Serial.print(F(" - Temperature: "));
     Serial.print(status.temperature);
     Serial.println(F("\r\n"));
+}
+
+void printMotorConfig()
+{
+    String      space  = " | ";
+    MotorConfig config = driver[currentIndex].getMotorConfig();
+    Serial.print(F("============================================================================================\r\n"));
+    Serial.print(F("MOT: "));
+    Serial.print((currentIndex + 1));
+
+    Serial.print(space);
+    Serial.print(F("rms_current_mA: "));
+    Serial.print(config.rms_current_mA);
+
+    Serial.print(space);
+    Serial.print(F("irun: "));
+    Serial.print(config.irun);
+
+    Serial.print(space);
+    Serial.print(F("ihold: "));
+    Serial.print(config.ihold);
+
+    Serial.print(space);
+    Serial.print(F("iholddelay: "));
+    Serial.print(config.iholddelay);
+
+    Serial.print(space);
+    Serial.print(F("microsteps: "));
+    Serial.print(config.microsteps);
+
+    Serial.println();
 }

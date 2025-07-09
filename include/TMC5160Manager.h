@@ -7,6 +7,15 @@
 
 static constexpr float R_SENSE = 0.11f;  // Sense resistor value in ohms (updated value)
 
+struct MotorConfig
+{
+    uint16_t rms_current_mA;
+    uint16_t irun;
+    uint16_t ihold;
+    uint16_t iholddelay;
+    uint16_t microsteps;
+};
+
 // Derived class to access protected methods
 class TMC5160StepperExtended : public TMC5160Stepper
 {
@@ -44,6 +53,8 @@ public:
     void     logDriverStatus();
     void     DriverOff();
 
+    MotorConfig getMotorConfig();
+
 private:
     TMC5160StepperExtended* _driver;
 
@@ -59,7 +70,7 @@ private:
 
     static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H = 700;  // Default current in mA
     static constexpr uint16_t MICROSTEPS_NEMA11_1004H      = 16;
-    static constexpr uint16_t DEFAULT_CURRENT_PANCAKE      = 500;  // Default current in mA
+    static constexpr uint16_t DEFAULT_CURRENT_PANCAKE      = 350;  // Default current in mA
     static constexpr uint16_t MICROSTEPS_PANCAKE           = 256;
 
     // Private helper methods
