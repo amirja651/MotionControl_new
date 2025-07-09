@@ -14,13 +14,26 @@
 #define MAIN_ENCODER_TASK_DEBUG false
 #define MAIN_TASK_SERIAL_PRINT  true
 
+#define PULSE_PER_REV_12B 4096
+#define MICROSTEP_256     51200
+#define FULL_DEGREES      360.0f
+
+#define PULSE_12B_TO_DEGREE(pulses)        ((pulses * FULL_DEGREES) / PULSE_PER_REV_12B)
+#define PULSE_12B_TO_MICROSTEP_256(pulses) ((pulses * MICROSTEP_256) / PULSE_PER_REV_12B)
+
+#define DEGREE_TO_PULSE_12B(deg)     ((deg * PULSE_PER_REV_12B) / FULL_DEGREES)
+#define DEGREE_TO_MICROSTEP_256(deg) ((deg * MICROSTEP_256) / FULL_DEGREES)
+
+#define MICROSTEP_256_TO_PULSE_12B(microstep) ((microstep * PULSE_PER_REV_12B) / MICROSTEP_256)
+#define MICROSTEP_256_TO_DEGREE(microstep)    ((microstep * FULL_DEGREES) / MICROSTEP_256)
+
 struct MotorContext2
 {
     float   currentPosition;
-    float   error;
-    int32_t currentPositionPulses;
-    int32_t targetPositionPulses;
-    int32_t errorPulses;
+    float   errorDegree;
+    int32_t currentPositionMicrostep;
+    int32_t targetPositionMicrostep;
+    int32_t errorMicrostep;
 };
 
 TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]),
@@ -339,22 +352,17 @@ MotorContext2 getMotorContext2()
     //  Use appropriate pulse conversion based on motor type
     if (type == MotorType::LINEAR)
     {
-        motCtx2.currentPositionPulses = encoder[currentIndex].umToPulses(motCtx2.currentPosition);
-        motCtx2.targetPositionPulses  = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
-        motCtx2.error                 = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx2.currentPosition);
-        motCtx2.errorPulses           = encoder[currentIndex].umToPulses(motCtx2.error);
+        motCtx2.currentPositionMicrostep = encoder[currentIndex].umToPulses(motCtx2.currentPosition);
+        motCtx2.targetPositionMicrostep  = encoder[currentIndex].umToPulses(targetPosition[currentIndex]);
+        motCtx2.errorDegree              = motor[currentIndex].calculateSignedPositionError(targetPosition[currentIndex], motCtx2.currentPosition);
+        motCtx2.errorMicrostep           = encoder[currentIndex].umToPulses(motCtx2.errorDegree);
     }
     else  // ROTATIONAL
     {
-        motCtx2.currentPositionPulses = encoder[currentIndex].encoderToPulses(encCtx.current_pulse, 256);
-        // encoder[currentIndex].degreesToPulses(encCtx.position_degrees);
-        motCtx2.targetPositionPulses = encoder[currentIndex].mirrorAngleToPulses(targetPosition[currentIndex], 256);
-        // encoder[currentIndex].degreesToPulses(targetPosition[currentIndex]);
-        motCtx2.error = encoder[currentIndex].calculateEncoderAngle(motCtx2.targetPositionPulses, motCtx2.currentPositionPulses);
-        // encoder[currentIndex].calculateEncoderAngle(motCtx2.currentEncoderPulses,
-        // motCtx2.targetPositionPulses);//motor[currentIndex].calculateDegreesPositionError(targetPosition[currentIndex],
-        // encCtx.position_degrees);
-        motCtx2.errorPulses = motCtx2.targetPositionPulses - motCtx2.currentPositionPulses;  // encoder[currentIndex].degreesToPulses(motCtx2.error);
+        motCtx2.currentPositionMicrostep = PULSE_12B_TO_MICROSTEP_256(encCtx.current_pulse);
+        motCtx2.targetPositionMicrostep  = DEGREE_TO_MICROSTEP_256(targetPosition[currentIndex]);
+        motCtx2.errorDegree              = MICROSTEP_256_TO_DEGREE(motCtx2.targetPositionMicrostep - motCtx2.currentPositionMicrostep);
+        motCtx2.errorMicrostep           = motCtx2.targetPositionMicrostep - motCtx2.currentPositionMicrostep;
     }
 
     return motCtx2;
@@ -475,19 +483,19 @@ void rotaryMotorUpdate()
     // Microstep scaling factor for speed compensation
     static const float SPEED_SCALE_FACTOR = static_cast<float>(256) / 16;  // ROTARY_MICROSTEPS / BASE_MICROSTEPS
 
-    MotorContext2 motCtx2           = getMotorContext2();
-    float         absError          = fabs(motCtx2.error);
-    int32_t       deltaPulsPosition = motCtx2.errorPulses;
+    MotorContext2 motCtx2                = getMotorContext2();
+    float         absErrorDegree         = fabs(motCtx2.errorDegree);
+    int32_t       deltaPositionMicrostep = motCtx2.errorMicrostep;
 
     // Check if we've reached the Target
-    if (absError <= POSITION_THRESHOLD_DEG && abs(deltaPulsPosition) < MAX_MICRO_MOVE_PULSE)
+    /*if (absError <= POSITION_THRESHOLD_DEG && abs(deltaPulsPosition) < MAX_MICRO_MOVE_PULSE)
     {
         motorStopAndSavePosition("M106");
         return;
-    }
+    }*/
 
     // Direction setup
-    motor[currentIndex].setDirection(motCtx2.error > 0);
+    motor[currentIndex].setDirection(motCtx2.errorDegree > 0);
     if (!motor[currentIndex].isEnabled())
     {
         motor[currentIndex].enable();
@@ -500,19 +508,19 @@ void rotaryMotorUpdate()
     // Calculate progress
     if (initialTotalDistance[currentIndex] == 0.0f)
     {
-        initialTotalDistance[currentIndex] = absError;  // Set only once per move
+        initialTotalDistance[currentIndex] = absErrorDegree;  // Set only once per move
     }
 
     float progressPercent = 0.0f;
     if (initialTotalDistance[currentIndex] > 0.0f)
     {
-        progressPercent = 1.0f - (absError / initialTotalDistance[currentIndex]);
+        progressPercent = 1.0f - (absErrorDegree / initialTotalDistance[currentIndex]);
         progressPercent = constrain(progressPercent, 0.0f, 1.0f);
     }
 
     // Calculate speed with microstep compensation
     int targetSpeed;
-    if (absError <= FINE_MOVE_THRESHOLD_DEG && !isLongMove)
+    if (absErrorDegree <= FINE_MOVE_THRESHOLD_DEG && !isLongMove)
     {
         MAX_SPEED = static_cast<int>(FINE_MOVE_SPEED * SPEED_SCALE_FACTOR);
     }
@@ -524,7 +532,7 @@ void rotaryMotorUpdate()
 
     targetSpeed = calculateTrapezoidalSpeed(progressPercent, MIN_SPEED, MAX_SPEED);
 
-    motor[currentIndex].move(deltaPulsPosition, targetSpeed, lastSpeed[currentIndex]);
+    motor[currentIndex].move(deltaPositionMicrostep, targetSpeed, lastSpeed[currentIndex]);
     lastSpeed[currentIndex]   = targetSpeed;
     motorMoving[currentIndex] = true;
 }
@@ -984,7 +992,7 @@ void printSerial()
     // Serial.print(firstTime ? 0 : motCtx2.targetPositionPulses, 0);
     Serial.print(F("      "));
     Serial.print(F("ERR: "));
-    Serial.print(motCtx2.error, 0);
+    Serial.print(motCtx2.errorDegree, 0);
     // Serial.print(F("\t"));
     // Serial.print(F("newTargetpositionReceived: "));
     // Serial.print(newTargetpositionReceived[currentIndex]);
@@ -1032,17 +1040,23 @@ void printSerial2()
         Serial.print(F("CUR POS "));
         Serial.print(unit);
         Serial.print(currentPosition);
+        Serial.print(F(" ("));
+        Serial.print(motCtx2.currentPositionMicrostep);
+        Serial.print(F(")"));
 
         Serial.print(space);
         Serial.print(F("TGT POS: "));
         Serial.print(unit);
         Serial.print(targetPosition[currentIndex]);
+        Serial.print(F(" ("));
+        Serial.print(motCtx2.targetPositionMicrostep);
+        Serial.print(F(")"));
 
         Serial.print(space);
         Serial.print(F("ERR: "));
-        Serial.print(motCtx2.error, 0);
+        Serial.print(motCtx2.errorDegree, 0);
         Serial.print(F(" ("));
-        Serial.print(motCtx2.errorPulses);
+        Serial.print(motCtx2.errorMicrostep);
         Serial.print(F(")"));
 
         Serial.print(space);

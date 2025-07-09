@@ -228,7 +228,6 @@ void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, fl
     {
         lastSpeed = targetSpeed;
         updateSpeedGradually();
-        // setSpeed(targetSpeed);
     }
 }
 
@@ -277,11 +276,7 @@ void MotorSpeedController::setTargetSpeed(float targetSpeed)
 {
     _targetSpeed = targetSpeed;
 }
-void MotorSpeedController::setSpeed(float speedStepsPerSec)
-{
-    _speed        = speedStepsPerSec;
-    _ticksPerStep = static_cast<uint32_t>(1e6f / (speedStepsPerSec * _timerTick_us));
-}
+
 void MotorSpeedController::updateSpeedGradually()
 {
     static uint32_t lastUpdate = 0;
@@ -303,7 +298,8 @@ void MotorSpeedController::updateSpeedGradually()
     else
         currentSpeed -= speedStep;
 
-    setSpeed(currentSpeed);
+    _speed        = currentSpeed;
+    _ticksPerStep = static_cast<uint32_t>(1e6f / (currentSpeed * _timerTick_us));
 }
 
 MotorContext& MotorSpeedController::getMotorContext() const
