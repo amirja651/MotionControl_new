@@ -44,14 +44,8 @@ public:
     void setMicrosteps(uint16_t microsteps);
 
     // Driver Configuration
-    void configureDriver_Nema11_1004H(bool useStealth);
-    void configureDriver_Pancake();
+    void configureDriver_All_Motors(bool useStealth);
     void logDriverStatus();
-
-    // Driver Mode
-    void setStealthChopMode();
-    void setSpreadCycleMode();
-    bool isStealthChopEnabled();
     void DriverOff();
 
 private:
@@ -61,12 +55,22 @@ private:
     uint16_t _pinCS;
     float    _RS;
 
-    static constexpr uint16_t DEFAULT_CURRENT = 700;  // Default current in mA
-    static constexpr uint16_t MICROSTEPS      = 16;
+    uint16_t _rms_current_mA;
+    uint16_t _irun;
+    uint16_t _ihold;
+    uint16_t _iholddelay;
+    uint16_t _microsteps;
+
+    static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H = 700;  // Default current in mA
+    static constexpr uint16_t MICROSTEPS_NEMA11_1004H      = 16;
+    static constexpr uint16_t DEFAULT_CURRENT_PANCAKE      = 500;  // Default current in mA
+    static constexpr uint16_t MICROSTEPS_PANCAKE           = 256;
+
     // Private helper methods
     bool     configureDriver();
     void     setSGTHRS(uint32_t threshold);
     uint32_t getSG_RESULT();
+    uint8_t  calculateCurrentSetting(uint16_t desiredCurrent_mA, uint16_t rmsCurrent_mA);
 };
 
 #endif  // TMC5160_MANAGER_H

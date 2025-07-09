@@ -151,10 +151,7 @@ void setup()
             driverEnabled[index] = true;
 
             // Configure motor parameters
-            if (index == (uint8_t)MotorType::LINEAR)
-                driver[index].configureDriver_Nema11_1004H(true);
-            else
-                driver[index].configureDriver_Pancake();
+            driver[index].configureDriver_All_Motors(true);
 
             // Initialize all motor controllers
             motor[index].begin();
@@ -273,11 +270,9 @@ void setTargetPosition(String targetPos)
 
     diagnosticsRun = false;  // set diagnosticsRun to false for new index
     isLongMove     = false;  // set shortMove to false for new index
+
     // ✅ The value is valid
-    if (currentIndex == (uint8_t)MotorType::LINEAR)
-        driver[currentIndex].configureDriver_Nema11_1004H(true);
-    else
-        driver[currentIndex].configureDriver_Pancake();
+    driver[currentIndex].configureDriver_All_Motors(true);
 
     targetPosition[currentIndex]            = value;
     newTargetpositionReceived[currentIndex] = true;
