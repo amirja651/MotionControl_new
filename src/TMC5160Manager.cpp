@@ -7,16 +7,16 @@ TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : 
     {
         _rms_current_mA = DEFAULT_CURRENT_NEMA11_1004H;
         _microsteps     = MICROSTEPS_NEMA11_1004H;
-        _irun           = 350;  // calculateCurrentSetting(350, DEFAULT_CURRENT_NEMA11_1004H);
-        _ihold          = 180;  // calculateCurrentSetting(180, DEFAULT_CURRENT_NEMA11_1004H);
+        _irun           = 16;  // calculateCurrentSetting(350, DEFAULT_CURRENT_NEMA11_1004H);
+        _ihold          = 8;   // calculateCurrentSetting(180, DEFAULT_CURRENT_NEMA11_1004H);
         _iholddelay     = 8;
     }
     else
     {
-        _rms_current_mA = DEFAULT_CURRENT_PANCAKE;
-        _microsteps     = MICROSTEPS_PANCAKE;
-        _irun           = 200;  //= calculateCurrentSetting(200, DEFAULT_CURRENT_PANCAKE);
-        _ihold          = 100;  //= calculateCurrentSetting(100, DEFAULT_CURRENT_PANCAKE);
+        _rms_current_mA = 200;
+        _microsteps     = 256;
+        _irun           = 16;
+        _ihold          = 8;
         _iholddelay     = 1;
     }
 }
@@ -360,4 +360,76 @@ MotorConfig TMC5160Manager::getMotorConfig()
     config.iholddelay     = _iholddelay;
     config.microsteps     = _microsteps;
     return config;
+}
+
+// Current control methods
+void TMC5160Manager::setRmsCurrent(uint16_t current_mA)
+{
+    _rms_current_mA = current_mA;
+    if (_driver != nullptr)
+    {
+        _driver->rms_current(_rms_current_mA);
+        delay(5);
+    }
+}
+
+void TMC5160Manager::setIrun(uint8_t irun)
+{
+    _irun = irun;
+    if (_driver != nullptr)
+    {
+        _driver->irun(_irun);
+        delay(5);
+    }
+}
+
+void TMC5160Manager::setIhold(uint8_t ihold)
+{
+    _ihold = ihold;
+    if (_driver != nullptr)
+    {
+        _driver->ihold(_ihold);
+        delay(5);
+    }
+}
+
+void TMC5160Manager::setMicrosteps(uint16_t microsteps)
+{
+    _microsteps = microsteps;
+    if (_driver != nullptr)
+    {
+        _driver->microsteps(_microsteps);
+        delay(5);
+    }
+}
+
+uint16_t TMC5160Manager::getRmsCurrent() const
+{
+    return _rms_current_mA;
+}
+
+uint8_t TMC5160Manager::getIrun() const
+{
+    return _irun;
+}
+
+uint8_t TMC5160Manager::getIhold() const
+{
+    return _ihold;
+}
+
+uint16_t TMC5160Manager::getMicrosteps() const
+{
+    return _microsteps;
+}
+
+void TMC5160Manager::applyCurrentSettings()
+{
+    if (_driver != nullptr)
+    {
+        _driver->rms_current(_rms_current_mA);
+        _driver->irun(_irun);
+        _driver->ihold(_ihold);
+        delay(5);
+    }
 }

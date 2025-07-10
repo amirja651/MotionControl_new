@@ -341,3 +341,13 @@ MotorContext& MotorSpeedController::getMotorContext() const
     _motorContext.tickCounter     = _tickCounter;
     return _motorContext;
 }
+
+void MotorSpeedController::motorStep(uint16_t delay_us)
+{
+    if (delay_us == 0)
+        delay_us = 1;
+    digitalWrite(_STEP_PIN, HIGH);
+    delayMicroseconds(delay_us);
+    digitalWrite(_STEP_PIN, LOW);
+    delayMicroseconds(delay_us);
+}

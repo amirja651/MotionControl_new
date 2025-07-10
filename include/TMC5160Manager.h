@@ -55,6 +55,17 @@ public:
 
     MotorConfig getMotorConfig();
 
+    // Current control methods
+    void     setRmsCurrent(uint16_t current_mA);
+    void     setIrun(uint8_t irun);
+    void     setIhold(uint8_t ihold);
+    void     setMicrosteps(uint16_t microsteps);
+    uint16_t getRmsCurrent() const;
+    uint8_t  getIrun() const;
+    uint8_t  getIhold() const;
+    uint16_t getMicrosteps() const;
+    void     applyCurrentSettings();
+
 private:
     TMC5160StepperExtended* _driver;
 
@@ -68,10 +79,10 @@ private:
     uint16_t _iholddelay;
     uint16_t _microsteps;
 
-    static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H = 700;  // Default current in mA
+    static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H = 350;  // Default current in mA
     static constexpr uint16_t MICROSTEPS_NEMA11_1004H      = 16;
-    static constexpr uint16_t DEFAULT_CURRENT_PANCAKE      = 350;  // Default current in mA
-    static constexpr uint16_t MICROSTEPS_PANCAKE           = 256;
+    static constexpr uint16_t DEFAULT_CURRENT_PANCAKE      = 250;  // Default current in mA
+    static constexpr uint16_t MICROSTEPS_PANCAKE           = 100;
 
     // Private helper methods
     bool     configureDriver();

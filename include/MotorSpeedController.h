@@ -66,6 +66,7 @@ public:
 
     void startTimer();
     void stopTimer();
+    void motorStep(uint16_t delay_us);
 
 private:
     // Hardware driver and pins

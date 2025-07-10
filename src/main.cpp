@@ -22,7 +22,120 @@ TaskHandle_t              serialReadTaskHandle = NULL;
 static String  commandHistory[HISTORY_SIZE];
 static int     historyCount = 0;
 static int     historyIndex = -1;  // -1 means not navigating
-static uint8_t currentIndex = 0;   // Current driver index
+static uint8_t currentIndex = 1;   // Current driver index
+
+// Step delay control
+static uint16_t           stepDelay            = 200;   // Default step delay in microseconds
+static constexpr uint16_t MIN_STEP_DELAY       = 1;     // Minimum step delay
+static constexpr uint16_t MAX_STEP_DELAY       = 5000;  // Maximum step delay
+static constexpr uint16_t STEP_DELAY_INCREMENT = 50;    // Step delay change increment
+
+// Current control parameters
+static constexpr uint16_t MIN_RMS_CURRENT = 100;  // Minimum RMS current in mA
+static constexpr uint16_t MAX_RMS_CURRENT = 500;  // Maximum RMS current in mA
+
+static uint16_t MICROSTEPS[] = {1, 2, 8, 16, 32, 64, 128, 256};
+
+static constexpr uint16_t MIN_MICROSTEPS = 0;  // Maximum microsteps
+static constexpr uint16_t MAX_MICROSTEPS = 7;  // Maximum microsteps
+
+static constexpr uint8_t MIN_IRUN = 1;   // Minimum IRUN value (1/32 of RMS current)
+static constexpr uint8_t MAX_IRUN = 31;  // Maximum IRUN value (31/32 of RMS current)
+
+static constexpr uint8_t MIN_IHOLD = 1;   // Minimum IHOLD value (1/32 of RMS current)
+static constexpr uint8_t MAX_IHOLD = 31;  // Maximum IHOLD value (31/32 of RMS current)
+
+static constexpr uint16_t CURRENT_INCREMENT = 50;  // Current change increment
+static constexpr uint8_t  IRUN_INCREMENT    = 1;   // IRUN change increment
+static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
+
+// Movement control parameters
+static bool               motorMoving    = false;    // Track if motor is currently moving
+static constexpr uint32_t MOVEMENT_STEPS = 1000;     // Number of steps to move
+static constexpr float    MOVEMENT_SPEED = 1000.0f;  // Steps per second
+
+int findIndex(uint16_t array[], int length, uint16_t value)
+{
+    for (int i = 0; i < length; i++)
+    {
+        if (array[i] == value)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+uint8_t calculateByDesiredCurrent(uint16_t rms_current, uint8_t desired_current)
+{
+    return (desired_current * 32) / rms_current;
+}
+
+uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
+{
+    return (rms_current * number) / 32;
+}
+
+void printAllSettings()
+{
+    Serial.println(F("-- Current Settings:"));
+    Serial.print(F("RMS current: "));
+    Serial.print(driver[currentIndex].getRmsCurrent());
+    Serial.print(F(" mA"));
+
+    Serial.print(F("     "));
+    Serial.print(F("IRUN: "));
+    Serial.print(driver[currentIndex].getIrun());
+    Serial.print(F("/32 of RMS current"));
+    Serial.print(F(" ("));
+    Serial.print(calculateByNumber(driver[currentIndex].getRmsCurrent(), driver[currentIndex].getIrun()));
+    Serial.print(F(" mA)"));
+
+    Serial.print(F("     "));
+    Serial.print(F("IHOLD: "));
+    Serial.print(driver[currentIndex].getIhold());
+    Serial.print(F("/32 of RMS current"));
+    Serial.print(F(" ("));
+    Serial.print(calculateByNumber(driver[currentIndex].getRmsCurrent(), driver[currentIndex].getIhold()));
+    Serial.print(F(" mA)"));
+
+    Serial.print(F("     "));
+    Serial.print(F("Microsteps: "));
+    Serial.print(driver[currentIndex].getMicrosteps());
+
+    Serial.print(F("     "));
+    Serial.print(F("Step delay: "));
+    Serial.print(stepDelay);
+    Serial.println(F(" us"));
+}
+
+void printHelp()
+{
+    Serial.println();
+    Serial.println(F("=== Motor Control System Ready ==="));
+    Serial.println(F("Keyboard Controls:"));
+    Serial.println(F("  Microsteps:"));
+    Serial.println(F("    'j' - Increase microsteps"));
+    Serial.println(F("    'm' - Decrease microsteps"));
+    Serial.println(F("  Step Delay:"));
+    Serial.println(F("    'g' - Increase step delay"));
+    Serial.println(F("    'b' - Decrease step delay"));
+    Serial.println(F("  RMS Current:"));
+    Serial.println(F("    'f' - Increase RMS current"));
+    Serial.println(F("    'v' - Decrease RMS current"));
+    Serial.println(F("  IRUN Current:"));
+    Serial.println(F("    'd' - Increase IRUN"));
+    Serial.println(F("    'c' - Decrease IRUN"));
+    Serial.println(F("  IHOLD Current:"));
+    Serial.println(F("    's' - Increase IHOLD"));
+    Serial.println(F("    'x' - Decrease IHOLD"));
+    Serial.println(F("  Movement Control:"));
+    Serial.println(F("    'a' - Start motor movement"));
+    Serial.println(F("    'z' - Stop motor movement"));
+    printAllSettings();
+    Serial.println(F("=================================="));
+    Serial.flush();
+}
 
 void clearLine()
 {
@@ -165,7 +278,185 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("\b \b"));
                 }
             }
-            else
+
+            else if (c == 'j')  // Increase microsteps
+            {
+                uint16_t currentMicrosteps = driver[currentIndex].getMicrosteps();
+
+                int index = findIndex(MICROSTEPS, sizeof(MICROSTEPS) / sizeof(MICROSTEPS[0]), currentMicrosteps);
+                if (index < MAX_MICROSTEPS)
+                {
+                    uint16_t newMicrosteps = MICROSTEPS[index + 1];
+                    driver[currentIndex].setMicrosteps(newMicrosteps);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'm')  // Decrease microsteps
+            {
+                uint16_t currentMicrosteps = driver[currentIndex].getMicrosteps();
+
+                int index = findIndex(MICROSTEPS, sizeof(MICROSTEPS) / sizeof(MICROSTEPS[0]), currentMicrosteps);
+                if (index > MIN_MICROSTEPS)
+                {
+                    uint16_t newMicrosteps = MICROSTEPS[index - 1];
+                    driver[currentIndex].setMicrosteps(newMicrosteps);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+
+            else if (c == 'g')  // Increase step delay
+            {
+                if (stepDelay < MAX_STEP_DELAY)
+                {
+                    stepDelay += STEP_DELAY_INCREMENT;
+                    printAllSettings();
+                }
+                // Clear the input buffer since this is a direct command
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'b')  // Decrease step delay
+            {
+                if (stepDelay > MIN_STEP_DELAY)
+                {
+                    stepDelay -= STEP_DELAY_INCREMENT;
+                    printAllSettings();
+                }
+                // Clear the input buffer since this is a direct command
+                inputBuffer = "";
+                lastInput   = "";
+            }
+
+            else if (c == 'f')  // Increase RMS current
+            {
+                uint16_t currentRms = driver[currentIndex].getRmsCurrent();
+                if (currentRms < MAX_RMS_CURRENT)
+                {
+                    uint16_t newRms = currentRms + CURRENT_INCREMENT;
+                    driver[currentIndex].setRmsCurrent(newRms);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'v')  // Decrease RMS current
+            {
+                uint16_t currentRms = driver[currentIndex].getRmsCurrent();
+                if (currentRms > MIN_RMS_CURRENT)
+                {
+                    uint16_t newRms = currentRms - CURRENT_INCREMENT;
+                    driver[currentIndex].setRmsCurrent(newRms);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+
+            else if (c == 'd')  // Increase IRUN
+            {
+                uint8_t currentIrun = driver[currentIndex].getIrun();
+                if (currentIrun < MAX_IRUN)
+                {
+                    uint8_t newIrun = currentIrun + IRUN_INCREMENT;
+                    driver[currentIndex].setIrun(newIrun);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'c')  // Decrease IRUN
+            {
+                uint8_t currentIrun = driver[currentIndex].getIrun();
+                if (currentIrun > MIN_IRUN)
+                {
+                    uint8_t newIrun = currentIrun - IRUN_INCREMENT;
+                    driver[currentIndex].setIrun(newIrun);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+
+            else if (c == 's')  // Increase IHOLD
+            {
+                uint8_t currentIhold = driver[currentIndex].getIhold();
+                if (currentIhold < MAX_IHOLD)
+                {
+                    uint8_t newIhold = currentIhold + IHOLD_INCREMENT;
+                    driver[currentIndex].setIhold(newIhold);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'x')  // Decrease IHOLD
+            {
+                uint8_t currentIhold = driver[currentIndex].getIhold();
+                if (currentIhold > MIN_IHOLD)
+                {
+                    uint8_t newIhold = currentIhold - IHOLD_INCREMENT;
+                    driver[currentIndex].setIhold(newIhold);
+                    printAllSettings();
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+
+            else if (c == 'a')  // Start motor movement
+            {
+                if (!motorMoving)
+                {
+                    motorMoving = true;
+                    motor[currentIndex].enable(true);
+                    motor[currentIndex].setDirection(true);  // Forward direction
+                    motor[currentIndex].move(MOVEMENT_STEPS, MOVEMENT_SPEED, MOVEMENT_SPEED);
+                    motor[currentIndex].attachInterruptHandler();
+                    motor[currentIndex].startTimer();
+                    Serial.print(F("\r\n[Info] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.print(F(" started moving forward ("));
+                    Serial.print(MOVEMENT_STEPS);
+                    Serial.print(F(" steps at "));
+                    Serial.print(MOVEMENT_SPEED);
+                    Serial.println(F(" steps/sec)\r\n"));
+                }
+                else
+                {
+                    Serial.print(F("\r\n[Warning] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.println(F(" is already moving!\r\n"));
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'z')  // Stop motor movement
+            {
+                if (motorMoving)
+                {
+                    motorMoving = false;
+                    motor[currentIndex].stop();
+                    motor[currentIndex].stopTimer();
+                    motor[currentIndex].detachInterruptHandler();
+                    Serial.print(F("\r\n[Info] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.println(F(" stopped\r\n"));
+                }
+                else
+                {
+                    Serial.print(F("\r\n[Warning] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.println(F(" is not moving!\r\n"));
+                }
+                inputBuffer = "";
+                lastInput   = "";
+            }
+
+            else if (c != 'a' && c != 'z' && c != 's' && c != 'x' && c != 'd' && c != 'c' && c != 'f' && c != 'v' && c != 'g' && c != 'b' && c != 'j' &&
+                     c != 'm')  // Only add to buffer if not a direct command
             {
                 inputBuffer += c;  // Add character to buffer
                 Serial.print(c);
@@ -269,26 +560,18 @@ void setup()
         }
     }
 
-    // Check if any driver is enabled
-    bool anyDriverEnabled = false;
-    for (uint8_t index = 0; index < 4; index++)
-        anyDriverEnabled = anyDriverEnabled;
-
-    if (!anyDriverEnabled)
-    {
-        Serial.println(F("[Error][Setup] All drivers are disabled. Please reset the system."));
-        while (1)
-        {
-            esp_task_wdt_reset();
-            delay(10);
-        }
-    }
-
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
-    Serial.println();
-    Serial.flush();
+    motor[currentIndex].enable(true);
 }
 
-void loop() {}
+void loop()
+{
+    // Only step manually if motor is not moving (controlled by timer)
+    if (!motorMoving)
+    {
+        motor[currentIndex].motorStep(stepDelay);
+    }
+    esp_task_wdt_reset();
+}
