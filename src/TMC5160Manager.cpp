@@ -257,19 +257,6 @@ void TMC5160Manager::configureDriver_All_Motors(bool useStealth)
         _driver->sgt(5);          // StallGuard threshold
         _driver->sfilt(true);
         delay(5);
-
-        // ---------------------------
-        // 7. Motion Configuration (Soft Motion)
-        // ---------------------------
-        _driver->RAMPMODE(0);  // Positioning mode
-        _driver->VSTART(1);    // Very soft start
-        _driver->VSTOP(1);     // Smooth stop
-        _driver->VMAX(600);    // Max speed (limit for Pancake)
-        _driver->AMAX(100);    // Acceleration limit
-        _driver->DMAX(100);    // Deceleration limit
-        _driver->a1(300);      // Start acceleration
-        _driver->d1(300);      // Start deceleration
-        delay(5);
     }
 }
 
