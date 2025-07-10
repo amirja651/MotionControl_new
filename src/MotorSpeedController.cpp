@@ -47,6 +47,7 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
 
         if (_stepsRemaining == 0)
         {
+            _movementCompleteFlag = true;
             stopTimer();
         }
     }
@@ -114,10 +115,9 @@ void MotorSpeedController::startTimer()
 void MotorSpeedController::stopTimer()
 {
     detachInterruptHandler();
-    _stepsRemaining       = 0;
-    _enabled              = false;
-    _moving               = false;
-    _movementCompleteFlag = true;
+    _stepsRemaining = 0;
+    _enabled        = false;
+    _moving         = false;
 }
 
 MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
