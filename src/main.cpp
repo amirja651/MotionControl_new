@@ -467,6 +467,9 @@ void detectRotaryMotorSpeed() {}
 void linearMotorUpdate() {}
 
 // Rotary Motor Update (M106)
+static int   targetSpeed     = 0;
+static float progressPercent = 0.0f;
+
 void rotaryMotorUpdate()
 {
     if (!newTargetpositionReceived[currentIndex])
@@ -515,7 +518,6 @@ void rotaryMotorUpdate()
         initialTotalDistance[currentIndex] = absErrorDegree;  // Set only once per move
     }
 
-    float progressPercent = 0.0f;
     if (initialTotalDistance[currentIndex] > 0.0f)
     {
         progressPercent = 1.0f - (absErrorDegree / initialTotalDistance[currentIndex]);
@@ -523,7 +525,6 @@ void rotaryMotorUpdate()
     }
 
     // Calculate speed with microstep compensation
-    int targetSpeed;
     if (absErrorDegree <= FINE_MOVE_THRESHOLD_DEG && !isLongMove)
     {
         MAX_SPEED = static_cast<int>(FINE_MOVE_SPEED * SPEED_SCALE_FACTOR);
@@ -650,9 +651,11 @@ void motorStopAndSavePosition(String callerFunctionName)
 {
     motor[currentIndex].stopTimer();
     callerFunctionName = "[" + callerFunctionName + "]";
+    Serial.println();
     Serial.print(F("[Info]"));
     Serial.print(callerFunctionName);
     Serial.println(F(" Reached target. Stopping..."));
+    Serial.println();
     // Reset all state variables that prevent subsequent movements
     newTargetpositionReceived[currentIndex] = false;
     motorMoving[currentIndex]               = false;  // ✅ CRITICAL: Reset motor moving flag
@@ -940,12 +943,12 @@ void serialReadTask(void* pvParameters)
 // Serial Print Task (M109)
 void serialPrintTask(void* pvParameters)
 {
-    const TickType_t xFrequency    = pdMS_TO_TICKS(1000);
+    const TickType_t xFrequency    = pdMS_TO_TICKS(700);
     TickType_t       xLastWakeTime = xTaskGetTickCount();
 
     while (1)
     {
-        printSerial2();
+        printSerial();
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
@@ -954,7 +957,7 @@ void serialPrintTask(void* pvParameters)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Print Serial (M110)
-void printSerial()
+void printSerial2()
 {
     Serial.print(F("[M110] HighWaterMark: "));
     Serial.print(highWaterMark);
@@ -1012,7 +1015,7 @@ void printSerial()
 }
 
 // Print Serial (M110)
-void printSerial2()
+void printSerial()
 {
     MotorType      type                = motor[currentIndex].getMotorType();
     EncoderContext encCtx              = encoder[currentIndex].getEncoderContext();
@@ -1021,16 +1024,15 @@ void printSerial2()
     float          beforeMove          = beforeMovePosition[currentIndex];
     float          currentPosition     = getMotorPosition();
     String         unit                = (type == MotorType::LINEAR ? "µm" : "°");
-    String         space               = " ┼ ";
+    String         space               = "  ┼  ";
     int32_t        beforeMoveMicrostep = DEGREE_TO_MICROSTEP_256(beforeMove);
     float          microstepToDegree   = MICROSTEP_256_TO_DEGREE(motCtx.stepsRemaining);
 
     if (fabs(encCtx.current_pulse - lastPulse[currentIndex]) > 1)
     {
         //  Format all values into the buffer
-        Serial.println(
-            F("──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"));
-        Serial.print(F("MOT: "));
+        Serial.println(F("┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐"));
+        Serial.print(F("│ MOT: "));
         Serial.print((currentIndex + 1));
 
         Serial.print(space);
@@ -1045,7 +1047,7 @@ void printSerial2()
         }
 
         Serial.print(space);
-        Serial.print(F("BEF MOV: "));
+        Serial.print(F("BEF: "));
         Serial.print(beforeMove);
         Serial.print(unit);
         Serial.print(F(" ("));
@@ -1053,7 +1055,7 @@ void printSerial2()
         Serial.print(F(")"));
 
         Serial.print(space);
-        Serial.print(F("CUR POS: "));
+        Serial.print(F("CUR: "));
         Serial.print(currentPosition);
         Serial.print(unit);
         Serial.print(F(" ("));
@@ -1061,7 +1063,7 @@ void printSerial2()
         Serial.print(F(")"));
 
         Serial.print(space);
-        Serial.print(F("TGT POS: "));
+        Serial.print(F("TGT: "));
         Serial.print(targetPosition[currentIndex]);
         Serial.print(unit);
         Serial.print(F(" ("));
@@ -1076,20 +1078,29 @@ void printSerial2()
         Serial.print(F(")"));
 
         Serial.print(space);
-        Serial.print(F("STR: "));
-        Serial.print(motCtx.stepsRemaining);
+        Serial.print(F("SPD: "));
+        Serial.print(targetSpeed);
         Serial.print(F(" ("));
-        Serial.print(microstepToDegree);
-        Serial.print(unit);
+        Serial.print(progressPercent);
         Serial.print(F(")"));
 
-        Serial.print(space);
-        Serial.print(F("HWM: "));
-        Serial.print(highWaterMark);
-        Serial.print(F(" words ("));
-        Serial.print(highWaterMark * 4);
-        Serial.print(F(" bytes)"));
+        if (0)
+        {
+            Serial.print(space);
+            Serial.print(F("STR: "));
+            Serial.print(motCtx.stepsRemaining);
+            Serial.print(F(" ("));
+            Serial.print(microstepToDegree);
+            Serial.print(unit);
+            Serial.print(F(")"));
 
+            Serial.print(space);
+            Serial.print(F("HWM: "));
+            Serial.print(highWaterMark);
+            Serial.print(F(" words ("));
+            Serial.print(highWaterMark * 4);
+            Serial.print(F(" bytes)"));
+        }
         Serial.println();
 
         lastPulse[currentIndex] = encCtx.current_pulse;
