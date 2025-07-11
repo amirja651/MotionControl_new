@@ -139,8 +139,8 @@ void MAE3Encoder::processPWM(bool print)
             return;
         }
 
-        _state.width_high = _width_h_buffer[_pulseBufferIndex] = _r_pulse.high;
-        _state.width_low = _width_l_buffer[_pulseBufferIndex] = _r_pulse.low;
+        _state.width_high = _width_h_buffer[_pulseBufferIndex] = get_median_width_high();  // _r_pulse.high;
+        _state.width_low = _width_l_buffer[_pulseBufferIndex] = get_median_width_low();    // _r_pulse.low;
         _pulseBufferIndex                                     = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
         _bufferUpdated                                        = true;
     }

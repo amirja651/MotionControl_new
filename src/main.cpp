@@ -17,15 +17,15 @@ MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::
                                  MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
                                  MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
 
-// Position controllers for precise angle control
-PositionController positionController[4] = {PositionController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]),
-                                            PositionController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
-                                            PositionController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
-                                            PositionController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
-
 // MAE3 Encoders for position feedback (read-only, not used for control)
 MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2),
                           MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+
+// Position controllers for precise angle control
+PositionController positionController[4] = {PositionController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0], encoder[0]),
+                                            PositionController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
+                                            PositionController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2], encoder[2]),
+                                            PositionController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
 // Legacy AccelStepper instances (kept for compatibility)
 AccelStepper stepper[4] = {
@@ -139,33 +139,41 @@ void printHelp()
     Serial.println();
     Serial.println(F("=== Motor Control System Ready ==="));
     Serial.println(F("Keyboard Controls:"));
-    Serial.println(F("  Microsteps:"));
-    Serial.println(F("    'j' - Increase microsteps"));
-    Serial.println(F("    'm' - Decrease microsteps"));
-    Serial.println(F("  Step Delay:"));
-    Serial.println(F("    'g' - Increase step delay"));
-    Serial.println(F("    'b' - Decrease step delay"));
-    Serial.println(F("  RMS Current:"));
-    Serial.println(F("    'f' - Increase RMS current"));
-    Serial.println(F("    'v' - Decrease RMS current"));
-    Serial.println(F("  IRUN Current:"));
-    Serial.println(F("    'd' - Increase IRUN"));
-    Serial.println(F("    'c' - Decrease IRUN"));
-    Serial.println(F("  IHOLD Current:"));
-    Serial.println(F("    's' - Increase IHOLD"));
-    Serial.println(F("    'x' - Decrease IHOLD"));
+
     Serial.println(F("  Movement Control:"));
     Serial.println(F("    'a' - Start motor movement"));
     Serial.println(F("    'z' - Stop motor movement"));
+
+    Serial.println(F("  IHOLD Current:"));
+    Serial.println(F("    's' - Increase IHOLD"));
+    Serial.println(F("    'x' - Decrease IHOLD"));
+
+    Serial.println(F("  IRUN Current:"));
+    Serial.println(F("    'd' - Increase IRUN"));
+    Serial.println(F("    'c' - Decrease IRUN"));
+
+    Serial.println(F("  RMS Current:"));
+    Serial.println(F("    'f' - Increase RMS current"));
+    Serial.println(F("    'v' - Decrease RMS current"));
+
+    Serial.println(F("  Step Delay:"));
+    Serial.println(F("    'g' - Increase step delay"));
+    Serial.println(F("    'b' - Decrease step delay"));
+
+    Serial.println(F("  Microsteps:"));
+    Serial.println(F("    'j' - Increase microsteps"));
+    Serial.println(F("    'm' - Decrease microsteps"));
+
     Serial.println(F("  Position Control:"));
-    Serial.println(F("    '1' - Move to 0 degrees"));
-    Serial.println(F("    '2' - Move to 90 degrees"));
-    Serial.println(F("    '3' - Move to 180 degrees"));
-    Serial.println(F("    '4' - Move to 270 degrees"));
-    Serial.println(F("    '5' - Move +10 degrees"));
-    Serial.println(F("    '6' - Move -10 degrees"));
-    Serial.println(F("    't' - Toggle position controller"));
-    Serial.println(F("    'h' - Show position status"));
+    Serial.println(F("    'q' - Move to 0 degrees"));
+    Serial.println(F("    'w' - Move to 90 degrees"));
+    Serial.println(F("    'e' - Move to 180 degrees"));
+    Serial.println(F("    'r' - Move to 270 degrees"));
+    Serial.println(F("    't' - Move +10 degrees"));
+    Serial.println(F("    'y' - Move -10 degrees"));
+
+    Serial.println(F("    'k' - Toggle position controller"));
+    Serial.println(F("    'l' - Show position status"));
     printAllSettings();
     Serial.println(F("=================================="));
     Serial.flush();
@@ -489,7 +497,7 @@ void serialReadTask(void* pvParameters)
                 lastInput   = "";
             }
 
-            else if (c == '1')  // Move to 0 degrees
+            else if (c == 'q')  // Move to 0 degrees
             {
                 if (usePositionController)
                 {
@@ -509,7 +517,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == '2')  // Move to 90 degrees
+            else if (c == 'w')  // Move to 90 degrees
             {
                 if (usePositionController)
                 {
@@ -528,7 +536,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == '3')  // Move to 180 degrees
+            else if (c == 'e')  // Move to 180 degrees
             {
                 if (usePositionController)
                 {
@@ -547,7 +555,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == '4')  // Move to 270 degrees
+            else if (c == 'r')  // Move to 270 degrees
             {
                 if (usePositionController)
                 {
@@ -566,7 +574,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == '5')  // Move +10 degrees
+            else if (c == 't')  // Move +10 degrees
             {
                 if (usePositionController)
                 {
@@ -578,7 +586,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == '6')  // Move -10 degrees
+            else if (c == 'y')  // Move -10 degrees
             {
                 if (usePositionController)
                 {
@@ -590,7 +598,8 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == 't')  // Toggle position controller
+
+            else if (c == 'k')  // Toggle position controller
             {
                 usePositionController = !usePositionController;
                 Serial.print(F("\r\n[Info] Position controller: "));
@@ -599,7 +608,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == 'h')  // Show position status
+            else if (c == 'l')  // Show position status
             {
                 if (usePositionController)
                 {
@@ -656,9 +665,10 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
+
             else if (c != 'a' && c != 'z' && c != 's' && c != 'x' && c != 'd' && c != 'c' && c != 'f' && c != 'v' && c != 'g' && c != 'b' && c != 'j' &&
-                     c != 'm' && c != '1' && c != '2' && c != '3' && c != '4' && c != '5' && c != '6' && c != 't' &&
-                     c != 'h')  // Only add to buffer if not a direct command
+                     c != 'm' && c != 'q' && c != 'w' && c != 'e' && c != 'r' && c != 't' && c != 'y' && c != 'k' &&
+                     c != 'l')  // Only add to buffer if not a direct command
             {
                 inputBuffer += c;  // Add character to buffer
                 Serial.print(c);

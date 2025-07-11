@@ -1,6 +1,7 @@
 #ifndef POSITION_CONTROLLER_H
 #define POSITION_CONTROLLER_H
 
+#include "MAE3Encoder.h"
 #include "Pins.h"
 #include "TMC5160Manager.h"
 #include <AccelStepper.h>
@@ -12,7 +13,7 @@
 
 // Motor configuration constants
 static constexpr uint16_t STEPS_PER_REVOLUTION         = 200;                                         // Standard stepper motor
-static constexpr uint16_t MICROSTEPS_PER_STEP          = 256;                                         // 256 microsteps per full step
+static constexpr uint16_t MICROSTEPS_PER_STEP          = DEFAULT_CURRENT_PANCAKE;                     // 256 microsteps per full step
 static constexpr uint32_t MICROSTEPS_PER_REVOLUTION    = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;  // 51,200 microsteps
 static constexpr float    DEGREES_PER_MICROSTEP        = 360.0f / MICROSTEPS_PER_REVOLUTION;          // 0.00703125 degrees per microstep
 static constexpr float    POSITION_ACCURACY_DEGREES    = 0.1f;                                        // Target accuracy
@@ -56,7 +57,8 @@ class PositionController
 {
 public:
     // Constructor
-    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin);
+    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder);
+    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin);  // Constructor without encoder (for demo)
     ~PositionController();
 
     // Initialization
@@ -99,6 +101,7 @@ private:
     // Hardware components
     TMC5160Manager&      _driver;
     mutable AccelStepper _stepper;  // Mutable to allow const member functions to call AccelStepper methods
+    MAE3Encoder*         _encoder;  // Pointer to encoder for position feedback (can be nullptr)
     uint16_t             _dirPin;
     uint16_t             _stepPin;
     uint16_t             _enPin;

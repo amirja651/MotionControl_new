@@ -7,10 +7,11 @@ QueueHandle_t       PositionController::_movementCommandQueue      = nullptr;
 SemaphoreHandle_t   PositionController::_statusMutex               = nullptr;
 PositionController* PositionController::_instances[4]              = {nullptr};
 
-// Constructor
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin)
+// Constructor with encoder
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, dirPin),
+      _encoder(&encoder),
       _dirPin(dirPin),
       _stepPin(stepPin),
       _enPin(enPin),
@@ -42,6 +43,40 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     // _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {1000.0f, 2000.0f};  // Slow and precise
     // _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {2000.0f, 4000.0f};  // Balanced
     // _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {4000.0f, 8000.0f};  // Fast
+}
+
+// Constructor without encoder (for demo)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin)
+    : _driver(driver),
+      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
+      _encoder(nullptr),
+      _dirPin(dirPin),
+      _stepPin(stepPin),
+      _enPin(enPin),
+      _motorId(motorId),
+      _status{},
+      _enabled(false),
+      _initialized(false)
+{
+    // Initialize status
+    _status.motorId           = motorId;
+    _status.currentAngle      = 0.0f;
+    _status.targetAngle       = 0.0f;
+    _status.isMoving          = false;
+    _status.isEnabled         = false;
+    _status.currentMicrosteps = 0;
+    _status.targetMicrosteps  = 0;
+    _status.lastMovementType  = MovementType::MEDIUM_RANGE;
+    _status.movementStartTime = 0;
+    _status.totalMovementTime = 0;
+
+    // Store instance for RTOS access
+    _instances[motorId] = this;
+
+    // Initialize speed profiles with default values
+    _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {2000.0f, 4000.0f};   // Increased from 1000
+    _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};   // Increased from 2000
+    _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
 }
 
 // Destructor
@@ -86,7 +121,31 @@ void PositionController::enable()
     _stepper.enableOutputs();
     _enabled          = true;
     _status.isEnabled = true;
-    Serial.printf("[PositionController] Motor %d enabled\n", _motorId + 1);
+
+    // Read encoder value and use it as starting position
+    if (_encoder != nullptr && _encoder->isEnabled())
+    {
+        // Process encoder data to get current reading
+        _encoder->processPWM();
+
+        // Get encoder context with current position
+        EncoderContext& encoderCtx   = _encoder->getEncoderContext();
+        float           encoderAngle = encoderCtx.position_degrees;
+
+        // Convert encoder angle to microsteps and set as current position
+        uint32_t encoderMicrosteps = degreesToMicrosteps(encoderAngle);
+        _stepper.setCurrentPosition(static_cast<long>(encoderMicrosteps));
+
+        // Update status
+        _status.currentAngle      = encoderAngle;
+        _status.currentMicrosteps = encoderMicrosteps;
+
+        Serial.printf("[PositionController] Motor %d enabled, encoder position: %.2f° (%u microsteps)\n", _motorId + 1, encoderAngle, encoderMicrosteps);
+    }
+    else
+    {
+        Serial.printf("[PositionController] Motor %d enabled (no encoder feedback)\n", _motorId + 1);
+    }
 }
 
 void PositionController::disable()

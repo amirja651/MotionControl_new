@@ -5,7 +5,9 @@
 #include <Arduino.h>
 #include <TMCStepper.h>
 
-static constexpr float R_SENSE = 0.11f;  // Sense resistor value in ohms (updated value)
+static constexpr float    R_SENSE                 = 0.11f;  // Sense resistor value in ohms (updated value)
+static constexpr uint16_t MICROSTEPS_NEMA11_1004H = 32;
+static constexpr uint16_t DEFAULT_CURRENT_PANCAKE = 32;  // Default current in mA
 
 struct MotorConfig
 {
@@ -80,8 +82,6 @@ private:
     uint16_t _microsteps;
 
     static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H = 350;  // Default current in mA
-    static constexpr uint16_t MICROSTEPS_NEMA11_1004H      = 16;
-    static constexpr uint16_t DEFAULT_CURRENT_PANCAKE      = 250;  // Default current in mA
     static constexpr uint16_t MICROSTEPS_PANCAKE           = 100;
 
     // Private helper methods
