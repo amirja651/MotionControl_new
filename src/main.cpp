@@ -1,6 +1,7 @@
 #include "MotorSpeedController.h"
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
+#include <AccelStepper.h>
 #include <Arduino.h>
 #include <CLIManager.h>
 #include <SPI.h>
@@ -13,6 +14,10 @@ MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::
                                  MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
                                  MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
                                  MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
+
+AccelStepper stepper[4] = {
+    AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[0], DriverPins::DIR[0]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[1], DriverPins::DIR[1]),
+    AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[2], DriverPins::DIR[2]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[3], DriverPins::DIR[3])};
 
 static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
 TaskHandle_t              serialReadTaskHandle = NULL;
@@ -53,6 +58,8 @@ static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 static bool               motorMoving    = false;    // Track if motor is currently moving
 static constexpr uint32_t MOVEMENT_STEPS = 1000;     // Number of steps to move
 static constexpr float    MOVEMENT_SPEED = 1000.0f;  // Steps per second
+
+static long targetSteps = 0;
 
 int findIndex(uint16_t array[], int length, uint16_t value)
 {
@@ -475,10 +482,25 @@ void serialReadTask(void* pvParameters)
             if (c == cmdMotor)
             {
                 // Get Motor Id
-                if (c.getArgument("n").isSet())
+                if (c.getArgument("i").isSet())
                 {
-                    String motorIdStr = c.getArgument("n").getValue();
+                    String motorIdStr = c.getArgument("i").getValue();
                     setMotorId(motorIdStr);
+                }
+                if (c.getArgument("p").isSet())
+                {
+                    String degreesStr  = c.getArgument("p").getValue();
+                    int    stepsPerRev = 200 * 256;
+                    targetSteps        = (degreesStr.toFloat() / 360.0) * stepsPerRev;
+
+                    stepper[currentIndex].moveTo(targetSteps);
+                    stepper[currentIndex].enableOutputs();
+                    motorMoving = true;
+
+                    Serial.print(F("Target steps: "));
+                    Serial.println(targetSteps);
+                    Serial.print(F("Current position: "));
+                    Serial.println(stepper[currentIndex].currentPosition());
                 }
                 else
                 {
@@ -563,15 +585,33 @@ void setup()
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
-    motor[currentIndex].enable(true);
+    // motor[currentIndex].enable(true);
+
+    static constexpr uint32_t steps_per_mm = 80;
+    stepper[currentIndex].setMaxSpeed(50 * steps_per_mm);        // 100mm/s @ 80 steps/mm
+    stepper[currentIndex].setAcceleration(1000 * steps_per_mm);  // 2000mm/s^2
+    stepper[currentIndex].setEnablePin(DriverPins::EN[2]);
+    stepper[currentIndex].setPinsInverted(false, false, true);
+    stepper[currentIndex].enableOutputs();
 }
 
 void loop()
 {
     // Only step manually if motor is not moving (controlled by timer)
-    if (!motorMoving)
+    if (motorMoving)
     {
-        motor[currentIndex].motorStep(stepDelay);
+        // motor[currentIndex].motorStep(stepDelay);
+        if (stepper[currentIndex].distanceToGo() == 0)
+        {
+            motorMoving = false;
+            stepper[currentIndex].disableOutputs();
+            delay(10);
+            Serial.print(F("Target steps: "));
+            Serial.println(targetSteps);
+            Serial.print(F("Current position: "));
+            Serial.println(stepper[currentIndex].currentPosition());
+        }
+        stepper[currentIndex].run();
     }
     esp_task_wdt_reset();
 }
