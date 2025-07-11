@@ -15,7 +15,7 @@ TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : 
     {
         _rms_current_mA = 200;
         _microsteps     = DEFAULT_CURRENT_PANCAKE;
-        _irun           = 10;
+        _irun           = 16;  // 10
         _ihold          = 7;
         _iholddelay     = 1;
     }
