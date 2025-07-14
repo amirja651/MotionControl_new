@@ -9,18 +9,17 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
     : _signalPin(signalPin),
       _encoderId(encoderId),
       _state{},
-      _lap{},
-      _encoderContext{},
-      _vResult{},
-      _enabled(false),
-      _r_pulse{0, 0},
+      _r_pulse{0, 0, 0, 0},
       _lastPulseTime(0),
       _lastFallingEdgeTime(0),
       _lastRisingEdgeTime(0),
-      _bufferUpdated(false),
-      _newData(false),
+      _currentRisingEdge(0),
+      _lowStart(0),
+      _lowEnd(0),
+      _enabled(false),
+      _dataReady(false),
+      _initialized(false),
       _last_pulse(0),
-      _initialized(0),
       _width_l_buffer{},
       _width_h_buffer{},
       _pulseBufferIndex(0)
@@ -79,30 +78,20 @@ bool MAE3Encoder::isDisabled() const
 void MAE3Encoder::reset()
 {
     // Reset state
-    _state.current_pulse = 0;
-    _state.degrees       = 0;
-    _state.width_high    = 0;
-    _state.width_low     = 0;
-    _state.direction     = Direction::UNKNOWN;
+    _state.width_high       = 0;
+    _state.width_low        = 0;
+    _state.width_interval   = 0;
+    _state.lap_id           = 0;
+    _state.position_pulse   = 0;
+    _state.position_mm      = 0;
+    _state.position_degrees = 0;
+    _state.total_mm         = 0;
+    _state.direction        = Direction::UNKNOWN;
 
-    // Reset LapState
-    resetAllPeriods();
-
-    _encoderContext.current_pulse    = 0;
-    _encoderContext.lap_id           = 0;
-    _encoderContext.lap_period       = 0;
-    _encoderContext.position_degrees = 0;
-    _encoderContext.position_mm      = 0;
-    _encoderContext.total_travel_mm  = 0;
-    _encoderContext.total_travel_um  = 0;
-    _encoderContext.direction        = "UNK";
-
-    // Reset validatePWMResult
-    resetValidatePwmResult();
-
-    // Reset RPulse
-    _r_pulse.low  = 0;
-    _r_pulse.high = 0;
+    _r_pulse.low               = 0;
+    _r_pulse.high              = 0;
+    _r_pulse.pulse_Interval    = 0;
+    _r_pulse.duration_us_count = 0;
 
     // Reset enabled
     _enabled = false;
@@ -113,84 +102,71 @@ void MAE3Encoder::reset()
     _lastRisingEdgeTime  = 0;
 
     // Flag to indicate buffer was updated (set in processInterrupt, cleared after processPWM)
-    _bufferUpdated = false;
-    _newData       = false;
+    _dataReady = false;
 
     // Reset last pulse
     _last_pulse  = 0;
     _initialized = false;
 }
 
-//  method for processing PWM signal *************************amir
+//  method for processing PWM signal *** amir
 void MAE3Encoder::processPWM(bool print)
 {
-    if (!_enabled)
+    if (!_enabled || !_dataReady)
         return;
 
-    if (_newData)
+    noInterrupts();
+    int64_t interval = _r_pulse.pulse_Interval;
+    int64_t low      = _r_pulse.low;
+    int64_t high     = _r_pulse.high;
+    _dataReady       = false;
+
+    // Check each condition separately
+    bool highOK   = (high >= 1 && high <= 4302);  // 4097
+    bool lowOK    = (low >= 1 && low <= 4302);    // 4097
+    bool totalOK  = (interval > 0);
+    bool periodOK = ((interval) >= 3731 && (interval) <= 4545);
+    bool overall  = highOK && lowOK && totalOK && periodOK;
+
+    if (!overall)
     {
-        _newData               = false;
-        validateResult vResult = validatePWMValues(print);
-
-        if (!vResult.overall)
-        {
-            _r_pulse.high = 0;
-            _r_pulse.low  = 0;
-            return;
-        }
-
-        _state.width_high = _width_h_buffer[_pulseBufferIndex] = get_median_width_high();  // _r_pulse.high;
-        _state.width_low = _width_l_buffer[_pulseBufferIndex] = get_median_width_low();    // _r_pulse.low;
-        _pulseBufferIndex                                     = (_pulseBufferIndex + 1) % PULSE_BUFFER_SIZE;
-        _bufferUpdated                                        = true;
-    }
-
-    if (!_bufferUpdated)
         return;
-
-    _bufferUpdated  = false;
-    int64_t width_h = _r_pulse.high;  // get_median_width_high();
-    int64_t width_l = _r_pulse.low;   // get_median_width_low();
-    int64_t period  = width_h + width_l;
-
-    if (period == 0)
-    {
-        Serial.println("Error: Invalid period detected (period = 0). Skipping pulse processing.");
-        return;
+        interrupts();
     }
-    // Optimized calculation for x_measured
-    int32_t x_measured   = ((width_h * 4098) / period) - 1;
-    _state.current_pulse = constrain(x_measured, 0, 4095);
-    _state.degrees       = (_state.current_pulse * 360.0f) / 4096.0f;
+    int32_t x_measured = ((high * 4098) / interval) - 1;
+    interrupts();
+
+    if (x_measured <= 4094)
+        _state.position_pulse = x_measured;
+    else if (x_measured == 4096)
+        _state.position_pulse = 4095;
+
+    _state.position_degrees = _state.position_pulse * (360.0f / 4096.0f);
+    _state.width_high       = high;
+    _state.width_low        = low;
+    _state.width_interval   = interval;
 
     if (!_initialized)
     {
-        _last_pulse  = _state.current_pulse;
+        _last_pulse  = _state.position_pulse;
         _initialized = true;
-
-        resetAllPeriods();
-        setPeriod(_lap.id, period, true);
         return;
     }
 
-    setPeriod(_lap.id, period);
-
-    int32_t delta = _state.current_pulse - _last_pulse;
+    int32_t delta = _state.position_pulse - _last_pulse;
 
     if (delta > 1000)
     {
-        _lap.id--;
+        _state.lap_id--;
         _state.direction = Direction::CLOCKWISE;
     }
     else if (delta < -1000)
     {
-        _lap.id++;
+        _state.lap_id++;
         _state.direction = Direction::COUNTER_CLOCKWISE;
     }
     else
     {
-        // Small changes → normal direction
-        delta                  = _state.current_pulse - _last_pulse;
         int32_t delta_circular = ((delta + 4096 / 2) % 4096) - 4096 / 2;
 
         if (delta_circular > 2)
@@ -199,35 +175,13 @@ void MAE3Encoder::processPWM(bool print)
             _state.direction = Direction::COUNTER_CLOCKWISE;
     }
 
-    // Update
-    _last_pulse    = _state.current_pulse;
+    _last_pulse    = _state.position_pulse;
     _lastPulseTime = esp_timer_get_time();
 
-    // NEW: invoke callback if set
     if (onPulseUpdated)
     {
         onPulseUpdated(_state);
     }
-}
-
-EncoderContext& MAE3Encoder::getEncoderContext() const
-{
-    _encoderContext.current_pulse = _state.current_pulse;
-    _encoderContext.direction     = _state.direction == Direction::UNKNOWN ? "   " : _state.direction == Direction::CLOCKWISE ? " CW" : "CCW";
-    _encoderContext.lap_id        = _lap.id;
-    _encoderContext.lap_period    = _lap.period[_lap.id + 10];  // 10: laps offset
-
-    _encoderContext.position_degrees = _state.degrees;
-    _encoderContext.position_mm      = _encoderContext.current_pulse * (LEAD_SCREW_PITCH_MM / 4096);
-    _encoderContext.total_travel_mm  = (_lap.id * LEAD_SCREW_PITCH_MM) + _encoderContext.position_mm;
-    _encoderContext.total_travel_um  = _encoderContext.total_travel_mm * 1000.0f;
-
-    return _encoderContext;
-}
-
-validateResult& MAE3Encoder::getValidatePWMResult() const
-{
-    return _vResult;
 }
 
 int32_t MAE3Encoder::umToPulses(float um)
@@ -282,28 +236,35 @@ void MAE3Encoder::detachInterruptHandler()
     detachInterrupt(digitalPinToInterrupt(_signalPin));
 }
 
-// method for processing interrupt *************************amir
+// method for processing interrupt *** amir
 void IRAM_ATTR MAE3Encoder::processInterrupt()
 {
-    if (_bufferUpdated || !_enabled)
+    if (!_enabled)
         return;
 
-    int64_t currentTime = esp_timer_get_time();
-    if (digitalRead(_signalPin) == HIGH)
+    int     level       = digitalRead(_signalPin);
+    int64_t currentTime = esp_timer_get_time();  // Current time in microseconds
+    _r_pulse.duration_us_count++;
+
+    if (level == LOW)
     {
-        // Rising edge
-        _lastRisingEdgeTime = currentTime;
-        if (_lastFallingEdgeTime != 0)
-            _r_pulse.low = _lastRisingEdgeTime - _lastFallingEdgeTime;
+        // Falling edge
+        _lowStart = currentTime;
     }
     else
     {
-        // Falling edge
-        _lastFallingEdgeTime = currentTime;
+        // Rising edge
+        _lowEnd      = currentTime;
+        _r_pulse.low = _lowEnd - _lowStart;
+
+        _lastRisingEdgeTime = _currentRisingEdge;
+        _currentRisingEdge  = currentTime;
+
         if (_lastRisingEdgeTime != 0)
         {
-            _r_pulse.high = _lastFallingEdgeTime - _lastRisingEdgeTime;
-            _newData      = true;
+            _r_pulse.pulse_Interval = _currentRisingEdge - _lastRisingEdgeTime;
+            _r_pulse.high           = _r_pulse.pulse_Interval - _r_pulse.low;
+            _dataReady              = true;
         }
     }
 }
@@ -355,28 +316,6 @@ void IRAM_ATTR MAE3Encoder::interruptHandler2()
 void IRAM_ATTR MAE3Encoder::interruptHandler3()
 {
     _encoderInstances[3]->processInterrupt();
-}
-void MAE3Encoder::setPeriod(int32_t lapIndex, int64_t period, bool reset_count)
-{
-    _lap.period[lapIndex + 10] = static_cast<int32_t>(period);
-
-    if (reset_count)
-    {
-        _lap.period_sum[_lap.id + 10]   = static_cast<int32_t>(period);
-        _lap.period_count[_lap.id + 10] = 1;
-    }
-    else
-    {
-        _lap.period_sum[_lap.id + 10] += static_cast<int32_t>(period);
-        _lap.period_count[_lap.id + 10]++;
-    }
-}
-void MAE3Encoder::resetAllPeriods()
-{
-    _lap.id = 0;
-    memset(_lap.period, 0, sizeof(_lap.period));
-    memset(_lap.period_sum, 0, sizeof(_lap.period_sum));
-    memset(_lap.period_count, 0, sizeof(_lap.period_count));
 }
 
 // Diagnostic function to check encoder signal quality
@@ -438,70 +377,6 @@ void MAE3Encoder::diagnoseEncoderSignals()
     }
 
     printf("└───────────────────────────────────────────────────────────────────────┘\n\n");
-}
-
-validateResult MAE3Encoder::validatePWMValues(bool print)
-{
-    resetValidatePwmResult();
-
-    _vResult.totalPeriod = _r_pulse.high + _r_pulse.low;
-
-#if ENCODER_DEBUG && print
-    Serial.println();
-    printf("┌───────────────────────────────────────────────────────────────────────┐\n");
-    printf("│                         Validation for Pin %-4d                       │\n", _signalPin);
-    printf("├───────────────────────────────────────────────────────────────────────┤\n");
-    printf("│ %-15s │ %-15s │ %-15s │ %-15s │\n", "Parameter", "High Pulse", "Low Pulse", "Total Period");
-    printf("├───────────────────────────────────────────────────────────────────────┤\n");
-    printf("│ %-15s │ %-15lld │ %-15lld │ %-15lld │\n", "Duration (us)", _r_pulse.high, _r_pulse.low, _vResult.totalPeriod);
-    printf("└───────────────────────────────────────────────────────────────────────┘\n");
-#endif
-
-    // Check if data was bypassed (values are 0)
-    if (_r_pulse.high == 0 && _r_pulse.low == 0)
-    {
-#if ENCODER_DEBUG && print
-        printf("┌───────────────────────────────────────────────────────────────────────┐\n");
-        printf("│ %-25s │ %-15s │ %-24s │\n", "Data Bypass Status", "DETECTED", "❌ INVALID PERIOD");
-        printf("└───────────────────────────────────────────────────────────────────────┘\n");
-#endif
-        return _vResult;
-    }
-
-    // Check each condition separately
-    _vResult.highOK   = (_r_pulse.high >= 1 && _r_pulse.high <= 4302);  // 4097
-    _vResult.lowOK    = (_r_pulse.low >= 1 && _r_pulse.low <= 4302);    // 4097
-    _vResult.totalOK  = ((_vResult.totalPeriod) > 0);
-    _vResult.periodOK = ((_vResult.totalPeriod) >= 3731 && (_vResult.totalPeriod) <= 4545);
-    _vResult.overall  = _vResult.highOK && _vResult.lowOK && _vResult.totalOK && _vResult.periodOK;
-
-#if ENCODER_DEBUG && print
-    printf("┌───────────────────────────────────────────────────────────────────────┐\n");
-    printf("│                   Validation Results for Id #%-4d                     │\n", _encoderId + 1);
-    printf("├───────────────────────────────────────────────────────────────────────┤\n");
-    printf("│ %-25s │ %-10s │ %-28s │\n", "Test", "Status", "Range");
-    printf("├───────────────────────────────────────────────────────────────────────┤\n");
-    printf("│ %-25s │ %-10s │ %-28s │\n", "High pulse validation", _vResult.highOK ? "PASS" : "FAIL", "1-4097 us");
-    printf("│ %-25s │ %-10s │ %-28s │\n", "Low pulse validation", _vResult.lowOK ? "PASS" : "FAIL", "1-4097 us");
-    printf("│ %-25s │ %-10s │ %-28s │\n", "Total period validation", _vResult.totalOK ? "PASS" : "FAIL", "> 0 us");
-    printf("│ %-25s │ %-10s │ %-28s │\n", "Period range validation", _vResult.periodOK ? "PASS" : "FAIL", "3731-4545 us");
-    printf("│ %-25s │ %-10s │ %-29s │\n", "Overall validation", _vResult.overall ? "PASS" : "FAIL", "✅");
-    printf("└───────────────────────────────────────────────────────────────────────┘\n");
-#endif
-    return _vResult;
-}
-
-void MAE3Encoder::resetValidatePwmResult()
-{
-    _vResult.totalPeriod = 0;
-    _vResult.position    = 0;
-    _vResult.degrees     = 0;
-    _vResult.delta       = 0;
-    _vResult.highOK      = false;
-    _vResult.lowOK       = false;
-    _vResult.totalOK     = false;
-    _vResult.periodOK    = false;
-    _vResult.overall     = false;
 }
 
 float MAE3Encoder::calculateMirrorAngle(int currentPixel, int referencePixel)

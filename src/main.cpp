@@ -628,13 +628,19 @@ void serialReadTask(void* pvParameters)
                     if (driverEnabled[currentIndex] && encoder[currentIndex].isEnabled())
                     {
                         encoder[currentIndex].processPWM();  // Process encoder data
-                        EncoderContext& encoderCtx = encoder[currentIndex].getEncoderContext();
+                        EncoderState encoderState = encoder[currentIndex].getState();
                         Serial.print(F(", Encoder="));
-                        Serial.print(encoderCtx.position_degrees, 2);
+                        Serial.print(encoderState.position_degrees, 2);
                         Serial.print(F("°"));
-                        Serial.print(encoderCtx.direction);
+                        Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
                         Serial.print(F(" ("));
-                        Serial.print(encoderCtx.current_pulse);
+                        Serial.print(encoderState.position_pulse);
+                        Serial.print(F(", High="));
+                        Serial.print(encoderState.width_high);
+                        Serial.print(F(", Low="));
+                        Serial.print(encoderState.width_low);
+                        Serial.print(F(", Interval="));
+                        Serial.print(encoderState.width_interval);
                         Serial.print(F(" pulses)"));
                     }
 
@@ -650,13 +656,13 @@ void serialReadTask(void* pvParameters)
                     if (driverEnabled[currentIndex] && encoder[currentIndex].isEnabled())
                     {
                         encoder[currentIndex].processPWM();  // Process encoder data
-                        EncoderContext& encoderCtx = encoder[currentIndex].getEncoderContext();
+                        EncoderState encoderState = encoder[currentIndex].getState();
                         Serial.print(F(", Encoder="));
-                        Serial.print(encoderCtx.position_degrees, 2);
+                        Serial.print(encoderState.position_degrees, 2);
                         Serial.print(F("°"));
-                        Serial.print(encoderCtx.direction);
+                        Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
                         Serial.print(F(" ("));
-                        Serial.print(encoderCtx.current_pulse);
+                        Serial.print(encoderState.position_pulse);
                         Serial.print(F(" pulses)"));
                     }
 
@@ -849,8 +855,8 @@ void setup()
     stepper[currentIndex].enableOutputs();
 
     Serial.println(F("[Info] Position control system initialized"));
-    Serial.println(F("[Info] Use 't' to toggle between new and legacy control"));
-    Serial.println(F("[Info] Use 'h' to show position status"));
+    Serial.println(F("[Info] Use 'k' to toggle between new and legacy control"));
+    Serial.println(F("[Info] Use 'l' to show position status"));
 }
 
 void loop()

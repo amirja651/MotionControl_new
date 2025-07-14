@@ -129,8 +129,8 @@ void PositionController::enable()
         _encoder->processPWM();
 
         // Get encoder context with current position
-        EncoderContext& encoderCtx   = _encoder->getEncoderContext();
-        float           encoderAngle = encoderCtx.position_degrees;
+        EncoderState encoderState = _encoder->getState();
+        float        encoderAngle = encoderState.position_degrees;
 
         // Convert encoder angle to microsteps and set as current position
         uint32_t encoderMicrosteps = degreesToMicrosteps(encoderAngle);
