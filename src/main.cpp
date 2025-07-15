@@ -321,6 +321,7 @@ void serialReadTask(void* pvParameters)
                 }
             }
 
+            /*
             else if (c == 'j')  // Increase microsteps
             {
                 uint16_t currentMicrosteps = driver[currentIndex].getMicrosteps();
@@ -349,7 +350,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-
+            */
             else if (c == 'g')  // Increase step delay
             {
                 if (stepDelay < MAX_STEP_DELAY)
