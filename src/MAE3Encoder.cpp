@@ -1,4 +1,5 @@
 #include "MAE3Encoder.h"
+#include <driver/gpio.h>
 
 #define ENCODER_DEBUG true
 
@@ -217,28 +218,32 @@ void MAE3Encoder::setOnPulseUpdatedCallback(std::function<void(const EncoderStat
 
 void MAE3Encoder::attachInterruptHandler()
 {
-    switch (_encoderId)
-    {
-        case 0:
-            attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler0, CHANGE);
-            break;
+    // Configure GPIO interrupt with high priority
+    gpio_config_t io_conf = {};
+    io_conf.intr_type     = GPIO_INTR_ANYEDGE;
+    io_conf.pin_bit_mask  = (1ULL << _signalPin);
+    io_conf.mode          = GPIO_MODE_INPUT;
+    io_conf.pull_up_en    = GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en  = GPIO_PULLDOWN_DISABLE;
+    gpio_config(&io_conf);
 
-        case 1:
-            attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler1, CHANGE);
-            break;
+    // Install GPIO ISR service with high priority
+    // ESP_INTR_FLAG_LEVEL1 = High priority interrupt level
+    // This ensures encoder interrupts are handled with minimal latency
+    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM);
 
-        case 2:
-            attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler2, CHANGE);
-            break;
-
-        case 3:
-            attachInterrupt(digitalPinToInterrupt(_signalPin), interruptHandler3, CHANGE);
-            break;
-    }
+    // Add ISR handler for this specific pin with proper casting
+    gpio_isr_handler_add((gpio_num_t)_signalPin,
+                         (gpio_isr_t)(_encoderId == 0   ? interruptHandler0
+                                      : _encoderId == 1 ? interruptHandler1
+                                      : _encoderId == 2 ? interruptHandler2
+                                                        : interruptHandler3),
+                         (void*)this);
 }
 void MAE3Encoder::detachInterruptHandler()
 {
-    detachInterrupt(digitalPinToInterrupt(_signalPin));
+    // Remove ISR handler for this specific pin
+    gpio_isr_handler_remove((gpio_num_t)_signalPin);
 }
 
 // method for processing interrupt *** amir
@@ -306,21 +311,29 @@ int64_t MAE3Encoder::get_median_width_low() const
 }
 
 // Individual interrupt handlers for each encoder
-void IRAM_ATTR MAE3Encoder::interruptHandler0()
+void IRAM_ATTR MAE3Encoder::interruptHandler0(void* arg)
 {
-    _encoderInstances[0]->processInterrupt();
+    MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
+    if (encoder)
+        encoder->processInterrupt();
 }
-void IRAM_ATTR MAE3Encoder::interruptHandler1()
+void IRAM_ATTR MAE3Encoder::interruptHandler1(void* arg)
 {
-    _encoderInstances[1]->processInterrupt();
+    MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
+    if (encoder)
+        encoder->processInterrupt();
 }
-void IRAM_ATTR MAE3Encoder::interruptHandler2()
+void IRAM_ATTR MAE3Encoder::interruptHandler2(void* arg)
 {
-    _encoderInstances[2]->processInterrupt();
+    MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
+    if (encoder)
+        encoder->processInterrupt();
 }
-void IRAM_ATTR MAE3Encoder::interruptHandler3()
+void IRAM_ATTR MAE3Encoder::interruptHandler3(void* arg)
 {
-    _encoderInstances[3]->processInterrupt();
+    MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
+    if (encoder)
+        encoder->processInterrupt();
 }
 
 // Diagnostic function to check encoder signal quality

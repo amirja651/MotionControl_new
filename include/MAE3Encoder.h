@@ -125,7 +125,7 @@ private:
 
     std::function<void(const EncoderState&)> onPulseUpdated;  // NEW: callback support
 
-    void attachInterruptHandler();
+    void attachInterruptHandler();  // Attaches high-priority GPIO interrupt
     void detachInterruptHandler();
 
     void IRAM_ATTR processInterrupt();
@@ -133,10 +133,10 @@ private:
     int64_t get_median_width_high() const;
     int64_t get_median_width_low() const;
 
-    static void IRAM_ATTR interruptHandler0();
-    static void IRAM_ATTR interruptHandler1();
-    static void IRAM_ATTR interruptHandler2();
-    static void IRAM_ATTR interruptHandler3();
+    static void IRAM_ATTR interruptHandler0(void* arg);
+    static void IRAM_ATTR interruptHandler1(void* arg);
+    static void IRAM_ATTR interruptHandler2(void* arg);
+    static void IRAM_ATTR interruptHandler3(void* arg);
 };
 
 #endif  // MAE3_ENCODER2_H
