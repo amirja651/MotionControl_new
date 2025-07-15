@@ -616,6 +616,11 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("\r\n[Position Status] Motor "));
                     Serial.print(currentIndex + 1);
                     Serial.print(F(": Current="));
+                    if (status.currentAngle > 720.0f)
+                    {
+                        positionController[currentIndex].ReadEncoderValue();
+                        status = positionController[currentIndex].getStatus();
+                    }
                     Serial.print(status.currentAngle, 2);
                     Serial.print(F("°, Target="));
                     Serial.print(status.targetAngle, 2);

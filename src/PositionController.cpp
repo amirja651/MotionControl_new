@@ -123,7 +123,12 @@ void PositionController::enable()
     _status.isEnabled = true;
 
     // Read encoder value and use it as starting position
-    if (_encoder != nullptr && _encoder->isEnabled())
+    ReadEncoderValue();
+}
+
+void PositionController::ReadEncoderValue()
+{
+    if (_encoder != nullptr && _encoder->isEnabled())  // amir
     {
         // Process encoder data to get current reading
         _encoder->processPWM();
@@ -140,11 +145,11 @@ void PositionController::enable()
         _status.currentAngle      = encoderAngle;
         _status.currentMicrosteps = encoderMicrosteps;
 
-        Serial.printf("[PositionController] Motor %d enabled, encoder position: %.2f° (%u microsteps)\n", _motorId + 1, encoderAngle, encoderMicrosteps);
+        // Serial.printf("[PositionController] Motor %d enabled, encoder position: %.2f° (%u microsteps)\n", _motorId + 1, encoderAngle, encoderMicrosteps);
     }
     else
     {
-        Serial.printf("[PositionController] Motor %d enabled (no encoder feedback)\n", _motorId + 1);
+        // Serial.printf("[PositionController] Motor %d enabled (no encoder feedback)\n", _motorId + 1);
     }
 }
 
@@ -174,14 +179,18 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
     // Wrap target angle to 0-360 range
     targetAngle = wrapAngle(targetAngle);
 
-    // Calculate shortest path (for future use in movement optimization)
-    float currentAngle = getCurrentAngle();
-    (void)calculateShortestPath(currentAngle, targetAngle);  // Suppress unused variable warning
+    // Read encoder value and use it as starting position
+    ReadEncoderValue();
+    float currentAngle = wrapAngle(getCurrentAngle());
+    //(void)calculateShortestPath(currentAngle, targetAngle);  // Suppress unused variable warning
+
+    float delta          = calculateShortestPath(currentAngle, targetAngle);
+    float adjustedTarget = currentAngle + delta;
 
     // Create movement command
     MovementCommand command;
     command.motorId      = _motorId;
-    command.targetAngle  = targetAngle;
+    command.targetAngle  = adjustedTarget;
     command.movementType = movementType;
     command.relative     = false;
     command.priority     = 1;
@@ -195,6 +204,7 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     if (!_enabled || !_initialized)
         return false;
 
+    ReadEncoderValue();
     float currentAngle = getCurrentAngle();
     float targetAngle  = wrapAngle(currentAngle + deltaAngle);
 
@@ -316,26 +326,17 @@ void PositionController::setSpeedProfile(MovementType type, float maxSpeed, floa
 // Angle utilities
 float PositionController::wrapAngle(float angle)
 {
-    // Wrap angle to 0-360 range
-    while (angle < 0.0f)
+    angle = fmod(angle, 360.0f);
+    if (angle < 0.0f)
         angle += 360.0f;
-    while (angle >= 360.0f)
-        angle -= 360.0f;
     return angle;
 }
 
 float PositionController::calculateShortestPath(float currentAngle, float targetAngle)
 {
-    // Calculate the shortest angular distance between two angles
-    float diff = targetAngle - currentAngle;
-
-    // Handle wrapping around 360 degrees
-    if (diff > 180.0f)
-        diff -= 360.0f;
-    else if (diff < -180.0f)
-        diff += 360.0f;
-
-    return diff;
+    float delta = targetAngle - currentAngle;
+    delta       = fmod(delta + 540.0f, 360.0f) - 180.0f;  // نگاشت به [-180, +180]
+    return delta;
 }
 
 uint32_t PositionController::degreesToMicrosteps(float degrees)

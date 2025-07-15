@@ -64,6 +64,7 @@ public:
     // Initialization
     bool begin();
     void enable();
+    void ReadEncoderValue();
     void disable();
     bool isEnabled() const;
 

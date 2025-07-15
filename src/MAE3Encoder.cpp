@@ -136,8 +136,8 @@ void MAE3Encoder::processPWM(bool print)
 
     if (!overall)
     {
-        return;
         interrupts();
+        return;
     }
 
     // Calculate current encoder reading
