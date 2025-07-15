@@ -108,6 +108,11 @@ void MAE3Encoder::reset()
     // Reset last pulse
     _last_pulse  = 0;
     _initialized = false;
+
+    // Reset voting mechanism
+    _votingBuffer.fill(0);
+    _votingIndex      = 0;
+    _votingBufferFull = false;
 }
 
 //  method for processing PWM signal *** amir
@@ -134,17 +139,61 @@ void MAE3Encoder::processPWM(bool print)
         return;
         interrupts();
     }
+
+    // Calculate current encoder reading
     int32_t x_measured = ((high * 4098) / interval) - 1;
+
+    // Validate the reading
+    int32_t valid_reading = x_measured;
+
     interrupts();
 
-    if (x_measured <= 4094)
-        _state.position_pulse = x_measured;
-    else if (x_measured == 4096)
+    // If reading is invalid, return without updating
+    if (valid_reading == -1)
+    {
+        return;
+    }
+
+    // Add reading to voting buffer
+    _votingBuffer[_votingIndex] = valid_reading;
+    _votingIndex                = (_votingIndex + 1) % VOTING_BUFFER_SIZE;
+
+    // Mark buffer as full after first complete cycle
+    if (_votingIndex == 0)
+    {
+        _votingBufferFull = true;
+    }
+
+    // Only process if we have enough readings (buffer is full)
+    if (!_votingBufferFull)
+    {
+        return;
+    }
+
+    // Get the most frequent value from voting buffer
+    int32_t voted_reading = getMostFrequentValue();
+
+    // Debug output if requested
+    if (0)
+    {
+        Serial.printf("[Encoder %d] Voting Buffer: [", _encoderId + 1);
+        for (size_t i = 0; i < VOTING_BUFFER_SIZE; ++i)
+        {
+            Serial.printf("%d", _votingBuffer[i]);
+            if (i < VOTING_BUFFER_SIZE - 1)
+                Serial.printf(", ");
+        }
+        Serial.printf("] -> Voted: %d\n", voted_reading);
+    }
+
+    // Use the voted reading as the final position
+    if (voted_reading <= 4094)
+        _state.position_pulse = voted_reading;
+    else if (voted_reading == 4096 || voted_reading == 4097)
         _state.position_pulse = 4095;
     else
     {
         return;
-        interrupts();
     }
 
     _state.position_degrees = _state.position_pulse * (360.0f / 4096.0f);
@@ -308,6 +357,34 @@ int64_t MAE3Encoder::get_median_width_low() const
 
     std::sort(temp.begin(), temp.end());
     return temp[PULSE_BUFFER_SIZE / 2];
+}
+
+// Voting mechanism implementation
+int32_t MAE3Encoder::getMostFrequentValue() const
+{
+    // Create a map to count occurrences of each value
+    std::unordered_map<int32_t, int> frequency_map;
+
+    // Count occurrences of each value in the voting buffer
+    for (size_t i = 0; i < VOTING_BUFFER_SIZE; ++i)
+    {
+        frequency_map[_votingBuffer[i]]++;
+    }
+
+    // Find the value with the highest frequency
+    int32_t most_frequent_value = _votingBuffer[0];  // Default to first value
+    int     max_frequency       = 0;
+
+    for (const auto& pair : frequency_map)
+    {
+        if (pair.second > max_frequency)
+        {
+            max_frequency       = pair.second;
+            most_frequent_value = pair.first;
+        }
+    }
+
+    return most_frequent_value;
 }
 
 // Individual interrupt handlers for each encoder

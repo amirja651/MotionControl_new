@@ -123,6 +123,12 @@ private:
     std::array<int64_t, PULSE_BUFFER_SIZE> _width_h_buffer{};
     size_t                                 _pulseBufferIndex;
 
+    // Voting mechanism for encoder readings
+    static constexpr size_t                 VOTING_BUFFER_SIZE = 30;    // Number of readings to vote on
+    std::array<int32_t, VOTING_BUFFER_SIZE> _votingBuffer{};            // Buffer for voting
+    size_t                                  _votingIndex      = 0;      // Current index in voting buffer
+    bool                                    _votingBufferFull = false;  // Whether voting buffer is full
+
     std::function<void(const EncoderState&)> onPulseUpdated;  // NEW: callback support
 
     void attachInterruptHandler();  // Attaches high-priority GPIO interrupt
@@ -132,6 +138,9 @@ private:
 
     int64_t get_median_width_high() const;
     int64_t get_median_width_low() const;
+
+    // Voting mechanism helper methods
+    int32_t getMostFrequentValue() const;  // Returns the most frequently occurring value in voting buffer
 
     static void IRAM_ATTR interruptHandler0(void* arg);
     static void IRAM_ATTR interruptHandler1(void* arg);
