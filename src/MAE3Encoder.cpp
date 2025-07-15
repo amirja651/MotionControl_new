@@ -140,6 +140,11 @@ void MAE3Encoder::processPWM(bool print)
         _state.position_pulse = x_measured;
     else if (x_measured == 4096)
         _state.position_pulse = 4095;
+    else
+    {
+        return;
+        interrupts();
+    }
 
     _state.position_degrees = _state.position_pulse * (360.0f / 4096.0f);
     _state.width_high       = high;

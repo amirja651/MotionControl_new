@@ -633,7 +633,7 @@ void serialReadTask(void* pvParameters)
                         Serial.print(encoderState.position_degrees, 2);
                         Serial.print(F("°"));
                         Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
-                        Serial.print(F(" ("));
+                        Serial.print(F(" (position="));
                         Serial.print(encoderState.position_pulse);
                         Serial.print(F(", High="));
                         Serial.print(encoderState.width_high);
