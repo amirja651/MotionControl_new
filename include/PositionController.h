@@ -12,11 +12,15 @@
 #include <freertos/task.h>
 
 // Motor configuration constants
-static constexpr uint16_t STEPS_PER_REVOLUTION         = 200;                                         // Standard stepper motor
-static constexpr uint16_t MICROSTEPS_PER_STEP          = DEFAULT_CURRENT_PANCAKE;                     // 256 microsteps per full step
-static constexpr uint32_t MICROSTEPS_PER_REVOLUTION    = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;  // 51,200 microsteps
-static constexpr float    DEGREES_PER_MICROSTEP        = 360.0f / MICROSTEPS_PER_REVOLUTION;          // 0.00703125 degrees per microstep
-static constexpr float    POSITION_ACCURACY_DEGREES    = 0.1f;                                        // Target accuracy
+static constexpr uint16_t STEPS_PER_REVOLUTION         = 200;                                                                 // Standard stepper motor
+static constexpr uint16_t MICROSTEPS_PER_STEP          = DEFAULT_CURRENT_PANCAKE;                                             // 32 microsteps
+static constexpr uint32_t MICROSTEPS_PER_REVOLUTION    = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;                          // 6400 microsteps
+static constexpr float    DEGREES_PER_MICROSTEP        = 360.0f / MICROSTEPS_PER_REVOLUTION;                                  // 0.05625 degrees
+static constexpr float    ENCODER_PULSE_PER_MICROSTEP  = static_cast<float>(ENCODER_RESOLUTION) / MICROSTEPS_PER_REVOLUTION;  // 0.64 pulses
+static constexpr float    MICROSTEPS_PER_ENCODER_PULSE = static_cast<float>(MICROSTEPS_PER_REVOLUTION) / ENCODER_RESOLUTION;  // 1.5625 microsteps
+static constexpr float    ANGLE_PER_ENCODER_PULSE      = 360.0f / ENCODER_RESOLUTION;                                         // 0.087890625 degrees
+static constexpr float    ENCODER_PULSE_PER_ANGLE      = static_cast<float>(ENCODER_RESOLUTION) / 360.0f;                     // 4.096 pulses per degree
+static constexpr float    POSITION_ACCURACY_DEGREES    = 0.1f;                                                                // Target accuracy
 static constexpr uint32_t POSITION_ACCURACY_MICROSTEPS = static_cast<uint32_t>(POSITION_ACCURACY_DEGREES / DEGREES_PER_MICROSTEP);
 
 // Movement types
@@ -63,6 +67,7 @@ public:
 
     // Initialization
     bool begin();
+    void setCurrentPosition(long position);
     void enable();
     void ReadEncoderValue();
     void disable();
@@ -91,6 +96,9 @@ public:
     static float    wrapAngle(float angle);
     static float    calculateShortestPath(float currentAngle, float targetAngle);
     static uint32_t degreesToMicrosteps(float degrees);
+    uint32_t        microstepsToEncoderPulse(int32_t microsteps);
+    float           microstepToEncoderAngle(int32_t microsteps);
+    int32_t         encoderPulseToMicrosteps(int32_t encoderPulse);
     static float    microstepsToDegrees(uint32_t microsteps);
 
     // RTOS task management

@@ -196,7 +196,7 @@ void MAE3Encoder::processPWM(bool print)
         return;
     }
 
-    _state.position_degrees = _state.position_pulse * (360.0f / 4096.0f);
+    _state.position_degrees = _state.position_pulse * (360.0f / 4096);
     _state.width_high       = high;
     _state.width_low        = low;
     _state.width_interval   = interval;

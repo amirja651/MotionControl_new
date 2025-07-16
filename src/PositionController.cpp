@@ -112,6 +112,12 @@ bool PositionController::begin()
     return true;
 }
 
+void PositionController::setCurrentPosition(long position)
+{
+    _stepper.setCurrentPosition(position);
+    _status.currentMicrosteps = position;
+    _status.currentAngle      = microstepsToDegrees(position);
+}
 // Enable/Disable
 void PositionController::enable()
 {
@@ -123,7 +129,7 @@ void PositionController::enable()
     _status.isEnabled = true;
 
     // Read encoder value and use it as starting position
-    ReadEncoderValue();
+    // ReadEncoderValue();
 }
 
 void PositionController::ReadEncoderValue()
@@ -180,7 +186,7 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
     targetAngle = wrapAngle(targetAngle);
 
     // Read encoder value and use it as starting position
-    ReadEncoderValue();
+    // ReadEncoderValue();
     float currentAngle = wrapAngle(getCurrentAngle());
     //(void)calculateShortestPath(currentAngle, targetAngle);  // Suppress unused variable warning
 
@@ -204,7 +210,7 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     if (!_enabled || !_initialized)
         return false;
 
-    ReadEncoderValue();
+    // ReadEncoderValue();
     float currentAngle = getCurrentAngle();
     float targetAngle  = wrapAngle(currentAngle + deltaAngle);
 
@@ -346,7 +352,30 @@ uint32_t PositionController::degreesToMicrosteps(float degrees)
 
 float PositionController::microstepsToDegrees(uint32_t microsteps)
 {
-    return static_cast<float>(microsteps) * DEGREES_PER_MICROSTEP;
+    return static_cast<float>(microsteps) * DEGREES_PER_MICROSTEP;  // amir 1402/07/16
+}
+
+uint32_t PositionController::microstepsToEncoderPulse(int32_t microsteps)
+{
+    return static_cast<uint32_t>(microsteps) * ENCODER_PULSE_PER_MICROSTEP;  // amir 1402/07/16
+}
+
+float PositionController::microstepToEncoderAngle(int32_t microstepPos)
+{
+    // Step 1: Calculate absolute motor angle
+    float motorDegrees = (float)microstepPos / (float)MICROSTEPS_PER_REVOLUTION * 360.0f;
+
+    // Step 2: Map to 0–360 range (like encoder)
+    float encoderAngle = fmodf(motorDegrees, 360.0f);
+    if (encoderAngle < 0)
+        encoderAngle += 360.0f;
+
+    return encoderAngle;
+}
+
+int32_t PositionController::encoderPulseToMicrosteps(int32_t encoderPulse)
+{
+    return static_cast<int32_t>(encoderPulse) * MICROSTEPS_PER_ENCODER_PULSE;
 }
 
 // RTOS task management

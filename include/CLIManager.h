@@ -20,6 +20,7 @@ void initializeCLI()
     cmdMotor = cli.addCmd("ooo");
     cmdMotor.addArg("i", "1");    // motor number argument
     cmdMotor.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdMotor.addArg("o", "0");    // current position
 
     /*
 cmdMotor.addFlagArg("c");   // current position

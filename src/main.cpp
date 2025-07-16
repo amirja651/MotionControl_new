@@ -617,11 +617,6 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("\r\n[Position Status] Motor "));
                     Serial.print(currentIndex + 1);
                     Serial.print(F(": Current="));
-                    if (status.currentAngle > 720.0f)
-                    {
-                        positionController[currentIndex].ReadEncoderValue();
-                        status = positionController[currentIndex].getStatus();
-                    }
                     Serial.print(status.currentAngle, 2);
                     Serial.print(F("°, Target="));
                     Serial.print(status.targetAngle, 2);
@@ -753,6 +748,23 @@ void serialReadTask(void* pvParameters)
                         Serial.print(F("Current position: "));
                         Serial.println(stepper[currentIndex].currentPosition());
                     }
+                }
+                if (c.getArgument("o").isSet())
+                {
+                    String  currentPositionAngleStr = c.getArgument("o").getValue();
+                    float   currentPositionAngle    = currentPositionAngleStr.toFloat();
+                    int32_t encoderPulses           = static_cast<int32_t>(currentPositionAngle * ENCODER_PULSE_PER_ANGLE);
+                    float   microsteps              = positionController[currentIndex].encoderPulseToMicrosteps(encoderPulses);
+
+                    Serial.print(F("Current position angle: "));
+                    Serial.println(currentPositionAngle);
+                    Serial.println(currentPositionAngle * ENCODER_PULSE_PER_ANGLE);
+                    Serial.print(F("Encoder pulses: "));
+                    Serial.println(encoderPulses);
+                    Serial.print(F("Microsteps: "));
+                    Serial.println(microsteps);
+
+                    positionController[currentIndex].setCurrentPosition(microsteps);
                 }
                 else
                 {
