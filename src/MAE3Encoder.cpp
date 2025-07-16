@@ -141,7 +141,7 @@ void MAE3Encoder::processPWM(bool print)
     }
 
     // Calculate current encoder reading
-    int32_t x_measured = ((high * 4098) / interval) - 1;
+    int32_t x_measured = ((low * 4098) / interval) - 1;
 
     // Validate the reading
     int32_t valid_reading = x_measured;

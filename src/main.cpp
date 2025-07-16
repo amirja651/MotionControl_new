@@ -718,6 +718,11 @@ void serialReadTask(void* pvParameters)
                         else if (abs(targetAngle) >= 180.0f)
                             movementType = MovementType::LONG_RANGE;
 
+                        if (targetAngle == 0)
+                            targetAngle = 0.01;
+                        else if (targetAngle == 360)
+                            targetAngle = 359.9955f;
+
                         bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
 
                         if (success)
