@@ -55,10 +55,10 @@ static constexpr uint16_t STEP_DELAY_INCREMENT = 50;    // Step delay change inc
 static constexpr uint16_t MIN_RMS_CURRENT = 100;  // Minimum RMS current in mA
 static constexpr uint16_t MAX_RMS_CURRENT = 500;  // Maximum RMS current in mA
 
-static uint16_t MICROSTEPS[] = {1, 2, 8, 16, 32, 64, 128, 256};
+// static uint16_t MICROSTEPS[] = {1, 2, 8, 16, 32, 64, 128, 256};
 
-static constexpr uint16_t MIN_MICROSTEPS = 0;  // Maximum microsteps
-static constexpr uint16_t MAX_MICROSTEPS = 7;  // Maximum microsteps
+// static constexpr uint16_t MIN_MICROSTEPS = 0;  // Maximum microsteps
+// static constexpr uint16_t MAX_MICROSTEPS = 7;  // Maximum microsteps
 
 static constexpr uint8_t MIN_IRUN = 1;   // Minimum IRUN value (1/32 of RMS current)
 static constexpr uint8_t MAX_IRUN = 31;  // Maximum IRUN value (31/32 of RMS current)
@@ -351,6 +351,7 @@ void serialReadTask(void* pvParameters)
                 lastInput   = "";
             }
             */
+            /*
             else if (c == 'g')  // Increase step delay
             {
                 if (stepDelay < MAX_STEP_DELAY)
@@ -373,7 +374,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-
+            */
             else if (c == 'f')  // Increase RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
@@ -448,7 +449,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-
+            /*
             else if (c == 'a')  // Start motor movement
             {
                 if (!motorMoving)
@@ -609,6 +610,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
+            */
             else if (c == 'l')  // Show position status
             {
                 if (usePositionController)
@@ -751,20 +753,29 @@ void serialReadTask(void* pvParameters)
                 }
                 if (c.getArgument("o").isSet())
                 {
-                    String  currentPositionAngleStr = c.getArgument("o").getValue();
-                    float   currentPositionAngle    = currentPositionAngleStr.toFloat();
-                    int32_t encoderPulses           = static_cast<int32_t>(currentPositionAngle * ENCODER_PULSE_PER_ANGLE);
-                    float   microsteps              = positionController[currentIndex].encoderPulseToMicrosteps(encoderPulses);
+                    String valueStr = c.getArgument("o").getValue();
+                    float  value    = valueStr.toFloat();
 
-                    Serial.print(F("Current position angle: "));
-                    Serial.println(currentPositionAngle);
-                    Serial.println(currentPositionAngle * ENCODER_PULSE_PER_ANGLE);
-                    Serial.print(F("Encoder pulses: "));
-                    Serial.println(encoderPulses);
-                    Serial.print(F("Microsteps: "));
-                    Serial.println(microsteps);
+                    ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
+                    ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
+                    ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
 
-                    positionController[currentIndex].setCurrentPosition(microsteps);
+                    Serial.print(F("From Degrees: "));
+                    Serial.print(cvfd.PULSES_FROM_DEGREES);
+                    Serial.print(F(", "));
+                    Serial.println(cvfd.STEPS_FROM_DEGREES);
+
+                    Serial.print(F("From Pulses: "));
+                    Serial.print(cvfp.DEGREES_FROM_PULSES);
+                    Serial.print(F(", "));
+                    Serial.println(cvfp.STEPS_FROM_PULSES);
+
+                    Serial.print(F("From Steps: "));
+                    Serial.print(cvfs.DEGREES_FROM_STEPS);
+                    Serial.print(F(", "));
+                    Serial.println(cvfs.PULSES_FROM_STEPS);
+
+                    positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
                 }
                 else
                 {

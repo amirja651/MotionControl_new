@@ -1,4 +1,5 @@
 #include "PositionController.h"
+#include <cmath>
 #include <esp_task_wdt.h>
 
 // Static member initialization
@@ -116,7 +117,7 @@ void PositionController::setCurrentPosition(long position)
 {
     _stepper.setCurrentPosition(position);
     _status.currentMicrosteps = position;
-    _status.currentAngle      = microstepsToDegrees(position);
+    _status.currentAngle      = convertFromMSteps(position).DEGREES_FROM_STEPS;
 }
 // Enable/Disable
 void PositionController::enable()
@@ -144,7 +145,7 @@ void PositionController::ReadEncoderValue()
         float        encoderAngle = encoderState.position_degrees;
 
         // Convert encoder angle to microsteps and set as current position
-        uint32_t encoderMicrosteps = degreesToMicrosteps(encoderAngle);
+        uint32_t encoderMicrosteps = convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
         _stepper.setCurrentPosition(static_cast<long>(encoderMicrosteps));
 
         // Update status
@@ -258,7 +259,8 @@ bool PositionController::isAtTarget() const
     uint32_t targetPos  = static_cast<uint32_t>(_stepper.targetPosition());
 
     // Check if within accuracy threshold
-    return abs(static_cast<int32_t>(currentPos - targetPos)) <= POSITION_ACCURACY_MICROSTEPS;
+    ConvertValuesFromDegrees cvfd = convertFromDegrees(POSITION_ACCURACY_DEGREES);
+    return abs(static_cast<int32_t>(currentPos - targetPos)) <= cvfd.STEPS_FROM_DEGREES;
 }
 
 // Status and information
@@ -268,7 +270,7 @@ float PositionController::getCurrentAngle() const
         return 0.0f;
 
     uint32_t currentMicrosteps = static_cast<uint32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return microstepsToDegrees(currentMicrosteps);
+    return convertFromMSteps(currentMicrosteps).DEGREES_FROM_STEPS;
 }
 
 float PositionController::getTargetAngle() const
@@ -343,39 +345,6 @@ float PositionController::calculateShortestPath(float currentAngle, float target
     float delta = targetAngle - currentAngle;
     delta       = fmod(delta + 540.0f, 360.0f) - 180.0f;  // نگاشت به [-180, +180]
     return delta;
-}
-
-uint32_t PositionController::degreesToMicrosteps(float degrees)
-{
-    return static_cast<uint32_t>(degrees / DEGREES_PER_MICROSTEP);
-}
-
-float PositionController::microstepsToDegrees(uint32_t microsteps)
-{
-    return static_cast<float>(microsteps) * DEGREES_PER_MICROSTEP;  // amir 1402/07/16
-}
-
-uint32_t PositionController::microstepsToEncoderPulse(int32_t microsteps)
-{
-    return static_cast<uint32_t>(microsteps) * ENCODER_PULSE_PER_MICROSTEP;  // amir 1402/07/16
-}
-
-float PositionController::microstepToEncoderAngle(int32_t microstepPos)
-{
-    // Step 1: Calculate absolute motor angle
-    float motorDegrees = (float)microstepPos / (float)MICROSTEPS_PER_REVOLUTION * 360.0f;
-
-    // Step 2: Map to 0–360 range (like encoder)
-    float encoderAngle = fmodf(motorDegrees, 360.0f);
-    if (encoderAngle < 0)
-        encoderAngle += 360.0f;
-
-    return encoderAngle;
-}
-
-int32_t PositionController::encoderPulseToMicrosteps(int32_t encoderPulse)
-{
-    return static_cast<int32_t>(encoderPulse) * MICROSTEPS_PER_ENCODER_PULSE;
 }
 
 // RTOS task management
@@ -458,7 +427,7 @@ void PositionController::updateStatus()
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
         _status.currentMicrosteps = static_cast<uint32_t>(_stepper.currentPosition());
-        _status.currentAngle      = microstepsToDegrees(_status.currentMicrosteps);
+        _status.currentAngle      = convertFromMSteps(_status.currentMicrosteps).DEGREES_FROM_STEPS;
         _status.isMoving          = _stepper.distanceToGo() != 0;
         xSemaphoreGive(_statusMutex);
     }
@@ -489,11 +458,11 @@ bool PositionController::executeMovement(const MovementCommand& command)
     uint32_t targetMicrosteps;
     if (command.relative)
     {
-        targetMicrosteps = _status.currentMicrosteps + degreesToMicrosteps(command.targetAngle);
+        targetMicrosteps = _status.currentMicrosteps + convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
     }
     else
     {
-        targetMicrosteps = degreesToMicrosteps(command.targetAngle);
+        targetMicrosteps = convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
     }
 
     // Update status
@@ -598,6 +567,30 @@ void PositionController::runPositionControl()
 
         Serial.printf("[PositionController] Motor %d reached target (%.2f degrees)\n", _motorId + 1, _status.targetAngle);
     }
+}
+
+ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, float microsteps, float resolution) const
+{
+    ConvertValuesFromDegrees convert;
+    convert.PULSES_FROM_DEGREES = static_cast<int32_t>(std::round(degrees * (resolution / 360.0f)));
+    convert.STEPS_FROM_DEGREES  = static_cast<uint32_t>(std::round(degrees * (microsteps / 360.0f)));
+    return convert;
+}
+
+ConvertValuesFromPulses PositionController::convertFromPulses(float pulses, float microsteps, float resolution) const
+{
+    ConvertValuesFromPulses convert;
+    convert.DEGREES_FROM_PULSES = pulses * (360.0f / resolution);
+    convert.STEPS_FROM_PULSES   = static_cast<uint32_t>(std::round(pulses * (microsteps / resolution)));
+    return convert;
+}
+
+ConvertValuesFromSteps PositionController::convertFromMSteps(float steps, float microsteps, float resolution) const
+{
+    ConvertValuesFromSteps convert;
+    convert.PULSES_FROM_STEPS  = static_cast<int32_t>(std::round(steps * (resolution / microsteps)));
+    convert.DEGREES_FROM_STEPS = steps * (360.0f / microsteps);
+    return convert;
 }
 
 // Global functions for RTOS integration
