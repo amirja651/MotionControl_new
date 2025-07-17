@@ -213,6 +213,8 @@ void setMotorId(String motorId)
     // Serial.println(index);
 }
 
+static uint32_t orginSteps = 0;
+
 // Serial Read Task (M109)
 void serialReadTask(void* pvParameters)
 {
@@ -498,15 +500,38 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-
+*/
             else if (c == 'q')  // Move to 0 degrees
             {
                 if (usePositionController)
                 {
-                    positionController[currentIndex].moveToAngle(0.0f, MovementType::MEDIUM_RANGE);
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" moving to 0 degrees\r\n"));
+                    float targetAngle = positionController[currentIndex].convertFromMSteps(orginSteps).DEGREES_FROM_STEPS;
+                    // Use new position controller
+                    MovementType movementType = MovementType::MEDIUM_RANGE;
+                    if (abs(targetAngle) <= 40.0f)
+                        movementType = MovementType::SHORT_RANGE;
+                    else if (abs(targetAngle) >= 100.0f)
+                        movementType = MovementType::LONG_RANGE;
+
+                    if (targetAngle == 0)
+                        targetAngle = 0.01;
+                    else if (targetAngle == 360)
+                        targetAngle = 359.9955f;
+
+                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
+
+                    if (success)
+                    {
+                        Serial.print(F("[Info] Motor "));
+                        Serial.print(currentIndex + 1);
+                        Serial.print(F(" moving to "));
+                        Serial.print(targetAngle, 2);
+                        Serial.println(F(" degrees"));
+                    }
+                    else
+                    {
+                        Serial.println(F("[Error] Failed to queue movement command"));
+                    }
                 }
                 else
                 {
@@ -519,98 +544,98 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == 'w')  // Move to 90 degrees
-            {
-                if (usePositionController)
-                {
-                    positionController[currentIndex].moveToAngle(90.0f, MovementType::MEDIUM_RANGE);
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" moving to 90 degrees\r\n"));
-                }
-                else
-                {
-                    targetSteps = (90.0f / 360.0f) * (200 * 256);
-                    stepper[currentIndex].moveTo(targetSteps);
-                    stepper[currentIndex].enableOutputs();
-                    motorMoving = true;
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 'e')  // Move to 180 degrees
-            {
-                if (usePositionController)
-                {
-                    positionController[currentIndex].moveToAngle(180.0f, MovementType::MEDIUM_RANGE);
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" moving to 180 degrees\r\n"));
-                }
-                else
-                {
-                    targetSteps = (180.0f / 360.0f) * (200 * 256);
-                    stepper[currentIndex].moveTo(targetSteps);
-                    stepper[currentIndex].enableOutputs();
-                    motorMoving = true;
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 'r')  // Move to 270 degrees
-            {
-                if (usePositionController)
-                {
-                    positionController[currentIndex].moveToAngle(270.0f, MovementType::MEDIUM_RANGE);
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" moving to 270 degrees\r\n"));
-                }
-                else
-                {
-                    targetSteps = (270.0f / 360.0f) * (200 * 256);
-                    stepper[currentIndex].moveTo(targetSteps);
-                    stepper[currentIndex].enableOutputs();
-                    motorMoving = true;
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 't')  // Move +10 degrees
-            {
-                if (usePositionController)
-                {
-                    positionController[currentIndex].moveRelative(10.0f, MovementType::SHORT_RANGE);
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" moving +10 degrees\r\n"));
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 'y')  // Move -10 degrees
-            {
-                if (usePositionController)
-                {
-                    positionController[currentIndex].moveRelative(-10.0f, MovementType::SHORT_RANGE);
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" moving -10 degrees\r\n"));
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
+            /*            else if (c == 'w')  // Move to 90 degrees
+                        {
+                            if (usePositionController)
+                            {
+                                positionController[currentIndex].moveToAngle(90.0f, MovementType::MEDIUM_RANGE);
+                                Serial.print(F("\r\n[Info] Motor "));
+                                Serial.print(currentIndex + 1);
+                                Serial.println(F(" moving to 90 degrees\r\n"));
+                            }
+                            else
+                            {
+                                targetSteps = (90.0f / 360.0f) * (200 * 256);
+                                stepper[currentIndex].moveTo(targetSteps);
+                                stepper[currentIndex].enableOutputs();
+                                motorMoving = true;
+                            }
+                            inputBuffer = "";
+                            lastInput   = "";
+                        }
+                        else if (c == 'e')  // Move to 180 degrees
+                        {
+                            if (usePositionController)
+                            {
+                                positionController[currentIndex].moveToAngle(180.0f, MovementType::MEDIUM_RANGE);
+                                Serial.print(F("\r\n[Info] Motor "));
+                                Serial.print(currentIndex + 1);
+                                Serial.println(F(" moving to 180 degrees\r\n"));
+                            }
+                            else
+                            {
+                                targetSteps = (180.0f / 360.0f) * (200 * 256);
+                                stepper[currentIndex].moveTo(targetSteps);
+                                stepper[currentIndex].enableOutputs();
+                                motorMoving = true;
+                            }
+                            inputBuffer = "";
+                            lastInput   = "";
+                        }
+                        else if (c == 'r')  // Move to 270 degrees
+                        {
+                            if (usePositionController)
+                            {
+                                positionController[currentIndex].moveToAngle(270.0f, MovementType::MEDIUM_RANGE);
+                                Serial.print(F("\r\n[Info] Motor "));
+                                Serial.print(currentIndex + 1);
+                                Serial.println(F(" moving to 270 degrees\r\n"));
+                            }
+                            else
+                            {
+                                targetSteps = (270.0f / 360.0f) * (200 * 256);
+                                stepper[currentIndex].moveTo(targetSteps);
+                                stepper[currentIndex].enableOutputs();
+                                motorMoving = true;
+                            }
+                            inputBuffer = "";
+                            lastInput   = "";
+                        }
+                        else if (c == 't')  // Move +10 degrees
+                        {
+                            if (usePositionController)
+                            {
+                                positionController[currentIndex].moveRelative(10.0f, MovementType::SHORT_RANGE);
+                                Serial.print(F("\r\n[Info] Motor "));
+                                Serial.print(currentIndex + 1);
+                                Serial.println(F(" moving +10 degrees\r\n"));
+                            }
+                            inputBuffer = "";
+                            lastInput   = "";
+                        }
+                        else if (c == 'y')  // Move -10 degrees
+                        {
+                            if (usePositionController)
+                            {
+                                positionController[currentIndex].moveRelative(-10.0f, MovementType::SHORT_RANGE);
+                                Serial.print(F("\r\n[Info] Motor "));
+                                Serial.print(currentIndex + 1);
+                                Serial.println(F(" moving -10 degrees\r\n"));
+                            }
+                            inputBuffer = "";
+                            lastInput   = "";
+                        }
 
-            else if (c == 'k')  // Toggle position controller
-            {
-                usePositionController = !usePositionController;
-                Serial.print(F("\r\n[Info] Position controller: "));
-                Serial.print(usePositionController ? F("ENABLED") : F("DISABLED"));
-                Serial.println(F("\r\n"));
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            */
+                        else if (c == 'k')  // Toggle position controller
+                        {
+                            usePositionController = !usePositionController;
+                            Serial.print(F("\r\n[Info] Position controller: "));
+                            Serial.print(usePositionController ? F("ENABLED") : F("DISABLED"));
+                            Serial.println(F("\r\n"));
+                            inputBuffer = "";
+                            lastInput   = "";
+                        }
+                        */
             else if (c == 'l')  // Show position status
             {
                 if (usePositionController)
@@ -710,9 +735,9 @@ void serialReadTask(void* pvParameters)
                     {
                         // Use new position controller
                         MovementType movementType = MovementType::MEDIUM_RANGE;
-                        if (abs(targetAngle) <= 10.0f)
+                        if (abs(targetAngle) <= 40.0f)
                             movementType = MovementType::SHORT_RANGE;
-                        else if (abs(targetAngle) >= 180.0f)
+                        else if (abs(targetAngle) >= 100.0f)
                             movementType = MovementType::LONG_RANGE;
 
                         if (targetAngle == 0)
@@ -775,6 +800,7 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F(", "));
                     Serial.println(cvfs.PULSES_FROM_STEPS);
 
+                    orginSteps = cvfd.STEPS_FROM_DEGREES;
                     positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
                 }
                 else

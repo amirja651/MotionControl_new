@@ -113,9 +113,9 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, float microsteps = 31 * 200, float resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(float pulses, float microsteps = 31 * 200, float resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(float steps, float microsteps = 31 * 200, float resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, float microsteps = 63 * 200, float resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(float pulses, float microsteps = 63 * 200, float resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(float steps, float microsteps = 63 * 200, float resolution = ENCODER_RESOLUTION) const;
 
 private:
     // Hardware components
