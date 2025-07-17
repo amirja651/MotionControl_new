@@ -618,13 +618,13 @@ void serialReadTask(void* pvParameters)
                     MotorStatus status = positionController[currentIndex].getStatus();
                     Serial.print(F("\r\n[Position Status] Motor "));
                     Serial.print(currentIndex + 1);
-                    Serial.print(F(": Current="));
+                    Serial.print(F(": Current: "));
                     Serial.print(status.currentAngle, 2);
-                    Serial.print(F("°, Target="));
+                    Serial.print(F("°, Target: "));
                     Serial.print(status.targetAngle, 2);
-                    Serial.print(F("°, Moving="));
+                    Serial.print(F("°, Moving: "));
                     Serial.print(status.isMoving ? F("YES") : F("NO"));
-                    Serial.print(F(", Enabled="));
+                    Serial.print(F(", Enabled: "));
                     Serial.print(status.isEnabled ? F("YES") : F("NO"));
 
                     // Add encoder reading if available
@@ -632,19 +632,19 @@ void serialReadTask(void* pvParameters)
                     {
                         encoder[currentIndex].processPWM();  // Process encoder data
                         EncoderState encoderState = encoder[currentIndex].getState();
-                        Serial.print(F(", Encoder="));
+                        Serial.print(F(", Encoder: "));
                         Serial.print(encoderState.position_degrees, 2);
                         Serial.print(F("°"));
                         Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
-                        Serial.print(F(" (position="));
+                        /*Serial.print(F(" (position: "));
                         Serial.print(encoderState.position_pulse);
-                        Serial.print(F(", High="));
+                        Serial.print(F(", High: "));
                         Serial.print(encoderState.width_high);
-                        Serial.print(F(", Low="));
+                        Serial.print(F(", Low: "));
                         Serial.print(encoderState.width_low);
-                        Serial.print(F(", Interval="));
+                        Serial.print(F(", Interval: "));
                         Serial.print(encoderState.width_interval);
-                        Serial.print(F(" pulses)"));
+                        Serial.print(F(" pulses)"));*/
                     }
 
                     Serial.println(F("\r\n"));
@@ -660,7 +660,7 @@ void serialReadTask(void* pvParameters)
                     {
                         encoder[currentIndex].processPWM();  // Process encoder data
                         EncoderState encoderState = encoder[currentIndex].getState();
-                        Serial.print(F(", Encoder="));
+                        Serial.print(F(", Encoder: "));
                         Serial.print(encoderState.position_degrees, 2);
                         Serial.print(F("°"));
                         Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
