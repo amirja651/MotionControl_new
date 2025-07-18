@@ -37,7 +37,7 @@ struct MovementCommand
 
 struct ConvertValuesFromDegrees
 {
-    int32_t  PULSES_FROM_DEGREES;
+    uint32_t PULSES_FROM_DEGREES;
     uint32_t STEPS_FROM_DEGREES;
 };
 
@@ -49,8 +49,8 @@ struct ConvertValuesFromPulses
 
 struct ConvertValuesFromSteps
 {
-    int32_t PULSES_FROM_STEPS;
-    float   DEGREES_FROM_STEPS;
+    uint32_t PULSES_FROM_STEPS;
+    float    DEGREES_FROM_STEPS;
 };
 
 // Motor status structure
@@ -113,9 +113,9 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, float microsteps = 63 * 200, float resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(float pulses, float microsteps = 63 * 200, float resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(float steps, float microsteps = 63 * 200, float resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, uint32_t microsteps = 63 * 200, uint32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(uint32_t pulses, uint32_t microsteps = 63 * 200, uint32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(uint32_t steps, uint32_t microsteps = 63 * 200, uint32_t resolution = ENCODER_RESOLUTION) const;
 
 private:
     // Hardware components

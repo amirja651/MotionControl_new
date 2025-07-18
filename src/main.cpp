@@ -10,28 +10,21 @@
 #include <SPI.h>
 #include <esp_task_wdt.h>
 
-TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]),
-                            TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
-MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]),
-                                 MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
-                                 MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]),
-                                 MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
+MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]), MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
+                                 MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]), MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
 
 // MAE3 Encoders for position feedback (read-only, not used for control)
-MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2),
-                          MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Position controllers for precise angle control
-PositionController positionController[4] = {PositionController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0], encoder[0]),
-                                            PositionController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
-                                            PositionController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2], encoder[2]),
-                                            PositionController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
+PositionController positionController[4] = {PositionController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0], encoder[0]), PositionController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
+                                            PositionController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2], encoder[2]), PositionController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
 // Legacy AccelStepper instances (kept for compatibility)
-AccelStepper stepper[4] = {
-    AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[0], DriverPins::DIR[0]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[1], DriverPins::DIR[1]),
-    AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[2], DriverPins::DIR[2]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[3], DriverPins::DIR[3])};
+AccelStepper stepper[4] = {AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[0], DriverPins::DIR[0]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[1], DriverPins::DIR[1]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[2], DriverPins::DIR[2]),
+                           AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[3], DriverPins::DIR[3])};
 
 static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
 TaskHandle_t              serialReadTaskHandle = NULL;
@@ -46,20 +39,9 @@ static int     historyCount = 0;
 static int     historyIndex = -1;  // -1 means not navigating
 static uint8_t currentIndex = 1;   // Current driver index
 
-// Step delay control
-static uint16_t           stepDelay            = 200;   // Default step delay in microseconds
-static constexpr uint16_t MIN_STEP_DELAY       = 1;     // Minimum step delay
-static constexpr uint16_t MAX_STEP_DELAY       = 5000;  // Maximum step delay
-static constexpr uint16_t STEP_DELAY_INCREMENT = 50;    // Step delay change increment
-
 // Current control parameters
 static constexpr uint16_t MIN_RMS_CURRENT = 100;  // Minimum RMS current in mA
 static constexpr uint16_t MAX_RMS_CURRENT = 500;  // Maximum RMS current in mA
-
-// static uint16_t MICROSTEPS[] = {1, 2, 8, 16, 32, 64, 128, 256};
-
-// static constexpr uint16_t MIN_MICROSTEPS = 0;  // Maximum microsteps
-// static constexpr uint16_t MAX_MICROSTEPS = 7;  // Maximum microsteps
 
 static constexpr uint8_t MIN_IRUN = 1;   // Minimum IRUN value (1/32 of RMS current)
 static constexpr uint8_t MAX_IRUN = 31;  // Maximum IRUN value (31/32 of RMS current)
@@ -77,17 +59,6 @@ static constexpr uint16_t ORIGIN_POSITIONS_ADDR = 0;                  // Startin
 static constexpr uint16_t ORIGIN_POSITIONS_SIZE = 4 * sizeof(float);  // 4 motors * float size
 static constexpr uint16_t EEPROM_MAGIC_NUMBER   = 0x1234;             // Magic number to verify EEPROM is initialized
 static constexpr uint16_t MAGIC_NUMBER_ADDR     = ORIGIN_POSITIONS_ADDR + ORIGIN_POSITIONS_SIZE;
-
-// EEPROM operation queue for RTOS safety
-struct EEPROMOperation
-{
-    uint8_t motorIndex;
-    float   originDegrees;
-    bool    isWrite;
-};
-
-static QueueHandle_t eepromOperationQueue   = nullptr;
-static bool          eepromOperationPending = false;
 
 // Movement control parameters
 static bool               motorMoving    = false;    // Track if motor is currently moving
@@ -129,25 +100,39 @@ void initializeEEPROM()
     uint16_t storedMagic = EEPROM.readUShort(MAGIC_NUMBER_ADDR);
     if (storedMagic != EEPROM_MAGIC_NUMBER)
     {
-        // Disable interrupts during EEPROM initialization
-        noInterrupts();
+        // Reset watchdog timer before EEPROM initialization
+        esp_task_wdt_reset();
 
         // Initialize EEPROM with default values
         float defaultOrigins[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         for (uint8_t i = 0; i < 4; i++)
         {
-            EEPROM.writeFloat(ORIGIN_POSITIONS_ADDR + (i * sizeof(float)), defaultOrigins[i]);
+            uint16_t addr       = ORIGIN_POSITIONS_ADDR + (i * sizeof(float));
+            uint8_t* floatBytes = (uint8_t*)&defaultOrigins[i];
+
+            // Write the float value byte by byte to avoid cache issues
+            for (int j = 0; j < sizeof(float); j++)
+            {
+                EEPROM.write(addr + j, floatBytes[j]);
+                esp_task_wdt_reset();
+                vTaskDelay(pdMS_TO_TICKS(1));  // Give other tasks a chance to run
+            }
         }
-        EEPROM.writeUShort(MAGIC_NUMBER_ADDR, EEPROM_MAGIC_NUMBER);
+
+        // Write magic number byte by byte
+        uint8_t* magicBytes = (uint8_t*)&EEPROM_MAGIC_NUMBER;
+        for (int i = 0; i < sizeof(uint16_t); i++)
+        {
+            EEPROM.write(MAGIC_NUMBER_ADDR + i, magicBytes[i]);
+            esp_task_wdt_reset();
+            vTaskDelay(pdMS_TO_TICKS(1));  // Give other tasks a chance to run
+        }
+
+        // Reset watchdog timer before commit
+        esp_task_wdt_reset();
 
         // Commit with error checking
         bool commitSuccess = EEPROM.commit();
-
-        // Re-enable interrupts
-        interrupts();
-
-        // Small delay to allow system to stabilize after EEPROM operation
-        delay(10);
 
         // Reset watchdog timer after EEPROM operation
         esp_task_wdt_reset();
@@ -175,73 +160,29 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
         return;
     }
 
-    // Queue EEPROM operation for safe execution in main loop
-    if (eepromOperationQueue != nullptr)
-    {
-        EEPROMOperation operation;
-        operation.motorIndex    = motorIndex;
-        operation.originDegrees = originDegrees;
-        operation.isWrite       = true;
-
-        if (xQueueSend(eepromOperationQueue, &operation, pdMS_TO_TICKS(100)) == pdTRUE)
-        {
-            eepromOperationPending = true;
-            Serial.print(F("[EEPROM] Queued origin position for motor "));
-            Serial.print(motorIndex + 1);
-            Serial.print(F(": "));
-            Serial.print(originDegrees, 2);
-            Serial.println(F(" degrees"));
-        }
-        else
-        {
-            Serial.println(F("[EEPROM] Error: Failed to queue EEPROM operation"));
-        }
-    }
-    else
-    {
-        Serial.println(F("[EEPROM] Error: EEPROM queue not initialized"));
-    }
-}
-
-float loadOriginPosition(uint8_t motorIndex)
-{
-    if (motorIndex >= 4)
-    {
-        Serial.println(F("[EEPROM] Error: Invalid motor index, using 0.0"));
-        return 0.0f;
-    }
-
-    uint16_t addr          = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
-    float    originDegrees = EEPROM.readFloat(addr);
-
-    Serial.print(F("[EEPROM] Loaded origin position for motor "));
+    // Simple direct EEPROM write without queue
+    Serial.print(F("[EEPROM] Storing origin position for motor "));
     Serial.print(motorIndex + 1);
     Serial.print(F(": "));
     Serial.print(originDegrees, 2);
-    Serial.println(F(" degrees"));
+    Serial.println(F(" degrees..."));
 
-    return originDegrees;
-}
-
-// Safe EEPROM write function for main loop execution
-void executeEEPROMWrite(uint8_t motorIndex, float originDegrees)
-{
-    // Disable interrupts during EEPROM write to prevent conflicts
-    noInterrupts();
+    esp_task_wdt_reset();
 
     uint16_t addr = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
-    EEPROM.writeFloat(addr, originDegrees);
 
-    // Commit with error checking
+    // Write the float value byte by byte to avoid cache issues
+    uint8_t* floatBytes = (uint8_t*)&originDegrees;
+    for (int i = 0; i < sizeof(float); i++)
+    {
+        EEPROM.write(addr + i, floatBytes[i]);
+        esp_task_wdt_reset();
+        delay(1);  // Small delay to prevent watchdog timeout
+    }
+
+    esp_task_wdt_reset();
+    yield();  // Give other tasks a chance to run
     bool commitSuccess = EEPROM.commit();
-
-    // Re-enable interrupts
-    interrupts();
-
-    // Small delay to allow system to stabilize after EEPROM operation
-    delay(10);
-
-    // Reset watchdog timer after EEPROM operation
     esp_task_wdt_reset();
 
     if (commitSuccess)
@@ -258,82 +199,61 @@ void executeEEPROMWrite(uint8_t motorIndex, float originDegrees)
     }
 }
 
-void printAllSettings()
+float loadOriginPosition(uint8_t motorIndex)
 {
-    Serial.println(F("-- Current Settings:"));
-    Serial.print(F("RMS current: "));
-    Serial.print(driver[currentIndex].getRmsCurrent());
-    Serial.print(F(" mA"));
+    if (motorIndex >= 4)
+    {
+        Serial.println(F("[EEPROM] Error: Invalid motor index, using 0.0"));
+        return 0.0f;
+    }
 
-    Serial.print(F("     "));
-    Serial.print(F("IRUN: "));
+    uint16_t addr = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
+
+    // Read the float value byte by byte to avoid cache issues
+    uint8_t floatBytes[sizeof(float)];
+    for (int i = 0; i < sizeof(float); i++)
+    {
+        floatBytes[i] = EEPROM.read(addr + i);
+    }
+    float originDegrees = *(float*)floatBytes;
+
+    Serial.print(F("[EEPROM] Loaded origin position for motor "));
+    Serial.print(motorIndex + 1);
+    Serial.print(F(": "));
+    Serial.print(originDegrees, 2);
+    Serial.println(F(" degrees"));
+
+    return originDegrees;
+}
+
+void printCurrentSettingsAndKeyboardControls()
+{
+    Serial.println(F("========================= Keyboard Controls ============================"));
+
+    Serial.print(F("  RMS Current:      'A' (+) | 'Z' (-)    "));
+    Serial.print(driver[currentIndex].getRmsCurrent());
+    Serial.println(F(" mA"));
+
+    Serial.print(F("  IRUN Current:     'S' (+) | 'X' (-)    "));
     Serial.print(driver[currentIndex].getIrun());
     Serial.print(F("/32 of RMS current"));
     Serial.print(F(" ("));
     Serial.print(calculateByNumber(driver[currentIndex].getRmsCurrent(), driver[currentIndex].getIrun()));
-    Serial.print(F(" mA)"));
+    Serial.println(F(" mA)"));
 
-    Serial.print(F("     "));
-    Serial.print(F("IHOLD: "));
+    Serial.print(F("  IHOLD Current:    'D' (+) | 'C' (-)    "));
     Serial.print(driver[currentIndex].getIhold());
     Serial.print(F("/32 of RMS current"));
     Serial.print(F(" ("));
     Serial.print(calculateByNumber(driver[currentIndex].getRmsCurrent(), driver[currentIndex].getIhold()));
-    Serial.print(F(" mA)"));
+    Serial.println(F(" mA)"));
 
-    Serial.print(F("     "));
-    Serial.print(F("Microsteps: "));
-    Serial.print(driver[currentIndex].getMicrosteps());
+    Serial.print(F("  Microsteps: "));
+    Serial.println(driver[currentIndex].getMicrosteps());
 
-    Serial.print(F("     "));
-    Serial.print(F("Step delay: "));
-    Serial.print(stepDelay);
-    Serial.println(F(" us"));
-}
-
-void printHelp()
-{
-    Serial.println();
-    Serial.println(F("=== Motor Control System Ready ==="));
-    Serial.println(F("Keyboard Controls:"));
-
-    Serial.println(F("  Movement Control:"));
-    Serial.println(F("    'a' - Start motor movement"));
-    Serial.println(F("    'z' - Stop motor movement"));
-
-    Serial.println(F("  IHOLD Current:"));
-    Serial.println(F("    's' - Increase IHOLD"));
-    Serial.println(F("    'x' - Decrease IHOLD"));
-
-    Serial.println(F("  IRUN Current:"));
-    Serial.println(F("    'd' - Increase IRUN"));
-    Serial.println(F("    'c' - Decrease IRUN"));
-
-    Serial.println(F("  RMS Current:"));
-    Serial.println(F("    'f' - Increase RMS current"));
-    Serial.println(F("    'v' - Decrease RMS current"));
-
-    Serial.println(F("  Step Delay:"));
-    Serial.println(F("    'g' - Increase step delay"));
-    Serial.println(F("    'b' - Decrease step delay"));
-
-    Serial.println(F("  Microsteps:"));
-    Serial.println(F("    'j' - Increase microsteps"));
-    Serial.println(F("    'm' - Decrease microsteps"));
-
-    Serial.println(F("  Position Control:"));
-    Serial.println(F("    'q' - Move to 0 degrees"));
-    Serial.println(F("    'w' - Move to 90 degrees"));
-    Serial.println(F("    'e' - Move to 180 degrees"));
-    Serial.println(F("    'r' - Move to 270 degrees"));
-    Serial.println(F("    't' - Move +10 degrees"));
-    Serial.println(F("    'y' - Move -10 degrees"));
-
-    Serial.println(F("    'k' - Toggle position controller"));
-    Serial.println(F("    'l' - Show position status"));
-    Serial.println(F("    'p' - Process encoder 10 times (100ms each)"));
-    printAllSettings();
-    Serial.println(F("=================================="));
+    Serial.println(F("  Position Control: 'Q' Move to origin "));
+    Serial.println(F("  Position Status:  'L' Show position status"));
+    Serial.println(F("========================================================================"));
     Serial.flush();
 }
 
@@ -478,186 +398,79 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("\b \b"));
                 }
             }
-
-            /*
-            else if (c == 'j')  // Increase microsteps
-            {
-                uint16_t currentMicrosteps = driver[currentIndex].getMicrosteps();
-
-                int index = findIndex(MICROSTEPS, sizeof(MICROSTEPS) / sizeof(MICROSTEPS[0]), currentMicrosteps);
-                if (index < MAX_MICROSTEPS)
-                {
-                    uint16_t newMicrosteps = MICROSTEPS[index + 1];
-                    driver[currentIndex].setMicrosteps(newMicrosteps);
-                    printAllSettings();
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 'm')  // Decrease microsteps
-            {
-                uint16_t currentMicrosteps = driver[currentIndex].getMicrosteps();
-
-                int index = findIndex(MICROSTEPS, sizeof(MICROSTEPS) / sizeof(MICROSTEPS[0]), currentMicrosteps);
-                if (index > MIN_MICROSTEPS)
-                {
-                    uint16_t newMicrosteps = MICROSTEPS[index - 1];
-                    driver[currentIndex].setMicrosteps(newMicrosteps);
-                    printAllSettings();
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            */
-            /*
-            else if (c == 'g')  // Increase step delay
-            {
-                if (stepDelay < MAX_STEP_DELAY)
-                {
-                    stepDelay += STEP_DELAY_INCREMENT;
-                    printAllSettings();
-                }
-                // Clear the input buffer since this is a direct command
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 'b')  // Decrease step delay
-            {
-                if (stepDelay > MIN_STEP_DELAY)
-                {
-                    stepDelay -= STEP_DELAY_INCREMENT;
-                    printAllSettings();
-                }
-                // Clear the input buffer since this is a direct command
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            */
-            else if (c == 'f')  // Increase RMS current
+            else if (c == 'A')  // Increase RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
                 if (currentRms < MAX_RMS_CURRENT)
                 {
                     uint16_t newRms = currentRms + CURRENT_INCREMENT;
                     driver[currentIndex].setRmsCurrent(newRms);
-                    printAllSettings();
                 }
+                printCurrentSettingsAndKeyboardControls();
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == 'v')  // Decrease RMS current
+            else if (c == 'Z')  // Decrease RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
                 if (currentRms > MIN_RMS_CURRENT)
                 {
                     uint16_t newRms = currentRms - CURRENT_INCREMENT;
                     driver[currentIndex].setRmsCurrent(newRms);
-                    printAllSettings();
                 }
+                printCurrentSettingsAndKeyboardControls();
                 inputBuffer = "";
                 lastInput   = "";
             }
-
-            else if (c == 'd')  // Increase IRUN
+            else if (c == 'S')  // Increase IRUN
             {
                 uint8_t currentIrun = driver[currentIndex].getIrun();
                 if (currentIrun < MAX_IRUN)
                 {
                     uint8_t newIrun = currentIrun + IRUN_INCREMENT;
                     driver[currentIndex].setIrun(newIrun);
-                    printAllSettings();
                 }
+                printCurrentSettingsAndKeyboardControls();
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == 'c')  // Decrease IRUN
+            else if (c == 'X')  // Decrease IRUN
             {
                 uint8_t currentIrun = driver[currentIndex].getIrun();
                 if (currentIrun > MIN_IRUN)
                 {
                     uint8_t newIrun = currentIrun - IRUN_INCREMENT;
                     driver[currentIndex].setIrun(newIrun);
-                    printAllSettings();
                 }
+                printCurrentSettingsAndKeyboardControls();
                 inputBuffer = "";
                 lastInput   = "";
             }
-
-            else if (c == 's')  // Increase IHOLD
+            else if (c == 'D')  // Increase IHOLD
             {
                 uint8_t currentIhold = driver[currentIndex].getIhold();
                 if (currentIhold < MAX_IHOLD)
                 {
                     uint8_t newIhold = currentIhold + IHOLD_INCREMENT;
                     driver[currentIndex].setIhold(newIhold);
-                    printAllSettings();
                 }
+                printCurrentSettingsAndKeyboardControls();
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c == 'x')  // Decrease IHOLD
+            else if (c == 'C')  // Decrease IHOLD
             {
                 uint8_t currentIhold = driver[currentIndex].getIhold();
                 if (currentIhold > MIN_IHOLD)
                 {
                     uint8_t newIhold = currentIhold - IHOLD_INCREMENT;
                     driver[currentIndex].setIhold(newIhold);
-                    printAllSettings();
                 }
+                printCurrentSettingsAndKeyboardControls();
                 inputBuffer = "";
                 lastInput   = "";
             }
-            /*
-            else if (c == 'a')  // Start motor movement
-            {
-                if (!motorMoving)
-                {
-                    motorMoving = true;
-                    motor[currentIndex].enable(true);
-                    motor[currentIndex].setDirection(true);  // Forward direction
-                    motor[currentIndex].move(MOVEMENT_STEPS, MOVEMENT_SPEED, MOVEMENT_SPEED);
-                    motor[currentIndex].attachInterruptHandler();
-                    motor[currentIndex].startTimer();
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.print(F(" started moving forward ("));
-                    Serial.print(MOVEMENT_STEPS);
-                    Serial.print(F(" steps at "));
-                    Serial.print(MOVEMENT_SPEED);
-                    Serial.println(F(" steps/sec)\r\n"));
-                }
-                else
-                {
-                    Serial.print(F("\r\n[Warning] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" is already moving!\r\n"));
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-            else if (c == 'z')  // Stop motor movement
-            {
-                if (motorMoving)
-                {
-                    motorMoving = false;
-                    motor[currentIndex].stop();
-                    motor[currentIndex].stopTimer();
-                    motor[currentIndex].detachInterruptHandler();
-                    Serial.print(F("\r\n[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" stopped\r\n"));
-                }
-                else
-                {
-                    Serial.print(F("\r\n[Warning] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.println(F(" is not moving!\r\n"));
-                }
-                inputBuffer = "";
-                lastInput   = "";
-            }
-*/
-            else if (c == 'q')  // Move to 0 degrees
+            else if (c == 'Q')  // Move to 0 degrees
             {
                 if (usePositionController)
                 {
@@ -700,99 +513,7 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            /*            else if (c == 'w')  // Move to 90 degrees
-                        {
-                            if (usePositionController)
-                            {
-                                positionController[currentIndex].moveToAngle(90.0f, MovementType::MEDIUM_RANGE);
-                                Serial.print(F("\r\n[Info] Motor "));
-                                Serial.print(currentIndex + 1);
-                                Serial.println(F(" moving to 90 degrees\r\n"));
-                            }
-                            else
-                            {
-                                targetSteps = (90.0f / 360.0f) * (200 * 256);
-                                stepper[currentIndex].moveTo(targetSteps);
-                                stepper[currentIndex].enableOutputs();
-                                motorMoving = true;
-                            }
-                            inputBuffer = "";
-                            lastInput   = "";
-                        }
-                        else if (c == 'e')  // Move to 180 degrees
-                        {
-                            if (usePositionController)
-                            {
-                                positionController[currentIndex].moveToAngle(180.0f, MovementType::MEDIUM_RANGE);
-                                Serial.print(F("\r\n[Info] Motor "));
-                                Serial.print(currentIndex + 1);
-                                Serial.println(F(" moving to 180 degrees\r\n"));
-                            }
-                            else
-                            {
-                                targetSteps = (180.0f / 360.0f) * (200 * 256);
-                                stepper[currentIndex].moveTo(targetSteps);
-                                stepper[currentIndex].enableOutputs();
-                                motorMoving = true;
-                            }
-                            inputBuffer = "";
-                            lastInput   = "";
-                        }
-                        else if (c == 'r')  // Move to 270 degrees
-                        {
-                            if (usePositionController)
-                            {
-                                positionController[currentIndex].moveToAngle(270.0f, MovementType::MEDIUM_RANGE);
-                                Serial.print(F("\r\n[Info] Motor "));
-                                Serial.print(currentIndex + 1);
-                                Serial.println(F(" moving to 270 degrees\r\n"));
-                            }
-                            else
-                            {
-                                targetSteps = (270.0f / 360.0f) * (200 * 256);
-                                stepper[currentIndex].moveTo(targetSteps);
-                                stepper[currentIndex].enableOutputs();
-                                motorMoving = true;
-                            }
-                            inputBuffer = "";
-                            lastInput   = "";
-                        }
-                        else if (c == 't')  // Move +10 degrees
-                        {
-                            if (usePositionController)
-                            {
-                                positionController[currentIndex].moveRelative(10.0f, MovementType::SHORT_RANGE);
-                                Serial.print(F("\r\n[Info] Motor "));
-                                Serial.print(currentIndex + 1);
-                                Serial.println(F(" moving +10 degrees\r\n"));
-                            }
-                            inputBuffer = "";
-                            lastInput   = "";
-                        }
-                        else if (c == 'y')  // Move -10 degrees
-                        {
-                            if (usePositionController)
-                            {
-                                positionController[currentIndex].moveRelative(-10.0f, MovementType::SHORT_RANGE);
-                                Serial.print(F("\r\n[Info] Motor "));
-                                Serial.print(currentIndex + 1);
-                                Serial.println(F(" moving -10 degrees\r\n"));
-                            }
-                            inputBuffer = "";
-                            lastInput   = "";
-                        }
-
-                        else if (c == 'k')  // Toggle position controller
-                        {
-                            usePositionController = !usePositionController;
-                            Serial.print(F("\r\n[Info] Position controller: "));
-                            Serial.print(usePositionController ? F("ENABLED") : F("DISABLED"));
-                            Serial.println(F("\r\n"));
-                            inputBuffer = "";
-                            lastInput   = "";
-                        }
-                        */
-            else if (c == 'l')  // Show position status
+            else if (c == 'L')  // Show position status
             {
                 if (usePositionController)
                 {
@@ -836,7 +557,7 @@ void serialReadTask(void* pvParameters)
                     Serial.print(encoderState.width_interval);
                     Serial.print(F(" pulses)"));*/
 
-                    Serial.println(F("\r\n"));
+                    Serial.println();
                 }
                 else
                 {
@@ -858,14 +579,12 @@ void serialReadTask(void* pvParameters)
                         Serial.print(F(" pulses)"));
                     }
 
-                    Serial.println(F("\r\n"));
+                    Serial.println();
                 }
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c != 'a' && c != 'z' && c != 's' && c != 'x' && c != 'd' && c != 'c' && c != 'f' && c != 'v' && c != 'g' && c != 'b' && c != 'j' &&
-                     c != 'm' && c != 'q' && c != 'w' && c != 'e' && c != 'r' && c != 't' && c != 'y' && c != 'k' &&
-                     c != 'l')  // Only add to buffer if not a direct command
+            else if (c != 'A' && c != 'Z' && c != 'S' && c != 'X' && c != 'D' && c != 'C' && c != 'Q' && c != 'L')  // Only add to buffer if not a direct command
             {
                 inputBuffer += c;  // Add character to buffer
                 Serial.print(c);
@@ -884,9 +603,9 @@ void serialReadTask(void* pvParameters)
             if (c == cmdMotor)
             {
                 // Get Motor Id
-                if (c.getArgument("i").isSet())
+                if (c.getArgument("n").isSet())
                 {
-                    String motorIdStr = c.getArgument("i").getValue();
+                    String motorIdStr = c.getArgument("n").getValue();
                     setMotorId(motorIdStr);
                 }
                 if (c.getArgument("p").isSet())
@@ -967,13 +686,42 @@ void serialReadTask(void* pvParameters)
                     // Store origin position in EEPROM
                     storeOriginPosition(currentIndex, value);
                 }
-                else
+                if (c.getArgument("c").isSet())
                 {
-                    Serial.println(F("ERROR: Motor Id (-n) requires a value"));
-                    esp_task_wdt_reset();
-                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                    continue;
+                    float position = positionController[currentIndex].getCurrentAngle();
+                    Serial.print(F("*"));
+                    Serial.print(currentIndex);
+                    Serial.print(F("#"));
+                    Serial.print(position, 2);
+                    Serial.println(F("#"));
                 }
+                if (c.getArgument("d").isSet())
+                {
+                    positionController[currentIndex].stop();
+                    positionController[currentIndex].disable();
+                }
+                if (c.getArgument("e").isSet())
+                {
+                    positionController[currentIndex].enable();
+                }
+            }
+            else if (c == cmdRestart)
+            {
+                ESP.restart();
+            }
+            else if (c == cmdStop)
+            {
+                positionController[currentIndex].stop();
+            }
+            else if (c == cmdShow)
+            {
+                printCurrentSettingsAndKeyboardControls();
+            }
+            else if (c == cmdHelp)
+            {
+                Serial.print(F("Help:"));
+                Serial.print(cli.toString());
+                Serial.println();
             }
         }
 
@@ -982,7 +730,7 @@ void serialReadTask(void* pvParameters)
             String cmdError = cli.getError().toString();
             Serial.print(F("ERROR: "));
             Serial.print(cmdError);
-            Serial.print(F("\r\n"));
+            Serial.println();
         }
 
         esp_task_wdt_reset();
@@ -998,8 +746,8 @@ void setup()
     SPI.setDataMode(SPI_MODE3);
     Serial.begin(115200);
 
-    esp_task_wdt_init(10, true);
-    esp_task_wdt_add(NULL);  // Add the current task (setup)
+    esp_task_wdt_init(30, true);  // Increased timeout to 30 seconds
+    esp_task_wdt_add(NULL);       // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     delay(1000);
@@ -1017,17 +765,6 @@ void setup()
 
     // Initialize EEPROM
     initializeEEPROM();
-
-    // Create EEPROM operation queue
-    eepromOperationQueue = xQueueCreate(4, sizeof(EEPROMOperation));
-    if (eepromOperationQueue == nullptr)
-    {
-        Serial.println(F("[EEPROM] Error: Failed to create EEPROM operation queue"));
-    }
-    else
-    {
-        Serial.println(F("[EEPROM] EEPROM operation queue created successfully"));
-    }
 
     // Initialize CLI
     initializeCLI();
@@ -1094,7 +831,7 @@ void setup()
 
     Serial.println(F("[Info] Position control system initialized"));
     Serial.println(F("[Info] Use 'k' to toggle between new and legacy control"));
-    Serial.println(F("[Info] Use 'l' to show position status"));
+    Serial.println(F("[Info] Use 'L' to show position status"));
 }
 
 void loop()
@@ -1117,19 +854,7 @@ void loop()
 
     // Position controller is handled by RTOS task, no need for manual stepping here
 
-    // Process EEPROM operations from queue (safe execution in main loop)
-    if (eepromOperationQueue != nullptr && eepromOperationPending)
-    {
-        EEPROMOperation operation;
-        if (xQueueReceive(eepromOperationQueue, &operation, 0) == pdTRUE)
-        {
-            if (operation.isWrite)
-            {
-                executeEEPROMWrite(operation.motorIndex, operation.originDegrees);
-            }
-            eepromOperationPending = false;
-        }
-    }
+    // EEPROM operations are now handled by dedicated task
 
     // Process encoder data periodically for all enabled encoders
     static uint32_t lastEncoderUpdate = 0;

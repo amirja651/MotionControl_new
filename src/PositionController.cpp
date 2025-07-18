@@ -10,16 +10,7 @@ PositionController* PositionController::_instances[4]              = {nullptr};
 
 // Constructor with encoder
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
-    : _driver(driver),
-      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
-      _encoder(&encoder),
-      _dirPin(dirPin),
-      _stepPin(stepPin),
-      _enPin(enPin),
-      _motorId(motorId),
-      _status{},
-      _enabled(false),
-      _initialized(false)
+    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(&encoder), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -48,16 +39,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 
 // Constructor without encoder (for demo)
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin)
-    : _driver(driver),
-      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
-      _encoder(nullptr),
-      _dirPin(dirPin),
-      _stepPin(stepPin),
-      _enPin(enPin),
-      _motorId(motorId),
-      _status{},
-      _enabled(false),
-      _initialized(false)
+    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(nullptr), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -296,10 +278,12 @@ MotorStatus PositionController::getStatus() const
     MotorStatus status = _status;
 
     // Update with current values
-    status.currentAngle      = getCurrentAngle();
+    status.currentAngle = getCurrentAngle();
+    Serial.printf("[PositionController] Motor %d current angle: %.2f\n", _motorId + 1, status.currentAngle);
     status.currentMicrosteps = getCurrentMicrosteps();
-    status.isMoving          = isMoving();
-    status.isEnabled         = isEnabled();
+    Serial.printf("[PositionController] Motor %d current microsteps: %u\n", _motorId + 1, status.currentMicrosteps);
+    status.isMoving  = isMoving();
+    status.isEnabled = isEnabled();
 
     return status;
 }
@@ -482,8 +466,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetMicrosteps));
 
-    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d)\n", _motorId + 1, command.targetAngle,
-                  static_cast<int>(command.movementType));
+    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType));
 
     return true;
 }
@@ -569,27 +552,27 @@ void PositionController::runPositionControl()
     }
 }
 
-ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, float microsteps, float resolution) const
+ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, uint32_t microsteps, uint32_t resolution) const
 {
     ConvertValuesFromDegrees convert;
-    convert.PULSES_FROM_DEGREES = static_cast<int32_t>(std::round(degrees * (resolution / 360.0f)));
+    convert.PULSES_FROM_DEGREES = static_cast<uint32_t>(std::round(degrees * (resolution / 360.0f)));
     convert.STEPS_FROM_DEGREES  = static_cast<uint32_t>(std::round(degrees * (microsteps / 360.0f)));
     return convert;
 }
 
-ConvertValuesFromPulses PositionController::convertFromPulses(float pulses, float microsteps, float resolution) const
+ConvertValuesFromPulses PositionController::convertFromPulses(uint32_t pulses, uint32_t microsteps, uint32_t resolution) const
 {
     ConvertValuesFromPulses convert;
-    convert.DEGREES_FROM_PULSES = pulses * (360.0f / resolution);
+    convert.DEGREES_FROM_PULSES = static_cast<float>(pulses * (360.0f / resolution));
     convert.STEPS_FROM_PULSES   = static_cast<uint32_t>(std::round(pulses * (microsteps / resolution)));
     return convert;
 }
 
-ConvertValuesFromSteps PositionController::convertFromMSteps(float steps, float microsteps, float resolution) const
+ConvertValuesFromSteps PositionController::convertFromMSteps(uint32_t steps, uint32_t microsteps, uint32_t resolution) const
 {
     ConvertValuesFromSteps convert;
-    convert.PULSES_FROM_STEPS  = static_cast<int32_t>(std::round(steps * (resolution / microsteps)));
-    convert.DEGREES_FROM_STEPS = steps * (360.0f / microsteps);
+    convert.PULSES_FROM_STEPS  = static_cast<uint32_t>(std::round(steps * (resolution / microsteps)));
+    convert.DEGREES_FROM_STEPS = static_cast<float>(steps * (360.0f / microsteps));
     return convert;
 }
 
