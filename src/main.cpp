@@ -6,6 +6,7 @@
 #include <AccelStepper.h>
 #include <Arduino.h>
 #include <CLIManager.h>
+#include <EEPROM.h>
 #include <SPI.h>
 #include <esp_task_wdt.h>
 
@@ -70,6 +71,24 @@ static constexpr uint16_t CURRENT_INCREMENT = 50;  // Current change increment
 static constexpr uint8_t  IRUN_INCREMENT    = 1;   // IRUN change increment
 static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 
+// EEPROM configuration for origin positions
+static constexpr uint16_t EEPROM_SIZE           = 512;                // EEPROM size in bytes
+static constexpr uint16_t ORIGIN_POSITIONS_ADDR = 0;                  // Starting address for origin positions
+static constexpr uint16_t ORIGIN_POSITIONS_SIZE = 4 * sizeof(float);  // 4 motors * float size
+static constexpr uint16_t EEPROM_MAGIC_NUMBER   = 0x1234;             // Magic number to verify EEPROM is initialized
+static constexpr uint16_t MAGIC_NUMBER_ADDR     = ORIGIN_POSITIONS_ADDR + ORIGIN_POSITIONS_SIZE;
+
+// EEPROM operation queue for RTOS safety
+struct EEPROMOperation
+{
+    uint8_t motorIndex;
+    float   originDegrees;
+    bool    isWrite;
+};
+
+static QueueHandle_t eepromOperationQueue   = nullptr;
+static bool          eepromOperationPending = false;
+
 // Movement control parameters
 static bool               motorMoving    = false;    // Track if motor is currently moving
 static constexpr uint32_t MOVEMENT_STEPS = 1000;     // Number of steps to move
@@ -99,6 +118,144 @@ uint8_t calculateByDesiredCurrent(uint16_t rms_current, uint8_t desired_current)
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
 {
     return (rms_current * number) / 32;
+}
+
+// EEPROM functions for origin position management
+void initializeEEPROM()
+{
+    EEPROM.begin(EEPROM_SIZE);
+
+    // Check if EEPROM is initialized with magic number
+    uint16_t storedMagic = EEPROM.readUShort(MAGIC_NUMBER_ADDR);
+    if (storedMagic != EEPROM_MAGIC_NUMBER)
+    {
+        // Disable interrupts during EEPROM initialization
+        noInterrupts();
+
+        // Initialize EEPROM with default values
+        float defaultOrigins[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        for (uint8_t i = 0; i < 4; i++)
+        {
+            EEPROM.writeFloat(ORIGIN_POSITIONS_ADDR + (i * sizeof(float)), defaultOrigins[i]);
+        }
+        EEPROM.writeUShort(MAGIC_NUMBER_ADDR, EEPROM_MAGIC_NUMBER);
+
+        // Commit with error checking
+        bool commitSuccess = EEPROM.commit();
+
+        // Re-enable interrupts
+        interrupts();
+
+        // Small delay to allow system to stabilize after EEPROM operation
+        delay(10);
+
+        // Reset watchdog timer after EEPROM operation
+        esp_task_wdt_reset();
+
+        if (commitSuccess)
+        {
+            Serial.println(F("[EEPROM] Initialized with default origin positions"));
+        }
+        else
+        {
+            Serial.println(F("[EEPROM] Error: Failed to initialize EEPROM"));
+        }
+    }
+    else
+    {
+        Serial.println(F("[EEPROM] Already initialized, loading stored origin positions"));
+    }
+}
+
+void storeOriginPosition(uint8_t motorIndex, float originDegrees)
+{
+    if (motorIndex >= 4)
+    {
+        Serial.println(F("[EEPROM] Error: Invalid motor index"));
+        return;
+    }
+
+    // Queue EEPROM operation for safe execution in main loop
+    if (eepromOperationQueue != nullptr)
+    {
+        EEPROMOperation operation;
+        operation.motorIndex    = motorIndex;
+        operation.originDegrees = originDegrees;
+        operation.isWrite       = true;
+
+        if (xQueueSend(eepromOperationQueue, &operation, pdMS_TO_TICKS(100)) == pdTRUE)
+        {
+            eepromOperationPending = true;
+            Serial.print(F("[EEPROM] Queued origin position for motor "));
+            Serial.print(motorIndex + 1);
+            Serial.print(F(": "));
+            Serial.print(originDegrees, 2);
+            Serial.println(F(" degrees"));
+        }
+        else
+        {
+            Serial.println(F("[EEPROM] Error: Failed to queue EEPROM operation"));
+        }
+    }
+    else
+    {
+        Serial.println(F("[EEPROM] Error: EEPROM queue not initialized"));
+    }
+}
+
+float loadOriginPosition(uint8_t motorIndex)
+{
+    if (motorIndex >= 4)
+    {
+        Serial.println(F("[EEPROM] Error: Invalid motor index, using 0.0"));
+        return 0.0f;
+    }
+
+    uint16_t addr          = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
+    float    originDegrees = EEPROM.readFloat(addr);
+
+    Serial.print(F("[EEPROM] Loaded origin position for motor "));
+    Serial.print(motorIndex + 1);
+    Serial.print(F(": "));
+    Serial.print(originDegrees, 2);
+    Serial.println(F(" degrees"));
+
+    return originDegrees;
+}
+
+// Safe EEPROM write function for main loop execution
+void executeEEPROMWrite(uint8_t motorIndex, float originDegrees)
+{
+    // Disable interrupts during EEPROM write to prevent conflicts
+    noInterrupts();
+
+    uint16_t addr = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
+    EEPROM.writeFloat(addr, originDegrees);
+
+    // Commit with error checking
+    bool commitSuccess = EEPROM.commit();
+
+    // Re-enable interrupts
+    interrupts();
+
+    // Small delay to allow system to stabilize after EEPROM operation
+    delay(10);
+
+    // Reset watchdog timer after EEPROM operation
+    esp_task_wdt_reset();
+
+    if (commitSuccess)
+    {
+        Serial.print(F("[EEPROM] Successfully stored origin position for motor "));
+        Serial.print(motorIndex + 1);
+        Serial.print(F(": "));
+        Serial.print(originDegrees, 2);
+        Serial.println(F(" degrees"));
+    }
+    else
+    {
+        Serial.println(F("[EEPROM] Error: Failed to commit to EEPROM"));
+    }
 }
 
 void printAllSettings()
@@ -174,6 +331,7 @@ void printHelp()
 
     Serial.println(F("    'k' - Toggle position controller"));
     Serial.println(F("    'l' - Show position status"));
+    Serial.println(F("    'p' - Process encoder 10 times (100ms each)"));
     printAllSettings();
     Serial.println(F("=================================="));
     Serial.flush();
@@ -212,8 +370,6 @@ void setMotorId(String motorId)
     // Serial.print(F("[Info][M101] Motor is selected: "));
     // Serial.println(index);
 }
-
-static uint32_t orginSteps = 0;
 
 // Serial Read Task (M109)
 void serialReadTask(void* pvParameters)
@@ -505,7 +661,7 @@ void serialReadTask(void* pvParameters)
             {
                 if (usePositionController)
                 {
-                    float targetAngle = positionController[currentIndex].convertFromMSteps(orginSteps).DEGREES_FROM_STEPS;
+                    float targetAngle = loadOriginPosition(currentIndex);
                     // Use new position controller
                     MovementType movementType = MovementType::MEDIUM_RANGE;
                     if (abs(targetAngle) <= 40.0f)
@@ -652,25 +808,33 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F(", Enabled: "));
                     Serial.print(status.isEnabled ? F("YES") : F("NO"));
 
-                    // Add encoder reading if available
-                    if (driverEnabled[currentIndex] && encoder[currentIndex].isEnabled())
+                    if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
                     {
-                        encoder[currentIndex].processPWM();  // Process encoder data
-                        EncoderState encoderState = encoder[currentIndex].getState();
-                        Serial.print(F(", Encoder: "));
-                        Serial.print(encoderState.position_degrees, 2);
-                        Serial.print(F("°"));
-                        Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
-                        /*Serial.print(F(" (position: "));
-                        Serial.print(encoderState.position_pulse);
-                        Serial.print(F(", High: "));
-                        Serial.print(encoderState.width_high);
-                        Serial.print(F(", Low: "));
-                        Serial.print(encoderState.width_low);
-                        Serial.print(F(", Interval: "));
-                        Serial.print(encoderState.width_interval);
-                        Serial.print(F(" pulses)"));*/
+                        Serial.println(F("[Encoder] Error: Invalid motor index or encoder not enabled"));
+                        return;
                     }
+
+                    for (int i = 0; i < 10; i++)
+                    {
+                        encoder[currentIndex].processPWM();
+                        delay(100);
+                        esp_task_wdt_reset();
+                    }
+
+                    EncoderState encoderState = encoder[currentIndex].getState();
+                    Serial.print(F(", Encoder: "));
+                    Serial.print(encoderState.position_degrees, 2);
+                    Serial.print(F("°"));
+                    Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
+                    /*Serial.print(F(" (position: "));
+                    Serial.print(encoderState.position_pulse);
+                    Serial.print(F(", High: "));
+                    Serial.print(encoderState.width_high);
+                    Serial.print(F(", Low: "));
+                    Serial.print(encoderState.width_low);
+                    Serial.print(F(", Interval: "));
+                    Serial.print(encoderState.width_interval);
+                    Serial.print(F(" pulses)"));*/
 
                     Serial.println(F("\r\n"));
                 }
@@ -699,7 +863,6 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-
             else if (c != 'a' && c != 'z' && c != 's' && c != 'x' && c != 'd' && c != 'c' && c != 'f' && c != 'v' && c != 'g' && c != 'b' && c != 'j' &&
                      c != 'm' && c != 'q' && c != 'w' && c != 'e' && c != 'r' && c != 't' && c != 'y' && c != 'k' &&
                      c != 'l')  // Only add to buffer if not a direct command
@@ -799,9 +962,10 @@ void serialReadTask(void* pvParameters)
                     Serial.print(cvfs.DEGREES_FROM_STEPS);
                     Serial.print(F(", "));
                     Serial.println(cvfs.PULSES_FROM_STEPS);
-
-                    orginSteps = cvfd.STEPS_FROM_DEGREES;
                     positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
+
+                    // Store origin position in EEPROM
+                    storeOriginPosition(currentIndex, value);
                 }
                 else
                 {
@@ -850,6 +1014,20 @@ void setup()
 #else
     Serial.println(F("Stack overflow checking **NOT** enabled"));
 #endif
+
+    // Initialize EEPROM
+    initializeEEPROM();
+
+    // Create EEPROM operation queue
+    eepromOperationQueue = xQueueCreate(4, sizeof(EEPROMOperation));
+    if (eepromOperationQueue == nullptr)
+    {
+        Serial.println(F("[EEPROM] Error: Failed to create EEPROM operation queue"));
+    }
+    else
+    {
+        Serial.println(F("[EEPROM] EEPROM operation queue created successfully"));
+    }
 
     // Initialize CLI
     initializeCLI();
@@ -938,6 +1116,20 @@ void loop()
     }
 
     // Position controller is handled by RTOS task, no need for manual stepping here
+
+    // Process EEPROM operations from queue (safe execution in main loop)
+    if (eepromOperationQueue != nullptr && eepromOperationPending)
+    {
+        EEPROMOperation operation;
+        if (xQueueReceive(eepromOperationQueue, &operation, 0) == pdTRUE)
+        {
+            if (operation.isWrite)
+            {
+                executeEEPROMWrite(operation.motorIndex, operation.originDegrees);
+            }
+            eepromOperationPending = false;
+        }
+    }
 
     // Process encoder data periodically for all enabled encoders
     static uint32_t lastEncoderUpdate = 0;
