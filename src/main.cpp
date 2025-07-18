@@ -3,17 +3,15 @@
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
-#include <AccelStepper.h>
 #include <Arduino.h>
 #include <CLIManager.h>
 #include <EEPROM.h>
 #include <SPI.h>
 #include <esp_task_wdt.h>
 
-TMC5160Manager driver[4] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
-
-MotorSpeedController motor[4] = {MotorSpeedController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0]), MotorSpeedController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1]),
-                                 MotorSpeedController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2]), MotorSpeedController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3])};
+// Driver status tracking
+static bool    driverEnabled[4] = {false, false, false, false};
+TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
 // MAE3 Encoders for position feedback (read-only, not used for control)
 MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
@@ -22,15 +20,8 @@ MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(En
 PositionController positionController[4] = {PositionController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0], encoder[0]), PositionController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
                                             PositionController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2], encoder[2]), PositionController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
-// Legacy AccelStepper instances (kept for compatibility)
-AccelStepper stepper[4] = {AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[0], DriverPins::DIR[0]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[1], DriverPins::DIR[1]), AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[2], DriverPins::DIR[2]),
-                           AccelStepper(AccelStepper::DRIVER, DriverPins::STEP[3], DriverPins::DIR[3])};
-
 static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
 TaskHandle_t              serialReadTaskHandle = NULL;
-
-// Driver status tracking
-static bool driverEnabled[4] = {false, false, false, false};
 
 // Command history support
 #define HISTORY_SIZE 10
@@ -49,7 +40,7 @@ static constexpr uint8_t MAX_IRUN = 31;  // Maximum IRUN value (31/32 of RMS cur
 static constexpr uint8_t MIN_IHOLD = 1;   // Minimum IHOLD value (1/32 of RMS current)
 static constexpr uint8_t MAX_IHOLD = 31;  // Maximum IHOLD value (31/32 of RMS current)
 
-static constexpr uint16_t CURRENT_INCREMENT = 50;  // Current change increment
+static constexpr uint16_t CURRENT_INCREMENT = 10;  // Current change increment
 static constexpr uint8_t  IRUN_INCREMENT    = 1;   // IRUN change increment
 static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 
@@ -59,32 +50,6 @@ static constexpr uint16_t ORIGIN_POSITIONS_ADDR = 0;                  // Startin
 static constexpr uint16_t ORIGIN_POSITIONS_SIZE = 4 * sizeof(float);  // 4 motors * float size
 static constexpr uint16_t EEPROM_MAGIC_NUMBER   = 0x1234;             // Magic number to verify EEPROM is initialized
 static constexpr uint16_t MAGIC_NUMBER_ADDR     = ORIGIN_POSITIONS_ADDR + ORIGIN_POSITIONS_SIZE;
-
-// Movement control parameters
-static bool              motorMoving    = false;    // Track if motor is currently moving
-static constexpr int32_t MOVEMENT_STEPS = 1000;     // Number of steps to move
-static constexpr float   MOVEMENT_SPEED = 1000.0f;  // Steps per second
-
-// Position control variables
-static long targetSteps           = 0;
-static bool usePositionController = true;  // Toggle between new and legacy control
-
-int findIndex(uint16_t array[], int length, uint16_t value)
-{
-    for (int i = 0; i < length; i++)
-    {
-        if (array[i] == value)
-        {
-            return i;
-        }
-    }
-    return -1;
-}
-
-uint8_t calculateByDesiredCurrent(uint16_t rms_current, uint8_t desired_current)
-{
-    return (desired_current * 32) / rms_current;
-}
 
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
 {
@@ -464,115 +429,81 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == 'Q')  // Move to 0 degrees
             {
-                if (usePositionController)
+                float targetAngle = loadOriginPosition(currentIndex);
+                // Use new position controller
+                MovementType movementType = MovementType::MEDIUM_RANGE;
+                if (abs(targetAngle) <= 40.0f)
+                    movementType = MovementType::SHORT_RANGE;
+                else if (abs(targetAngle) >= 100.0f)
+                    movementType = MovementType::LONG_RANGE;
+
+                if (targetAngle == 0)
+                    targetAngle = 0.01;
+                else if (targetAngle == 360)
+                    targetAngle = 359.9955f;
+
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
+
+                if (success)
                 {
-                    float targetAngle = loadOriginPosition(currentIndex);
-                    // Use new position controller
-                    MovementType movementType = MovementType::MEDIUM_RANGE;
-                    if (abs(targetAngle) <= 40.0f)
-                        movementType = MovementType::SHORT_RANGE;
-                    else if (abs(targetAngle) >= 100.0f)
-                        movementType = MovementType::LONG_RANGE;
-
-                    if (targetAngle == 0)
-                        targetAngle = 0.01;
-                    else if (targetAngle == 360)
-                        targetAngle = 359.9955f;
-
-                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
-
-                    if (success)
-                    {
-                        Serial.print(F("[Info] Motor "));
-                        Serial.print(currentIndex + 1);
-                        Serial.print(F(" moving to "));
-                        Serial.print(targetAngle, 2);
-                        Serial.println(F(" degrees"));
-                    }
-                    else
-                    {
-                        Serial.println(F("[Error] Failed to queue movement command"));
-                    }
+                    Serial.print(F("[Info] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.print(F(" moving to "));
+                    Serial.print(targetAngle, 2);
+                    Serial.println(F(" degrees"));
                 }
                 else
                 {
-                    // Legacy control
-                    targetSteps = 0;
-                    stepper[currentIndex].moveTo(targetSteps);
-                    stepper[currentIndex].enableOutputs();
-                    motorMoving = true;
+                    Serial.println(F("[Error] Failed to queue movement command"));
                 }
+
                 inputBuffer = "";
                 lastInput   = "";
             }
             else if (c == 'L')  // Show position status
             {
-                if (usePositionController)
+                MotorStatus status = positionController[currentIndex].getStatus();
+                Serial.print(F("\r\n[Position Status] Motor "));
+                Serial.print(currentIndex + 1);
+                Serial.print(F(": Current: "));
+                Serial.print(status.currentAngle, 2);
+                Serial.print(F("°, Target: "));
+                Serial.print(status.targetAngle, 2);
+                Serial.print(F("°, Moving: "));
+                Serial.print(status.isMoving ? F("YES") : F("NO"));
+                Serial.print(F(", Enabled: "));
+                Serial.print(status.isEnabled ? F("YES") : F("NO"));
+
+                if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
                 {
-                    MotorStatus status = positionController[currentIndex].getStatus();
-                    Serial.print(F("\r\n[Position Status] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.print(F(": Current: "));
-                    Serial.print(status.currentAngle, 2);
-                    Serial.print(F("°, Target: "));
-                    Serial.print(status.targetAngle, 2);
-                    Serial.print(F("°, Moving: "));
-                    Serial.print(status.isMoving ? F("YES") : F("NO"));
-                    Serial.print(F(", Enabled: "));
-                    Serial.print(status.isEnabled ? F("YES") : F("NO"));
-
-                    if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
-                    {
-                        Serial.println(F("[Encoder] Error: Invalid motor index or encoder not enabled"));
-                        return;
-                    }
-
-                    for (int i = 0; i < 10; i++)
-                    {
-                        encoder[currentIndex].processPWM();
-                        delay(100);
-                        esp_task_wdt_reset();
-                    }
-
-                    EncoderState encoderState = encoder[currentIndex].getState();
-                    Serial.print(F(", Encoder: "));
-                    Serial.print(encoderState.position_degrees, 2);
-                    Serial.print(F("°"));
-                    Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
-                    /*Serial.print(F(" (position: "));
-                    Serial.print(encoderState.position_pulse);
-                    Serial.print(F(", High: "));
-                    Serial.print(encoderState.width_high);
-                    Serial.print(F(", Low: "));
-                    Serial.print(encoderState.width_low);
-                    Serial.print(F(", Interval: "));
-                    Serial.print(encoderState.width_interval);
-                    Serial.print(F(" pulses)"));*/
-
-                    Serial.println();
+                    Serial.println(F("[Encoder] Error: Invalid motor index or encoder not enabled"));
+                    return;
                 }
-                else
+
+                for (int i = 0; i < 10; i++)
                 {
-                    Serial.print(F("\r\n[Position Status] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.print(F(": Using legacy control"));
-
-                    // Add encoder reading for legacy mode too
-                    if (driverEnabled[currentIndex] && encoder[currentIndex].isEnabled())
-                    {
-                        encoder[currentIndex].processPWM();  // Process encoder data
-                        EncoderState encoderState = encoder[currentIndex].getState();
-                        Serial.print(F(", Encoder: "));
-                        Serial.print(encoderState.position_degrees, 2);
-                        Serial.print(F("°"));
-                        Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
-                        Serial.print(F(" ("));
-                        Serial.print(encoderState.position_pulse);
-                        Serial.print(F(" pulses)"));
-                    }
-
-                    Serial.println();
+                    encoder[currentIndex].processPWM();
+                    delay(100);
+                    esp_task_wdt_reset();
                 }
+
+                EncoderState encoderState = encoder[currentIndex].getState();
+                Serial.print(F(", Encoder: "));
+                Serial.print(encoderState.position_degrees, 2);
+                Serial.print(F("°"));
+                Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
+                /*Serial.print(F(" (position: "));
+                Serial.print(encoderState.position_pulse);
+                Serial.print(F(", High: "));
+                Serial.print(encoderState.width_high);
+                Serial.print(F(", Low: "));
+                Serial.print(encoderState.width_low);
+                Serial.print(F(", Interval: "));
+                Serial.print(encoderState.width_interval);
+                Serial.print(F(" pulses)"));*/
+
+                Serial.println();
+
                 inputBuffer = "";
                 lastInput   = "";
             }
@@ -605,49 +536,31 @@ void serialReadTask(void* pvParameters)
                     String degreesStr  = c.getArgument("p").getValue();
                     float  targetAngle = degreesStr.toFloat();
 
-                    if (usePositionController)
+                    // Use new position controller
+                    MovementType movementType = MovementType::MEDIUM_RANGE;
+                    if (abs(targetAngle) <= 40.0f)
+                        movementType = MovementType::SHORT_RANGE;
+                    else if (abs(targetAngle) >= 100.0f)
+                        movementType = MovementType::LONG_RANGE;
+
+                    if (targetAngle == 0)
+                        targetAngle = 0.01;
+                    else if (targetAngle == 360)
+                        targetAngle = 359.9955f;
+
+                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
+
+                    if (success)
                     {
-                        // Use new position controller
-                        MovementType movementType = MovementType::MEDIUM_RANGE;
-                        if (abs(targetAngle) <= 40.0f)
-                            movementType = MovementType::SHORT_RANGE;
-                        else if (abs(targetAngle) >= 100.0f)
-                            movementType = MovementType::LONG_RANGE;
-
-                        if (targetAngle == 0)
-                            targetAngle = 0.01;
-                        else if (targetAngle == 360)
-                            targetAngle = 359.9955f;
-
-                        bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
-
-                        if (success)
-                        {
-                            Serial.print(F("[Info] Motor "));
-                            Serial.print(currentIndex + 1);
-                            Serial.print(F(" moving to "));
-                            Serial.print(targetAngle, 2);
-                            Serial.println(F(" degrees"));
-                        }
-                        else
-                        {
-                            Serial.println(F("[Error] Failed to queue movement command"));
-                        }
+                        Serial.print(F("[Info] Motor "));
+                        Serial.print(currentIndex + 1);
+                        Serial.print(F(" moving to "));
+                        Serial.print(targetAngle, 2);
+                        Serial.println(F(" degrees"));
                     }
                     else
                     {
-                        // Legacy control
-                        int stepsPerRev = 200 * 256;
-                        targetSteps     = (targetAngle / 360.0) * stepsPerRev;
-
-                        stepper[currentIndex].moveTo(targetSteps);
-                        stepper[currentIndex].enableOutputs();
-                        motorMoving = true;
-
-                        Serial.print(F("Target steps: "));
-                        Serial.println(targetSteps);
-                        Serial.print(F("Current position: "));
-                        Serial.println(stepper[currentIndex].currentPosition());
+                        Serial.println(F("[Error] Failed to queue movement command"));
                     }
                 }
                 if (c.getArgument("o").isSet())
@@ -793,9 +706,6 @@ void setup()
 
             // Configure motor parameters
             driver[index].configureDriver_All_Motors(true);
-
-            // Initialize all motor controllers
-            motor[index].begin();
         }
     }
 
@@ -821,53 +731,12 @@ void setup()
     currentIndex = 2;
     encoder[currentIndex].enable();  // Enable encoder for reading
 
-    // Configure legacy stepper for compatibility
-    static constexpr uint32_t steps_per_mm = 80;
-    stepper[currentIndex].setMaxSpeed(50 * steps_per_mm);        // 100mm/s @ 80 steps/mm
-    stepper[currentIndex].setAcceleration(1000 * steps_per_mm);  // 2000mm/s^2
-    stepper[currentIndex].setEnablePin(DriverPins::EN[2]);
-    stepper[currentIndex].setPinsInverted(false, false, true);
-    stepper[currentIndex].enableOutputs();
-
     Serial.println(F("[Info] Position control system initialized"));
     Serial.println(F("[Info] Use 'L' to show position status"));
 }
 
 void loop()
 {
-    // Handle legacy motor control (when not using position controller)
-    if (!usePositionController && motorMoving)
-    {
-        if (stepper[currentIndex].distanceToGo() == 0)
-        {
-            motorMoving = false;
-            stepper[currentIndex].disableOutputs();
-            delay(10);
-            Serial.print(F("Target steps: "));
-            Serial.println(targetSteps);
-            Serial.print(F("Current position: "));
-            Serial.println(stepper[currentIndex].currentPosition());
-        }
-        stepper[currentIndex].run();
-    }
-
-    // Position controller is handled by RTOS task, no need for manual stepping here
-
-    // EEPROM operations are now handled by dedicated task
-
-    // Process encoder data periodically for all enabled encoders
-    static uint32_t lastEncoderUpdate = 0;
-    if (millis() - lastEncoderUpdate > 100)  // Update every 100ms
-    {
-        for (uint8_t index = 0; index < 4; index++)
-        {
-            if (driverEnabled[index] && encoder[index].isEnabled())
-            {
-                encoder[index].processPWM();
-            }
-        }
-        lastEncoderUpdate = millis();
-    }
-
     esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
