@@ -471,7 +471,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetMicrosteps));
 
-    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType));
+    // Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType));
 
     return true;
 }
@@ -553,7 +553,8 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
 
-        Serial.printf("[PositionController] Motor %d reached target (%.2f degrees)\n", _motorId + 1, _status.targetAngle);
+        // Serial.printf("[PositionController] Motor %d reached target (%.2f degrees)\n", _motorId + 1, _status.targetAngle);
+        Serial.printf("[PositionController] Motor %d reached target.\n", _motorId + 1);
     }
 }
 
