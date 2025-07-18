@@ -249,6 +249,7 @@ void setMotorId(String motorId)
     encoder[currentIndex].enable();
 }
 
+// Serial read task (M101)
 void serialReadTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(100);
@@ -473,6 +474,8 @@ void serialReadTask(void* pvParameters)
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled: "));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
+
+
 
                 if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
                 {
@@ -728,8 +731,7 @@ void setup()
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
-    currentIndex = 2;
-    encoder[currentIndex].enable();  // Enable encoder for reading
+    setMotorId("2");
 
     Serial.println(F("[Info] Position control system initialized"));
     Serial.println(F("[Info] Use 'L' to show position status"));

@@ -79,7 +79,7 @@ public:
 
     // Initialization
     bool begin();
-    void setCurrentPosition(long position);
+    void setCurrentPosition(int32_t position);
     void enable();
     void ReadEncoderValue();
     void disable();
@@ -97,7 +97,7 @@ public:
     float       getTargetAngle() const;
     int32_t     getCurrentMicrosteps() const;
     int32_t     getTargetMicrosteps() const;
-    MotorStatus getStatus() const;
+    MotorStatus getStatus();
 
     // Configuration
     void setMaxSpeed(float speedStepsPerSec);

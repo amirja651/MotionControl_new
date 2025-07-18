@@ -95,7 +95,7 @@ bool PositionController::begin()
     return true;
 }
 
-void PositionController::setCurrentPosition(long position)
+void PositionController::setCurrentPosition(int32_t position)
 {
     _stepper.setCurrentPosition(position);
     _status.currentMicrosteps = position;
@@ -164,21 +164,21 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
 {
     if (!_enabled || !_initialized)
         return false;
-    Serial.printf("[PositionController] Motor %d targetAngle: %.2f\n", _motorId + 1, targetAngle);
+    // Serial.printf("[PositionController] Motor %d targetAngle: %.2f\n", _motorId + 1, targetAngle);
 
     // Wrap target angle to 0-360 range
     targetAngle = wrapAngle(targetAngle);
-    Serial.printf("[PositionController] Motor %d targetAngle: %.2f\n", _motorId + 1, targetAngle);
+    // Serial.printf("[PositionController] Motor %d targetAngle: %.2f\n", _motorId + 1, targetAngle);
 
     // Read encoder value and use it as starting position
     float currentAngle = wrapAngle(getCurrentAngle());
-    Serial.printf("[PositionController] Motor %d currentAngle: %.2f\n", _motorId + 1, currentAngle);
+    // Serial.printf("[PositionController] Motor %d currentAngle: %.2f\n", _motorId + 1, currentAngle);
 
     float delta = calculateShortestPath(currentAngle, targetAngle);
-    Serial.printf("[PositionController] Motor %d delta: %.2f\n", _motorId + 1, delta);
+    // Serial.printf("[PositionController] Motor %d delta: %.2f\n", _motorId + 1, delta);
 
     float adjustedTarget = currentAngle + delta;
-    Serial.printf("[PositionController] Motor %d adjustedTarget: %.2f\n", _motorId + 1, adjustedTarget);
+    // Serial.printf("[PositionController] Motor %d adjustedTarget: %.2f\n", _motorId + 1, adjustedTarget);
 
     // Create movement command
     MovementCommand command;
@@ -277,15 +277,18 @@ int32_t PositionController::getTargetMicrosteps() const
     return _status.targetMicrosteps;
 }
 
-MotorStatus PositionController::getStatus() const
+MotorStatus PositionController::getStatus()
 {
     MotorStatus status = _status;
 
     // Update with current values
-    status.currentAngle      = getCurrentAngle();
-    status.currentMicrosteps = getCurrentMicrosteps();
-    status.isMoving          = isMoving();
-    status.isEnabled         = isEnabled();
+    status.targetAngle  = wrapAngle(getTargetAngle());
+    status.currentAngle = wrapAngle(getCurrentAngle());
+    int32_t steps       = convertFromDegrees(status.currentAngle).STEPS_FROM_DEGREES;
+    setCurrentPosition(steps);
+    // status.currentMicrosteps = getCurrentMicrosteps();
+    status.isMoving  = isMoving();
+    status.isEnabled = isEnabled();
 
     return status;
 }
