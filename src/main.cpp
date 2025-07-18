@@ -91,7 +91,6 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
     return (rms_current * number) / 32;
 }
 
-// EEPROM functions for origin position management
 void initializeEEPROM()
 {
     EEPROM.begin(EEPROM_SIZE);
@@ -160,13 +159,6 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
         return;
     }
 
-    // Simple direct EEPROM write without queue
-    Serial.print(F("[EEPROM] Storing origin position for motor "));
-    Serial.print(motorIndex + 1);
-    Serial.print(F(": "));
-    Serial.print(originDegrees, 2);
-    Serial.println(F(" degrees..."));
-
     esp_task_wdt_reset();
 
     uint16_t addr = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
@@ -185,15 +177,7 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
     bool commitSuccess = EEPROM.commit();
     esp_task_wdt_reset();
 
-    if (commitSuccess)
-    {
-        Serial.print(F("[EEPROM] Successfully stored origin position for motor "));
-        Serial.print(motorIndex + 1);
-        Serial.print(F(": "));
-        Serial.print(originDegrees, 2);
-        Serial.println(F(" degrees"));
-    }
-    else
+    if (!commitSuccess)
     {
         Serial.println(F("[EEPROM] Error: Failed to commit to EEPROM"));
     }
@@ -291,7 +275,6 @@ void setMotorId(String motorId)
     // Serial.println(index);
 }
 
-// Serial Read Task (M109)
 void serialReadTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(100);
@@ -661,30 +644,37 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("o").isSet())
                 {
                     String valueStr = c.getArgument("o").getValue();
-                    float  value    = valueStr.toFloat();
 
-                    ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
-                    ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
-                    ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
+                    if (valueStr != "-9999.0")
+                    {
+                        float                    value = valueStr.toFloat();
+                        ConvertValuesFromDegrees cvfd  = positionController[currentIndex].convertFromDegrees(value);
+                        ConvertValuesFromPulses  cvfp  = positionController[currentIndex].convertFromPulses(value);
+                        ConvertValuesFromSteps   cvfs  = positionController[currentIndex].convertFromMSteps(value);
 
-                    Serial.print(F("From Degrees: "));
-                    Serial.print(cvfd.PULSES_FROM_DEGREES);
-                    Serial.print(F(", "));
-                    Serial.println(cvfd.STEPS_FROM_DEGREES);
+                        Serial.print(F("From Degrees: "));
+                        Serial.print(cvfd.PULSES_FROM_DEGREES);
+                        Serial.print(F(", "));
+                        Serial.println(cvfd.STEPS_FROM_DEGREES);
 
-                    Serial.print(F("From Pulses: "));
-                    Serial.print(cvfp.DEGREES_FROM_PULSES);
-                    Serial.print(F(", "));
-                    Serial.println(cvfp.STEPS_FROM_PULSES);
+                        Serial.print(F("From Pulses: "));
+                        Serial.print(cvfp.DEGREES_FROM_PULSES);
+                        Serial.print(F(", "));
+                        Serial.println(cvfp.STEPS_FROM_PULSES);
 
-                    Serial.print(F("From Steps: "));
-                    Serial.print(cvfs.DEGREES_FROM_STEPS);
-                    Serial.print(F(", "));
-                    Serial.println(cvfs.PULSES_FROM_STEPS);
-                    positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
+                        Serial.print(F("From Steps: "));
+                        Serial.print(cvfs.DEGREES_FROM_STEPS);
+                        Serial.print(F(", "));
+                        Serial.println(cvfs.PULSES_FROM_STEPS);
+                        positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
 
-                    // Store origin position in EEPROM
-                    storeOriginPosition(currentIndex, value);
+                        // Store origin position in EEPROM
+                        storeOriginPosition(currentIndex, value);
+                    }
+                    else
+                    {
+                        loadOriginPosition(currentIndex);
+                    }
                 }
                 if (c.getArgument("c").isSet())
                 {
