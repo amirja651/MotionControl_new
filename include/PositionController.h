@@ -12,10 +12,10 @@
 #include <freertos/task.h>
 
 // Motor configuration constants
-static constexpr uint16_t STEPS_PER_REVOLUTION      = 200;                                         // Standard stepper motor
-static constexpr uint16_t MICROSTEPS_PER_STEP       = DEFAULT_CURRENT_PANCAKE;                     // 32 microsteps
-static constexpr uint32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;  // 6400 microsteps
-static constexpr float    POSITION_ACCURACY_DEGREES = 0.1f;                                        // Target accuracy
+static constexpr int16_t STEPS_PER_REVOLUTION      = 200;                                            // Standard stepper motor
+static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(DEFAULT_CURRENT_PANCAKE);  // 32 microsteps
+static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;     // 6400 microsteps
+static constexpr float   POSITION_ACCURACY_DEGREES = 0.1f;                                           // Target accuracy
 
 // Movement types
 enum class MovementType
@@ -37,20 +37,20 @@ struct MovementCommand
 
 struct ConvertValuesFromDegrees
 {
-    uint32_t PULSES_FROM_DEGREES;
-    uint32_t STEPS_FROM_DEGREES;
+    int32_t PULSES_FROM_DEGREES;
+    int32_t STEPS_FROM_DEGREES;
 };
 
 struct ConvertValuesFromPulses
 {
-    float    DEGREES_FROM_PULSES;
-    uint32_t STEPS_FROM_PULSES;
+    float   DEGREES_FROM_PULSES;
+    int32_t STEPS_FROM_PULSES;
 };
 
 struct ConvertValuesFromSteps
 {
-    uint32_t PULSES_FROM_STEPS;
-    float    DEGREES_FROM_STEPS;
+    int32_t PULSES_FROM_STEPS;
+    float   DEGREES_FROM_STEPS;
 };
 
 // Motor status structure
@@ -61,8 +61,8 @@ struct MotorStatus
     float        targetAngle;        // Target angle in degrees
     bool         isMoving;           // True if motor is currently moving
     bool         isEnabled;          // True if motor is enabled
-    uint32_t     currentMicrosteps;  // Current position in microsteps
-    uint32_t     targetMicrosteps;   // Target position in microsteps
+    int32_t      currentMicrosteps;  // Current position in microsteps
+    int32_t      targetMicrosteps;   // Target position in microsteps
     MovementType lastMovementType;
     uint32_t     movementStartTime;  // Time when movement started
     uint32_t     totalMovementTime;  // Total time for movement
@@ -95,8 +95,8 @@ public:
     // Status and information
     float       getCurrentAngle() const;
     float       getTargetAngle() const;
-    uint32_t    getCurrentMicrosteps() const;
-    uint32_t    getTargetMicrosteps() const;
+    int32_t     getCurrentMicrosteps() const;
+    int32_t     getTargetMicrosteps() const;
     MotorStatus getStatus() const;
 
     // Configuration
@@ -113,9 +113,9 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, uint32_t microsteps = 63 * 200, uint32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(uint32_t pulses, uint32_t microsteps = 63 * 200, uint32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(uint32_t steps, uint32_t microsteps = 63 * 200, uint32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
 
 private:
     // Hardware components

@@ -61,9 +61,9 @@ static constexpr uint16_t EEPROM_MAGIC_NUMBER   = 0x1234;             // Magic n
 static constexpr uint16_t MAGIC_NUMBER_ADDR     = ORIGIN_POSITIONS_ADDR + ORIGIN_POSITIONS_SIZE;
 
 // Movement control parameters
-static bool               motorMoving    = false;    // Track if motor is currently moving
-static constexpr uint32_t MOVEMENT_STEPS = 1000;     // Number of steps to move
-static constexpr float    MOVEMENT_SPEED = 1000.0f;  // Steps per second
+static bool              motorMoving    = false;    // Track if motor is currently moving
+static constexpr int32_t MOVEMENT_STEPS = 1000;     // Number of steps to move
+static constexpr float   MOVEMENT_SPEED = 1000.0f;  // Steps per second
 
 // Position control variables
 static long targetSteps           = 0;
@@ -271,8 +271,17 @@ void setMotorId(String motorId)
     }
 
     currentIndex = index - 1;
-    // Serial.print(F("[Info][M101] Motor is selected: "));
-    // Serial.println(index);
+
+    // Initialize position controllers and encoders
+    for (uint8_t index = 0; index < 4; index++)
+    {
+        if (driverEnabled[index])
+        {
+            encoder[index].disable();  // Enable encoder for reading
+        }
+    }
+
+    encoder[currentIndex].enable();
 }
 
 void serialReadTask(void* pvParameters)
@@ -801,8 +810,6 @@ void setup()
         }
     }
 
-    encoder[1].enable();  // Enable encoder for reading
-
     // Initialize position control system
     initializePositionControllers();
     startPositionControlSystem();
@@ -810,6 +817,9 @@ void setup()
     // Create serial read task
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
+
+    currentIndex = 2;
+    encoder[currentIndex].enable();  // Enable encoder for reading
 
     // Configure legacy stepper for compatibility
     static constexpr uint32_t steps_per_mm = 80;
@@ -820,7 +830,6 @@ void setup()
     stepper[currentIndex].enableOutputs();
 
     Serial.println(F("[Info] Position control system initialized"));
-    Serial.println(F("[Info] Use 'k' to toggle between new and legacy control"));
     Serial.println(F("[Info] Use 'L' to show position status"));
 }
 
