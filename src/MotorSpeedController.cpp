@@ -40,9 +40,9 @@ void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
     {
         _tickCounter = 0;
 
-        digitalWrite(_STEP_PIN, HIGH);
+        gpio_set_level((gpio_num_t)_STEP_PIN, HIGH);                      // digitalWrite
         __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");  // Short pulse, must be >1us for most drivers
-        digitalWrite(_STEP_PIN, LOW);
+        gpio_set_level((gpio_num_t)_STEP_PIN, LOW);                       // digitalWrite
         _stepsRemaining--;
 
         if (_stepsRemaining == 0)
@@ -179,9 +179,9 @@ bool MotorSpeedController::begin()
     pinMode(_EN_PIN, OUTPUT);
 
     // Default state
-    digitalWrite(_EN_PIN, HIGH);  // Disable driver initially
-    digitalWrite(_DIR_PIN, HIGH);
-    digitalWrite(_STEP_PIN, HIGH);
+    gpio_set_level((gpio_num_t)_EN_PIN, HIGH);  // Disable driver initially
+    gpio_set_level((gpio_num_t)_DIR_PIN, HIGH);
+    gpio_set_level((gpio_num_t)_STEP_PIN, HIGH);
 
     // Initialize motor
     disable();
@@ -198,7 +198,7 @@ void MotorSpeedController::enable(bool force)
         return;
 
     _enabled = true;
-    digitalWrite(_EN_PIN, LOW);
+    gpio_set_level((gpio_num_t)_EN_PIN, LOW);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
     Serial.print("Motor enabled: ");
     Serial.println(_motorId + 1);
@@ -209,7 +209,7 @@ void MotorSpeedController::disable(bool force)
         return;
 
     _enabled = false;
-    digitalWrite(_EN_PIN, HIGH);
+    gpio_set_level((gpio_num_t)_EN_PIN, HIGH);
     __asm__ __volatile__("nop; nop; nop; nop; nop; nop; nop; nop;");
     Serial.print("Motor disabled: ");
     Serial.println(_motorId + 1);
@@ -226,7 +226,7 @@ bool MotorSpeedController::isDisabled() const
 
 void MotorSpeedController::setDirection(bool forward)
 {
-    digitalWrite(_DIR_PIN, forward ? HIGH : LOW);
+    gpio_set_level((gpio_num_t)_DIR_PIN, forward ? HIGH : LOW);
 }
 void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, float lastSpeed)  // amir 1402/04/21
 {
@@ -346,8 +346,8 @@ void MotorSpeedController::motorStep(uint16_t delay_us)
 {
     if (delay_us == 0)
         delay_us = 1;
-    digitalWrite(_STEP_PIN, HIGH);
+    gpio_set_level((gpio_num_t)(_STEP_PIN), HIGH);
     delayMicroseconds(delay_us);
-    digitalWrite(_STEP_PIN, LOW);
+    gpio_set_level((gpio_num_t)(_STEP_PIN), LOW);
     delayMicroseconds(delay_us);
 }

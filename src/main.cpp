@@ -107,7 +107,7 @@ void setup()
     for (uint8_t index = 0; index < 4; index++)
     {
         pinMode(DriverPins::CS[index], OUTPUT);
-        digitalWrite(DriverPins::CS[index], HIGH);
+        gpio_set_level((gpio_num_t)DriverPins::CS[index], HIGH);
     }
 
     // Initialize TMC5160 drivers

@@ -251,8 +251,8 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
     if (!_enabled)
         return;
 
-    int     level       = digitalRead(_signalPin);
-    int64_t currentTime = esp_timer_get_time();  // Current time in microseconds
+    int     level       = gpio_get_level((gpio_num_t)_signalPin);  // digitalRead(_signalPin);
+    int64_t currentTime = esp_timer_get_time();                    // Current time in microseconds
     _r_pulse.duration_us_count++;
     _interruptCount++;  // Increment total interrupt count
 
