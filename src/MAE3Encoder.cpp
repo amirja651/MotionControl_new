@@ -132,7 +132,7 @@ void MAE3Encoder::processPWM(bool print)
     interrupts();
 
     // Debug output if requested
-    if (1)
+    if (0)
     {
         Serial.printf("[Encoder %d] Voting Buffer: [", _encoderId + 1);
         for (size_t i = 0; i < VOTING_BUFFER_SIZE; ++i)
