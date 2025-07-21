@@ -50,15 +50,15 @@ static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 Preferences prefs;
 
 // Function declarations
-uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
-void     storeOriginPosition(uint8_t motorIndex, float originDegrees);
-float    loadOriginPosition(uint8_t motorIndex);
-void     clearAllOriginPositions();
-void     printAllOriginPositions();
-void     printCurrentSettingsAndKeyboardControls();
-void     clearLine();
-void     setMotorId(String motorId);
-void     serialReadTask(void* pvParameters);
+uint16_t        calculateByNumber(uint16_t rms_current, uint8_t number);
+void IRAM_ATTR  storeOriginPosition(uint8_t motorIndex, float originDegrees);
+float IRAM_ATTR loadOriginPosition(uint8_t motorIndex);
+void            clearAllOriginPositions();
+void            printAllOriginPositions();
+void            printCurrentSettingsAndKeyboardControls();
+void            clearLine();
+void            setMotorId(String motorId);
+void            serialReadTask(void* pvParameters);
 
 void setup()
 {
@@ -165,7 +165,7 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
     return (rms_current * number) / 32;
 }
 
-void storeOriginPosition(uint8_t motorIndex, float originDegrees)
+void IRAM_ATTR storeOriginPosition(uint8_t motorIndex, float originDegrees)
 {
     if (motorIndex >= 4)
     {
@@ -186,11 +186,14 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
 
     if (success)
     {
-        Serial.print(F("[Preferences] Motor "));
-        Serial.print(motorIndex + 1);
-        Serial.print(F(" origin position stored: "));
-        Serial.print(wrappedAngle, 2);
-        Serial.println(F("°"));
+        if (0)
+        {
+            Serial.print(F("[Preferences] Motor "));
+            Serial.print(motorIndex + 1);
+            Serial.print(F(" origin position stored: "));
+            Serial.print(wrappedAngle, 2);
+            Serial.println(F("°"));
+        }
     }
     else
     {
@@ -199,7 +202,7 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
     }
 }
 
-float loadOriginPosition(uint8_t motorIndex)
+float IRAM_ATTR loadOriginPosition(uint8_t motorIndex)
 {
     if (motorIndex >= 4)
     {
@@ -722,7 +725,7 @@ void serialReadTask(void* pvParameters)
                         Serial.println(F("[Error] Failed to queue movement command"));
                     }
                 }
-                if (c.getArgument("o").isSet())
+                else if (c.getArgument("o").isSet())
                 {
                     String valueStr = c.getArgument("o").getValue();
 
@@ -750,14 +753,16 @@ void serialReadTask(void* pvParameters)
                         positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
 
                         // Store origin position in Preferences
+                        esp_task_wdt_reset();
                         storeOriginPosition(currentIndex, value);
+                        esp_task_wdt_reset();
                     }
                     else
                     {
                         loadOriginPosition(currentIndex);
                     }
                 }
-                if (c.getArgument("c").isSet())
+                else if (c.getArgument("c").isSet())
                 {
                     float position = positionController[currentIndex].getCurrentAngle();
                     Serial.print(F("*"));
@@ -766,12 +771,12 @@ void serialReadTask(void* pvParameters)
                     Serial.print(position, 2);
                     Serial.println(F("#"));
                 }
-                if (c.getArgument("d").isSet())
+                else if (c.getArgument("d").isSet())
                 {
                     positionController[currentIndex].stop();
                     positionController[currentIndex].disable();
                 }
-                if (c.getArgument("e").isSet())
+                else if (c.getArgument("e").isSet())
                 {
                     positionController[currentIndex].enable();
                 }
