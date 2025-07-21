@@ -5,7 +5,7 @@
 #include "TMC5160Manager.h"
 #include <Arduino.h>
 #include <CLIManager.h>
-#include <EEPROM.h>
+#include <Preferences.h>
 #include <SPI.h>
 #include <esp_task_wdt.h>
 
@@ -44,107 +44,155 @@ static constexpr uint16_t CURRENT_INCREMENT = 10;  // Current change increment
 static constexpr uint8_t  IRUN_INCREMENT    = 1;   // IRUN change increment
 static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 
-// EEPROM configuration for origin positions
-static constexpr uint16_t EEPROM_SIZE           = 512;                // EEPROM size in bytes
-static constexpr uint16_t ORIGIN_POSITIONS_ADDR = 0;                  // Starting address for origin positions
-static constexpr uint16_t ORIGIN_POSITIONS_SIZE = 4 * sizeof(float);  // 4 motors * float size
-static constexpr uint16_t EEPROM_MAGIC_NUMBER   = 0x1234;             // Magic number to verify EEPROM is initialized
-static constexpr uint16_t MAGIC_NUMBER_ADDR     = ORIGIN_POSITIONS_ADDR + ORIGIN_POSITIONS_SIZE;
+Preferences prefs;
+
+// Function declarations
+uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
+void     storeOriginPosition(uint8_t motorIndex, float originDegrees);
+float    loadOriginPosition(uint8_t motorIndex);
+void     clearAllOriginPositions();
+void     printAllOriginPositions();
+void     printCurrentSettingsAndKeyboardControls();
+void     clearLine();
+void     setMotorId(String motorId);
+void     serialReadTask(void* pvParameters);
+
+void setup()
+{
+    // Initialize SPI
+    SPI.begin(SPIPins::SCK, SPIPins::MISO, SPIPins::MOSI);
+    SPI.setFrequency(SPI_CLOCK);
+    SPI.setDataMode(SPI_MODE3);
+    Serial.begin(115200);
+
+    // Initialize Preferences for storing motor origin positions
+    if (!prefs.begin("motion_control", false))  // false = read/write mode
+    {
+        Serial.println(F("[Preferences] Error: Failed to initialize Preferences"));
+    }
+    else
+    {
+        Serial.println(F("[Preferences] Successfully initialized"));
+    }
+
+    esp_task_wdt_init(30, true);  // Increased timeout to 30 seconds
+    esp_task_wdt_add(NULL);       // Add the current task (setup)
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
+
+    delay(1000);
+    while (!Serial)
+    {
+        esp_task_wdt_reset();
+        delay(10);
+    }
+
+#ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
+    Serial.println(F("Stack overflow checking enabled"));
+#else
+    Serial.println(F("Stack overflow checking **NOT** enabled"));
+#endif
+
+    // Initialize CLI
+    initializeCLI();
+
+    // Initialize and print system diagnostics
+    SystemDiagnostics::printSystemInfo();
+    SystemDiagnostics::printSystemStatus();
+
+    // for disable all drivers pins - for avoid conflict in SPI bus
+    // Initialize CS pins and turn them off
+    for (uint8_t index = 0; index < 4; index++)
+    {
+        pinMode(DriverPins::CS[index], OUTPUT);
+        digitalWrite(DriverPins::CS[index], HIGH);
+    }
+
+    // Initialize TMC5160 drivers
+    for (uint8_t index = 0; index < 4; index++)
+    {
+        // Create driver
+        driver[index].begin();
+
+        // Test connection for each driver
+        if (driver[index].testConnection(true))
+        {
+            driverEnabled[index] = true;
+
+            // Configure motor parameters
+            driver[index].configureDriver_All_Motors(true);
+        }
+    }
+
+    // Initialize position controllers and encoders
+    for (uint8_t index = 0; index < 4; index++)
+    {
+        if (driverEnabled[index])
+        {
+            positionController[index].begin();
+            encoder[index].begin();
+            encoder[index].disable();  // Enable encoder for reading
+        }
+    }
+
+    // Initialize position control system
+    initializePositionControllers();
+    startPositionControlSystem();
+
+    // Create serial read task
+    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
+    esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
+
+    setMotorId("2");
+
+    // Print current origin positions
+    printAllOriginPositions();
+
+    Serial.println(F("[Info] Position control system initialized"));
+    Serial.println(F("[Info] Use 'L' to show position status"));
+}
+
+void loop()
+{
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(100));
+}
 
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
 {
     return (rms_current * number) / 32;
 }
 
-void initializeEEPROM()
-{
-    EEPROM.begin(EEPROM_SIZE);
-
-    // Check if EEPROM is initialized with magic number
-    uint16_t storedMagic = EEPROM.readUShort(MAGIC_NUMBER_ADDR);
-    if (storedMagic != EEPROM_MAGIC_NUMBER)
-    {
-        // Reset watchdog timer before EEPROM initialization
-        esp_task_wdt_reset();
-
-        // Initialize EEPROM with default values
-        float defaultOrigins[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        for (uint8_t i = 0; i < 4; i++)
-        {
-            uint16_t addr       = ORIGIN_POSITIONS_ADDR + (i * sizeof(float));
-            uint8_t* floatBytes = (uint8_t*)&defaultOrigins[i];
-
-            // Write the float value byte by byte to avoid cache issues
-            for (int j = 0; j < sizeof(float); j++)
-            {
-                EEPROM.write(addr + j, floatBytes[j]);
-                esp_task_wdt_reset();
-                vTaskDelay(pdMS_TO_TICKS(1));  // Give other tasks a chance to run
-            }
-        }
-
-        // Write magic number byte by byte
-        uint8_t* magicBytes = (uint8_t*)&EEPROM_MAGIC_NUMBER;
-        for (int i = 0; i < sizeof(uint16_t); i++)
-        {
-            EEPROM.write(MAGIC_NUMBER_ADDR + i, magicBytes[i]);
-            esp_task_wdt_reset();
-            vTaskDelay(pdMS_TO_TICKS(1));  // Give other tasks a chance to run
-        }
-
-        // Reset watchdog timer before commit
-        esp_task_wdt_reset();
-
-        // Commit with error checking
-        bool commitSuccess = EEPROM.commit();
-
-        // Reset watchdog timer after EEPROM operation
-        esp_task_wdt_reset();
-
-        if (commitSuccess)
-        {
-            Serial.println(F("[EEPROM] Initialized with default origin positions"));
-        }
-        else
-        {
-            Serial.println(F("[EEPROM] Error: Failed to initialize EEPROM"));
-        }
-    }
-    else
-    {
-        Serial.println(F("[EEPROM] Already initialized, loading stored origin positions"));
-    }
-}
-
 void storeOriginPosition(uint8_t motorIndex, float originDegrees)
 {
     if (motorIndex >= 4)
     {
-        Serial.println(F("[EEPROM] Error: Invalid motor index"));
+        Serial.println(F("[Preferences] Error: Invalid motor index"));
         return;
     }
 
-    esp_task_wdt_reset();
+    // Validate angle range (0-360 degrees)
+    float wrappedAngle = fmod(originDegrees, 360.0f);
+    if (wrappedAngle < 0)
+        wrappedAngle += 360.0f;
 
-    uint16_t addr = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
+    // Create a unique key for each motor's origin position
+    String key = "motor" + String(motorIndex) + "_origin";
 
-    // Write the float value byte by byte to avoid cache issues
-    uint8_t* floatBytes = (uint8_t*)&originDegrees;
-    for (int i = 0; i < sizeof(float); i++)
+    // Store the origin position in Preferences
+    bool success = prefs.putFloat(key.c_str(), wrappedAngle);
+
+    if (success)
     {
-        EEPROM.write(addr + i, floatBytes[i]);
-        esp_task_wdt_reset();
-        delay(1);  // Small delay to prevent watchdog timeout
+        Serial.print(F("[Preferences] Motor "));
+        Serial.print(motorIndex + 1);
+        Serial.print(F(" origin position stored: "));
+        Serial.print(wrappedAngle, 2);
+        Serial.println(F("°"));
     }
-
-    esp_task_wdt_reset();
-    yield();  // Give other tasks a chance to run
-    bool commitSuccess = EEPROM.commit();
-    esp_task_wdt_reset();
-
-    if (!commitSuccess)
+    else
     {
-        Serial.println(F("[EEPROM] Error: Failed to commit to EEPROM"));
+        Serial.print(F("[Preferences] Error: Failed to store origin position for motor "));
+        Serial.println(motorIndex + 1);
     }
 }
 
@@ -152,27 +200,55 @@ float loadOriginPosition(uint8_t motorIndex)
 {
     if (motorIndex >= 4)
     {
-        Serial.println(F("[EEPROM] Error: Invalid motor index, using 0.0"));
+        Serial.println(F("[Preferences] Error: Invalid motor index, using 0.0"));
         return 0.0f;
     }
 
-    uint16_t addr = ORIGIN_POSITIONS_ADDR + (motorIndex * sizeof(float));
+    // Create a unique key for each motor's origin position
+    String key = "motor" + String(motorIndex) + "_origin";
 
-    // Read the float value byte by byte to avoid cache issues
-    uint8_t floatBytes[sizeof(float)];
-    for (int i = 0; i < sizeof(float); i++)
-    {
-        floatBytes[i] = EEPROM.read(addr + i);
-    }
-    float originDegrees = *(float*)floatBytes;
+    // Load the origin position from Preferences
+    float originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
 
-    Serial.print(F("[EEPROM] Loaded origin position for motor "));
+    Serial.print(F("[Preferences] Motor "));
     Serial.print(motorIndex + 1);
-    Serial.print(F(": "));
-    Serial.print(originDegrees, 2);
-    Serial.println(F(" degrees"));
+    Serial.print(F(" origin position loaded: "));
+    Serial.print(originPosition, 2);
+    Serial.println(F("°"));
 
-    return originDegrees;
+    return originPosition;
+}
+
+void clearAllOriginPositions()
+{
+    // Clear origin positions for all motors
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        String key = "motor" + String(i) + "_origin";
+        prefs.remove(key.c_str());
+    }
+
+    Serial.println(F("[Preferences] All motor origin positions cleared"));
+}
+
+void printAllOriginPositions()
+{
+    Serial.println(F("[Preferences] Current origin positions:"));
+    for (uint8_t i = 0; i < 4; i++)
+    {
+        String key            = "motor" + String(i) + "_origin";
+        float  originPosition = prefs.getFloat(key.c_str(), 0.0f);
+        Serial.print(F("  Motor "));
+        Serial.print(i + 1);
+        Serial.print(F(": "));
+        Serial.print(originPosition, 2);
+        Serial.println(F("°"));
+    }
+
+    // Print total number of keys for debugging
+    size_t totalKeys = prefs.freeEntries();
+    Serial.print(F("[Preferences] Total free entries: "));
+    Serial.println(totalKeys);
 }
 
 void printCurrentSettingsAndKeyboardControls()
@@ -475,8 +551,6 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(", Enabled: "));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
 
-
-
                 if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
                 {
                     Serial.println(F("[Encoder] Error: Invalid motor index or encoder not enabled"));
@@ -593,7 +667,7 @@ void serialReadTask(void* pvParameters)
                         Serial.println(cvfs.PULSES_FROM_STEPS);
                         positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
 
-                        // Store origin position in EEPROM
+                        // Store origin position in Preferences
                         storeOriginPosition(currentIndex, value);
                     }
                     else
@@ -651,94 +725,4 @@ void serialReadTask(void* pvParameters)
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
-}
-
-void setup()
-{
-    // Initialize SPI
-    SPI.begin(SPIPins::SCK, SPIPins::MISO, SPIPins::MOSI);
-    SPI.setFrequency(SPI_CLOCK);
-    SPI.setDataMode(SPI_MODE3);
-    Serial.begin(115200);
-
-    esp_task_wdt_init(30, true);  // Increased timeout to 30 seconds
-    esp_task_wdt_add(NULL);       // Add the current task (setup)
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
-
-    delay(1000);
-    while (!Serial)
-    {
-        esp_task_wdt_reset();
-        delay(10);
-    }
-
-#ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
-    Serial.println(F("Stack overflow checking enabled"));
-#else
-    Serial.println(F("Stack overflow checking **NOT** enabled"));
-#endif
-
-    // Initialize EEPROM
-    initializeEEPROM();
-
-    // Initialize CLI
-    initializeCLI();
-
-    // Initialize and print system diagnostics
-    SystemDiagnostics::printSystemInfo();
-    SystemDiagnostics::printSystemStatus();
-
-    // for disable all drivers pins - for avoid conflict in SPI bus
-    // Initialize CS pins and turn them off
-    for (uint8_t index = 0; index < 4; index++)
-    {
-        pinMode(DriverPins::CS[index], OUTPUT);
-        digitalWrite(DriverPins::CS[index], HIGH);
-    }
-
-    // Initialize TMC5160 drivers
-    for (uint8_t index = 0; index < 4; index++)
-    {
-        // Create driver
-        driver[index].begin();
-
-        // Test connection for each driver
-        if (driver[index].testConnection(true))
-        {
-            driverEnabled[index] = true;
-
-            // Configure motor parameters
-            driver[index].configureDriver_All_Motors(true);
-        }
-    }
-
-    // Initialize position controllers and encoders
-    for (uint8_t index = 0; index < 4; index++)
-    {
-        if (driverEnabled[index])
-        {
-            positionController[index].begin();
-            encoder[index].begin();
-            encoder[index].disable();  // Enable encoder for reading
-        }
-    }
-
-    // Initialize position control system
-    initializePositionControllers();
-    startPositionControlSystem();
-
-    // Create serial read task
-    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
-    esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
-
-    setMotorId("2");
-
-    Serial.println(F("[Info] Position control system initialized"));
-    Serial.println(F("[Info] Use 'L' to show position status"));
-}
-
-void loop()
-{
-    esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(100));
 }
