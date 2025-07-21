@@ -78,14 +78,9 @@ void setup()
         Serial.println(F("[Preferences] Successfully initialized"));
     }
 
-    esp_task_wdt_init(30, true);  // Increased timeout to 30 seconds
-    esp_task_wdt_add(NULL);       // Add the current task (setup)
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
-
     delay(1000);
     while (!Serial)
     {
-        esp_task_wdt_reset();
         delay(10);
     }
 
@@ -140,15 +135,16 @@ void setup()
     // Initialize position control system
     initializePositionControllers();
     startPositionControlSystem();
+    setMotorId("2");
+    printAllOriginPositions();
+
+    esp_task_wdt_init(5, true);  // Increased timeout to 5 seconds
+    esp_task_wdt_add(NULL);      // Add the current task (setup)
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Create serial read task
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
-
-    setMotorId("2");
-
-    // Print current origin positions
-    printAllOriginPositions();
 
     Serial.println(F("[Info] Position control system initialized"));
     Serial.println(F("[Info] Use 'L' to show position status"));
@@ -282,7 +278,8 @@ void printCurrentSettingsAndKeyboardControls()
     Serial.print(F("  Microsteps: "));
     Serial.println(driver[currentIndex].getMicrosteps());
 
-    Serial.println(F("  Position Control: 'Q' Move to origin "));
+    Serial.println(F("  Position Control: 'Q' Move to origin (open-loop)"));
+    Serial.println(F("  Position Control: 'J' Move to origin (closed-loop)"));
     Serial.println(F("  Position Status:  'L' Show position status"));
     Serial.println(F("  Encoder Counters: 'K' Show & reset interrupt counters"));
     Serial.println(F("========================================================================"));
@@ -526,7 +523,7 @@ void serialReadTask(void* pvParameters)
                 else if (targetAngle == 360)
                     targetAngle = 359.9955f;
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, false);
 
                 if (success)
                 {
@@ -534,7 +531,40 @@ void serialReadTask(void* pvParameters)
                     Serial.print(currentIndex + 1);
                     Serial.print(F(" moving to "));
                     Serial.print(targetAngle, 2);
-                    Serial.println(F(" degrees"));
+                    Serial.println(F(" degrees (open-loop)"));
+                }
+                else
+                {
+                    Serial.println(F("[Error] Failed to queue movement command"));
+                }
+
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c == 'J')  // Move to 0 degrees with closed-loop
+            {
+                float targetAngle = loadOriginPosition(currentIndex);
+                // Use new position controller
+                MovementType movementType = MovementType::MEDIUM_RANGE;
+                if (abs(targetAngle) <= 40.0f)
+                    movementType = MovementType::SHORT_RANGE;
+                else if (abs(targetAngle) >= 100.0f)
+                    movementType = MovementType::LONG_RANGE;
+
+                if (targetAngle == 0)
+                    targetAngle = 0.01;
+                else if (targetAngle == 360)
+                    targetAngle = 359.9955f;
+
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, true);
+
+                if (success)
+                {
+                    Serial.print(F("[Info] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.print(F(" moving to "));
+                    Serial.print(targetAngle, 2);
+                    Serial.println(F(" degrees (closed-loop)"));
                 }
                 else
                 {
@@ -547,30 +577,43 @@ void serialReadTask(void* pvParameters)
             else if (c == 'L')  // Show position status
             {
                 MotorStatus status = positionController[currentIndex].getStatus();
-                Serial.print(F("\r\n[Position Status] Motor "));
+                Serial.println();
+                Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
-                Serial.print(F(": Current: "));
+                Serial.print(F(": Current="));
                 Serial.print(status.currentAngle, 2);
-                Serial.print(F("°, Target: "));
+                Serial.print(F("°, Target="));
                 Serial.print(status.targetAngle, 2);
-                Serial.print(F("°, Moving: "));
+                Serial.print(F("°, Moving="));
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
-                Serial.print(F(", Enabled: "));
+                Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
+                Serial.print(F(", Closed-Loop="));
+                Serial.print(status.isClosedLoop ? F("YES") : F("NO"));
+
+                if (status.isClosedLoop)
+                {
+                    // Serial.print(F(", Encoder="));
+                    // Serial.print(status.encoderAngle, 2);
+                    Serial.print(F(", Error="));  // Serial.print(F("°, Error="));
+                    Serial.print(status.positionError, 2);
+                    Serial.print(F("°"));
+                }
 
                 if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
                 {
+                    Serial.println();
                     Serial.println(F("[Encoder] Error: Invalid motor index or encoder not enabled"));
                     return;
                 }
 
                 encoder[currentIndex].processPWM();
                 EncoderState encoderState = encoder[currentIndex].getState();
-                Serial.print(F(", Encoder: "));
+                Serial.print(F(", (Encoder: "));
                 Serial.print(encoderState.position_degrees, 2);
-                Serial.print(F("°"));
+                Serial.print(F("°,"));
                 Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
-                Serial.print(F(" ("));
+                Serial.print(F(", "));
                 Serial.print(encoderState.position_pulse);
                 Serial.print(F(" pulses)"));
                 /*Serial.print(F(", High: "));
@@ -699,6 +742,9 @@ void serialReadTask(void* pvParameters)
                     String degreesStr  = c.getArgument("p").getValue();
                     float  targetAngle = degreesStr.toFloat();
 
+                    // Check if closed-loop flag is set
+                    bool closedLoop = c.getArgument("j").isSet();
+
                     // Use new position controller
                     MovementType movementType = MovementType::MEDIUM_RANGE;
                     if (abs(targetAngle) <= 40.0f)
@@ -711,7 +757,7 @@ void serialReadTask(void* pvParameters)
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
-                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType);
+                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, closedLoop);
 
                     if (success)
                     {
@@ -719,7 +765,9 @@ void serialReadTask(void* pvParameters)
                         Serial.print(currentIndex + 1);
                         Serial.print(F(" moving to "));
                         Serial.print(targetAngle, 2);
-                        Serial.println(F(" degrees"));
+                        Serial.print(F(" degrees ("));
+                        Serial.print(closedLoop ? F("closed-loop") : F("open-loop"));
+                        Serial.println(F(")"));
                     }
                     else
                     {
@@ -781,6 +829,49 @@ void serialReadTask(void* pvParameters)
                 {
                     positionController[currentIndex].enable();
                 }
+            }
+            else if (c == cmdOrgin)
+            {
+                String motorIdStr = c.getArgument("n").getValue();
+                setMotorId(motorIdStr);
+
+                if (!encoder[currentIndex].isEnabled())
+                {
+                    Serial.println(F("[Error] Encoder not enabled"));
+                    return;
+                }
+                // Process encoder to get current reading
+                encoder[currentIndex].processPWM();
+
+                // Get encoder state
+                EncoderState encoderState = encoder[currentIndex].getState();
+
+                float value = encoderState.position_degrees;
+
+                ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
+                ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
+                ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
+
+                Serial.print(F("From Degrees: "));
+                Serial.print(cvfd.PULSES_FROM_DEGREES);
+                Serial.print(F(", "));
+                Serial.println(cvfd.STEPS_FROM_DEGREES);
+
+                Serial.print(F("From Pulses: "));
+                Serial.print(cvfp.DEGREES_FROM_PULSES);
+                Serial.print(F(", "));
+                Serial.println(cvfp.STEPS_FROM_PULSES);
+
+                Serial.print(F("From Steps: "));
+                Serial.print(cvfs.DEGREES_FROM_STEPS);
+                Serial.print(F(", "));
+                Serial.println(cvfs.PULSES_FROM_STEPS);
+                positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
+
+                // Store origin position in Preferences
+                esp_task_wdt_reset();
+                storeOriginPosition(currentIndex, value);
+                esp_task_wdt_reset();
             }
             else if (c == cmdRestart)
             {

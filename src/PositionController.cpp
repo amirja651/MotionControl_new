@@ -10,7 +10,7 @@ PositionController* PositionController::_instances[4]              = {nullptr};
 
 // Constructor with encoder
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
-    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(&encoder), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false)
+    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(&encoder), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _closedLoopEnabled(false)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -23,6 +23,9 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.lastMovementType  = MovementType::MEDIUM_RANGE;
     _status.movementStartTime = 0;
     _status.totalMovementTime = 0;
+    _status.isClosedLoop      = false;
+    _status.positionError     = 0.0f;
+    _status.encoderAngle      = 0.0f;
 
     // Store instance for RTOS access
     _instances[motorId] = this;
@@ -39,7 +42,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 
 // Constructor without encoder (for demo)
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin)
-    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(nullptr), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false)
+    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(nullptr), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _closedLoopEnabled(false)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -160,7 +163,7 @@ bool PositionController::isEnabled() const
 }
 
 // Position control methods
-bool PositionController::moveToAngle(float targetAngle, MovementType movementType)
+bool PositionController::moveToAngle(float targetAngle, MovementType movementType, bool closedLoop)
 {
     if (!_enabled || !_initialized)
         return false;
@@ -187,12 +190,13 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
     command.movementType = movementType;
     command.relative     = false;
     command.priority     = 1;
+    command.closedLoop   = closedLoop;
 
     // Queue the command
     return queueMovementCommand(command);
 }
 
-bool PositionController::moveRelative(float deltaAngle, MovementType movementType)
+bool PositionController::moveRelative(float deltaAngle, MovementType movementType, bool closedLoop)
 {
     if (!_enabled || !_initialized)
         return false;
@@ -208,6 +212,7 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     command.movementType = movementType;
     command.relative     = true;
     command.priority     = 1;
+    command.closedLoop   = closedLoop;
 
     // Queue the command
     return queueMovementCommand(command);
@@ -290,6 +295,13 @@ MotorStatus PositionController::getStatus()
     status.isMoving  = isMoving();
     status.isEnabled = isEnabled();
 
+    // Update closed-loop information
+    if (isClosedLoopEnabled())
+    {
+        status.encoderAngle  = getEncoderAngle();
+        status.positionError = calculatePositionError();
+    }
+
     return status;
 }
 
@@ -323,16 +335,22 @@ void PositionController::setSpeedProfile(MovementType type, float maxSpeed, floa
 // Angle utilities
 float PositionController::wrapAngle(float angle)
 {
-    angle = fmod(angle, 360.0f);
-    if (angle < 0.0f)
-        angle += 360.0f;
+    if (0)
+    {
+        angle = fmod(angle, 360.0f);
+        if (angle < 0.0f)
+            angle += 360.0f;
+    }
     return angle;
 }
 
 float PositionController::calculateShortestPath(float currentAngle, float targetAngle)
 {
     float delta = targetAngle - currentAngle;
-    delta       = fmod(delta + 540.0f, 360.0f) - 180.0f;  // نگاشت به [-180, +180]
+    if (0)
+    {
+        delta = fmod(delta + 540.0f, 360.0f) - 180.0f;  // نگاشت به [-180, +180]
+    }
     return delta;
 }
 
@@ -443,6 +461,16 @@ bool PositionController::executeMovement(const MovementCommand& command)
     if (!_enabled || !_initialized)
         return false;
 
+    // Enable/disable closed-loop based on command
+    if (command.closedLoop)
+    {
+        enableClosedLoop();
+    }
+    else
+    {
+        disableClosedLoop();
+    }
+
     // Calculate target microsteps
     int32_t targetMicrosteps;
     if (command.relative)
@@ -462,6 +490,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
         _status.isMoving          = true;
         _status.movementStartTime = millis();
         _status.lastMovementType  = command.movementType;
+        _status.isClosedLoop      = command.closedLoop;
         xSemaphoreGive(_statusMutex);
     }
 
@@ -471,7 +500,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetMicrosteps));
 
-    // Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType));
+    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d, closed-loop: %s)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType), command.closedLoop ? "YES" : "NO");
 
     return true;
 }
@@ -535,6 +564,12 @@ void PositionController::runPositionControl()
     // Run the stepper motor
     _stepper.run();
 
+    // Apply closed-loop correction if enabled
+    if (isClosedLoopEnabled() && _status.isMoving)
+    {
+        applyClosedLoopCorrection();
+    }
+
     // Update status periodically
     static int32_t lastStatusUpdate = 0;
     if (millis() - lastStatusUpdate > 100)  // Update every 100ms
@@ -553,8 +588,93 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
 
-        // Serial.printf("[PositionController] Motor %d reached target (%.2f degrees)\n", _motorId + 1, _status.targetAngle);
-        Serial.printf("[PositionController] Motor %d reached target.\n", _motorId + 1);
+        if (isClosedLoopEnabled())
+        {
+            float finalError = calculatePositionError();
+            // Serial.printf("[PositionController] Motor %d reached target (closed-loop). Final error: %.2f°\n", _motorId + 1, finalError);
+            Serial.printf("[PositionController] Motor %d reached target (closed-loop).\n", _motorId + 1);
+        }
+        else
+        {
+            Serial.printf("[PositionController] Motor %d reached target (open-loop).\n", _motorId + 1);
+        }
+    }
+}
+
+// Closed-loop control methods
+void PositionController::enableClosedLoop()
+{
+    if (_encoder != nullptr && _encoder->isEnabled())
+    {
+        _closedLoopEnabled   = true;
+        _status.isClosedLoop = true;
+        Serial.printf("[PositionController] Motor %d closed-loop control enabled\n", _motorId + 1);
+    }
+    else
+    {
+        Serial.printf("[PositionController] Motor %d cannot enable closed-loop: encoder not available\n", _motorId + 1);
+    }
+}
+
+void PositionController::disableClosedLoop()
+{
+    _closedLoopEnabled   = false;
+    _status.isClosedLoop = false;
+    Serial.printf("[PositionController] Motor %d closed-loop control disabled\n", _motorId + 1);
+}
+
+bool PositionController::isClosedLoopEnabled() const
+{
+    return _closedLoopEnabled && _encoder != nullptr && _encoder->isEnabled();
+}
+
+float PositionController::getEncoderAngle()
+{
+    if (_encoder != nullptr && _encoder->isEnabled())
+    {
+        _encoder->processPWM();
+        EncoderState encoderState = _encoder->getState();
+        return wrapAngle(encoderState.position_degrees);
+    }
+    return 0.0f;
+}
+
+float PositionController::calculatePositionError()
+{
+    if (!isClosedLoopEnabled())
+        return 0.0f;
+
+    float targetAngle  = _status.targetAngle;
+    float encoderAngle = getEncoderAngle();
+
+    // Calculate shortest path error
+    float error = calculateShortestPath(encoderAngle, targetAngle);
+
+    _status.encoderAngle  = encoderAngle;
+    _status.positionError = error;
+
+    return error;
+}
+
+void PositionController::applyClosedLoopCorrection()
+{
+    if (!isClosedLoopEnabled() || !_status.isMoving)
+        return;
+
+    float error = calculatePositionError();
+
+    // Only apply correction if error is significant (more than 0.1 degrees)
+    if (abs(error) > 0.1f)
+    {
+        // Simple proportional correction
+        float   correctionSteps = convertFromDegrees(error).STEPS_FROM_DEGREES;
+        int32_t currentPos      = _stepper.currentPosition();
+        int32_t newTarget       = currentPos + static_cast<int32_t>(correctionSteps);
+
+        // Apply correction
+        _stepper.moveTo(newTarget);
+
+        // Serial.printf("[PositionController] Motor %d closed-loop correction: error=%.2f°, correction=%d steps\n", _motorId + 1, error, static_cast<int>(correctionSteps));
     }
 }
 

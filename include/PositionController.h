@@ -33,6 +33,7 @@ struct MovementCommand
     MovementType movementType;  // Type of movement
     bool         relative;      // True for relative movement, false for absolute
     uint32_t     priority;      // Command priority (higher = more important)
+    bool         closedLoop;    // True for closed-loop control, false for open-loop
 };
 
 struct ConvertValuesFromDegrees
@@ -66,6 +67,9 @@ struct MotorStatus
     MovementType lastMovementType;
     uint32_t     movementStartTime;  // Time when movement started
     uint32_t     totalMovementTime;  // Total time for movement
+    bool         isClosedLoop;       // True if using closed-loop control
+    float        positionError;      // Position error in degrees
+    float        encoderAngle;       // Encoder reading in degrees
 };
 
 // Position controller class
@@ -86,8 +90,8 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE);
-    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE);
+    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, bool closedLoop = false);
+    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, bool closedLoop = false);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -131,6 +135,7 @@ private:
     MotorStatus _status;
     bool        _enabled;
     bool        _initialized;
+    bool        _closedLoopEnabled;
 
     // Speed profiles for different movement types
     struct SpeedProfile
@@ -154,6 +159,14 @@ private:
     void  setSpeedForMovement(MovementType type);
     bool  executeMovement(const MovementCommand& command);
     float calculateOptimalSpeed(float distance, MovementType type);
+
+    // Closed-loop control methods
+    void  enableClosedLoop();
+    void  disableClosedLoop();
+    float getEncoderAngle();
+    float calculatePositionError();
+    void  applyClosedLoopCorrection();
+    bool  isClosedLoopEnabled() const;
 
     // RTOS task function
     static void positionControlTask(void* parameter);
