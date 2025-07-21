@@ -30,6 +30,9 @@ static int     historyCount = 0;
 static int     historyIndex = -1;  // -1 means not navigating
 static uint8_t currentIndex = 1;   // Current driver index
 
+// K key press timing
+static uint32_t lastKPressTime = 0;  // Timestamp of last K key press
+
 // Current control parameters
 static constexpr uint16_t MIN_RMS_CURRENT = 100;  // Minimum RMS current in mA
 static constexpr uint16_t MAX_RMS_CURRENT = 500;  // Maximum RMS current in mA
@@ -278,6 +281,7 @@ void printCurrentSettingsAndKeyboardControls()
 
     Serial.println(F("  Position Control: 'Q' Move to origin "));
     Serial.println(F("  Position Status:  'L' Show position status"));
+    Serial.println(F("  Encoder Counters: 'K' Show & reset interrupt counters"));
     Serial.println(F("========================================================================"));
     Serial.flush();
 }
@@ -557,13 +561,7 @@ void serialReadTask(void* pvParameters)
                     return;
                 }
 
-                for (int i = 0; i < 10; i++)
-                {
-                    encoder[currentIndex].processPWM();
-                    delay(100);
-                    esp_task_wdt_reset();
-                }
-
+                encoder[currentIndex].processPWM();
                 EncoderState encoderState = encoder[currentIndex].getState();
                 Serial.print(F(", Encoder: "));
                 Serial.print(encoderState.position_degrees, 2);
@@ -584,7 +582,91 @@ void serialReadTask(void* pvParameters)
                 inputBuffer = "";
                 lastInput   = "";
             }
-            else if (c != 'A' && c != 'Z' && c != 'S' && c != 'X' && c != 'D' && c != 'C' && c != 'Q' && c != 'L')  // Only add to buffer if not a direct command
+            else if (c == 'K')  // Show encoder interrupt counters
+            {
+                uint32_t currentTime  = millis();
+                uint32_t timeInterval = 0;
+
+                // Calculate time interval since last K press
+                if (lastKPressTime > 0)
+                {
+                    timeInterval = currentTime - lastKPressTime;
+                }
+
+                Serial.print(F("\r\n[Encoder Interrupt Counters] Motor "));
+                Serial.print(currentIndex + 1);
+                Serial.print(F(":\r\n"));
+
+                if (currentIndex >= 4 || !driverEnabled[currentIndex])
+                {
+                    Serial.println(F("[Encoder] Error: Invalid motor index or driver not enabled"));
+                    inputBuffer = "";
+                    lastInput   = "";
+                    return;
+                }
+
+                // Get interrupt counters
+                uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
+                uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
+                uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
+
+                Serial.print(F("  Total Interrupts: "));
+                Serial.println(totalInterrupts);
+                Serial.print(F("  Rising Edges (High): "));
+                Serial.println(highEdges);
+                Serial.print(F("  Falling Edges (Low): "));
+                Serial.println(lowEdges);
+                Serial.print(F("  Encoder Enabled: "));
+                Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
+
+                // Get and display encoder position
+                if (encoder[currentIndex].isEnabled())
+                {
+                    // Process encoder to get current reading
+                    encoder[currentIndex].processPWM();
+
+                    // Get encoder state
+                    EncoderState encoderState = encoder[currentIndex].getState();
+
+                    Serial.print(F("  Encoder Position: "));
+                    Serial.print(encoderState.position_degrees, 2);
+                    Serial.print(F("° ("));
+                    Serial.print(encoderState.position_pulse);
+                    Serial.println(F(" pulses)"));
+                    if (0)
+                    {
+                        Serial.print(F("  Encoder Direction: "));
+                        Serial.println(encoderState.direction == Direction::CLOCKWISE ? F("CLOCKWISE") : encoderState.direction == Direction::COUNTER_CLOCKWISE ? F("COUNTER_CLOCKWISE") : F("UNKNOWN"));
+                    }
+                }
+                else
+                {
+                    Serial.println(F("  Encoder Position: DISABLED"));
+                }
+
+                // Display time interval
+                if (lastKPressTime > 0)
+                {
+                    Serial.print(F("  Time since last K press: "));
+                    Serial.print(timeInterval);
+                    Serial.println(F(" ms"));
+                }
+                else
+                {
+                    Serial.println(F("  Time since last K press: First press"));
+                }
+
+                // Reset counters after displaying
+                encoder[currentIndex].resetInterruptCounters();
+                Serial.println(F("  [Counters Reset]"));
+
+                // Update last K press time
+                lastKPressTime = currentTime;
+
+                inputBuffer = "";
+                lastInput   = "";
+            }
+            else if (c != 'A' && c != 'Z' && c != 'S' && c != 'X' && c != 'D' && c != 'C' && c != 'Q' && c != 'L' && c != 'K')  // Only add to buffer if not a direct command
             {
                 inputBuffer += c;  // Add character to buffer
                 Serial.print(c);

@@ -113,6 +113,11 @@ void MAE3Encoder::reset()
     _votingBuffer.fill(0);
     _votingIndex      = 0;
     _votingBufferFull = false;
+
+    // Reset interrupt counters
+    _interruptCount = 0;
+    _highEdgeCount  = 0;
+    _lowEdgeCount   = 0;
 }
 
 //  method for processing PWM signal *** amir
@@ -122,59 +127,12 @@ void MAE3Encoder::processPWM(bool print)
         return;
 
     noInterrupts();
-    int64_t interval = _r_pulse.pulse_Interval;
-    int64_t low      = _r_pulse.low;
-    int64_t high     = _r_pulse.high;
-    _dataReady       = false;
-
-    // Check each condition separately
-    bool highOK   = (high >= 1 && high <= 4302);  // 4097
-    bool lowOK    = (low >= 1 && low <= 4302);    // 4097
-    bool totalOK  = (interval > 0);
-    bool periodOK = ((interval) >= 3731 && (interval) <= 4545);
-    bool overall  = highOK && lowOK && totalOK && periodOK;
-
-    if (!overall)
-    {
-        interrupts();
-        return;
-    }
-
-    // Calculate current encoder reading
-    int32_t x_measured = ((high * 4098) / interval) - 1;
-
-    // Validate the reading
-    int32_t valid_reading = x_measured;
-
+    int32_t voted_reading = getMostFrequentValue();
+    _dataReady            = false;
     interrupts();
 
-    // If reading is invalid, return without updating
-    if (valid_reading == -1)
-    {
-        return;
-    }
-
-    // Add reading to voting buffer
-    _votingBuffer[_votingIndex] = valid_reading;
-    _votingIndex                = (_votingIndex + 1) % VOTING_BUFFER_SIZE;
-
-    // Mark buffer as full after first complete cycle
-    if (_votingIndex == 0)
-    {
-        _votingBufferFull = true;
-    }
-
-    // Only process if we have enough readings (buffer is full)
-    if (!_votingBufferFull)
-    {
-        return;
-    }
-
-    // Get the most frequent value from voting buffer
-    int32_t voted_reading = getMostFrequentValue();
-
     // Debug output if requested
-    if (0)
+    if (1)
     {
         Serial.printf("[Encoder %d] Voting Buffer: [", _encoderId + 1);
         for (size_t i = 0; i < VOTING_BUFFER_SIZE; ++i)
@@ -197,9 +155,6 @@ void MAE3Encoder::processPWM(bool print)
     }
 
     _state.position_degrees = _state.position_pulse * (360.0f / 4096);
-    _state.width_high       = high;
-    _state.width_low        = low;
-    _state.width_interval   = interval;
 
     if (!_initialized)
     {
@@ -282,12 +237,7 @@ void MAE3Encoder::attachInterruptHandler()
     gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM);
 
     // Add ISR handler for this specific pin with proper casting
-    gpio_isr_handler_add((gpio_num_t)_signalPin,
-                         (gpio_isr_t)(_encoderId == 0   ? interruptHandler0
-                                      : _encoderId == 1 ? interruptHandler1
-                                      : _encoderId == 2 ? interruptHandler2
-                                                        : interruptHandler3),
-                         (void*)this);
+    gpio_isr_handler_add((gpio_num_t)_signalPin, (gpio_isr_t)(_encoderId == 0 ? interruptHandler0 : _encoderId == 1 ? interruptHandler1 : _encoderId == 2 ? interruptHandler2 : interruptHandler3), (void*)this);
 }
 void MAE3Encoder::detachInterruptHandler()
 {
@@ -304,15 +254,18 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
     int     level       = digitalRead(_signalPin);
     int64_t currentTime = esp_timer_get_time();  // Current time in microseconds
     _r_pulse.duration_us_count++;
+    _interruptCount++;  // Increment total interrupt count
 
     if (level == LOW)
     {
         // Falling edge
+        _lowEdgeCount++;  // Increment falling edge count
         _lowStart = currentTime;
     }
     else
     {
         // Rising edge
+        _highEdgeCount++;  // Increment rising edge count
         _lowEnd      = currentTime;
         _r_pulse.low = _lowEnd - _lowStart;
 
@@ -323,7 +276,39 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
         {
             _r_pulse.pulse_Interval = _currentRisingEdge - _lastRisingEdgeTime;
             _r_pulse.high           = _r_pulse.pulse_Interval - _r_pulse.low;
-            _dataReady              = true;
+
+            // Check each condition separately
+            bool highOK   = (_r_pulse.high >= 1 && _r_pulse.high <= 4302);  // 4097
+            bool lowOK    = (_r_pulse.low >= 1 && _r_pulse.low <= 4302);    // 4097
+            bool totalOK  = (_r_pulse.pulse_Interval > 0);
+            bool periodOK = ((_r_pulse.pulse_Interval) >= 3731 && (_r_pulse.pulse_Interval) <= 4545);
+            bool overall  = highOK && lowOK && totalOK && periodOK;
+
+            if (!overall)
+            {
+                return;
+            }
+
+            // Calculate current encoder reading
+            int32_t x_measured = ((_r_pulse.high * 4098) / _r_pulse.pulse_Interval) - 1;
+
+            // Add reading to voting buffer
+            _votingBuffer[_votingIndex] = x_measured;
+            _votingIndex                = (_votingIndex + 1) % VOTING_BUFFER_SIZE;
+
+            // Mark buffer as full after first complete cycle
+            if (_votingIndex == 0)
+            {
+                _votingBufferFull = true;
+            }
+
+            // Only process if we have enough readings (buffer is full)
+            if (!_votingBufferFull)
+            {
+                return;
+            }
+
+            _dataReady = true;
         }
     }
 }
@@ -561,4 +546,27 @@ int MAE3Encoder::encoderToPulses(int encoderValue, int microstep, int stepsPerRe
     float motorAngle   = ((float)encoderValue / (float)encoderResolution) * 360.0f;
     float pulses       = (motorAngle / 360.0f) * pulsesPerRev;
     return (int)round(pulses);
+}
+
+// Interrupt counter methods implementation
+uint32_t MAE3Encoder::getInterruptCount() const
+{
+    return _interruptCount;
+}
+
+uint32_t MAE3Encoder::getHighEdgeCount() const
+{
+    return _highEdgeCount;
+}
+
+uint32_t MAE3Encoder::getLowEdgeCount() const
+{
+    return _lowEdgeCount;
+}
+
+void MAE3Encoder::resetInterruptCounters()
+{
+    _interruptCount = 0;
+    _highEdgeCount  = 0;
+    _lowEdgeCount   = 0;
 }

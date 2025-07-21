@@ -96,6 +96,11 @@ public:
         return _state;
     }
 
+    uint32_t getInterruptCount() const;
+    uint32_t getHighEdgeCount() const;
+    uint32_t getLowEdgeCount() const;
+    void     resetInterruptCounters();
+
 private:
     // Pin assignments
     const uint8_t    _signalPin;
@@ -124,10 +129,15 @@ private:
     size_t                                 _pulseBufferIndex;
 
     // Voting mechanism for encoder readings
-    static constexpr size_t                 VOTING_BUFFER_SIZE = 30;    // Number of readings to vote on
+    static constexpr size_t                 VOTING_BUFFER_SIZE = 16;    // Number of readings to vote on
     std::array<int32_t, VOTING_BUFFER_SIZE> _votingBuffer{};            // Buffer for voting
     size_t                                  _votingIndex      = 0;      // Current index in voting buffer
     bool                                    _votingBufferFull = false;  // Whether voting buffer is full
+
+    // Interrupt counters
+    volatile uint32_t _interruptCount = 0;  // Total interrupt count
+    volatile uint32_t _highEdgeCount  = 0;  // Rising edge count
+    volatile uint32_t _lowEdgeCount   = 0;  // Falling edge count
 
     std::function<void(const EncoderState&)> onPulseUpdated;  // NEW: callback support
 
