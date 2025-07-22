@@ -18,8 +18,8 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.targetAngle       = 0.0f;
     _status.isMoving          = false;
     _status.isEnabled         = false;
-    _status.currentMicrosteps = 0;
-    _status.targetMicrosteps  = 0;
+    _status.currentSteps      = 0;
+    _status.targetSteps       = 0;
     _status.lastMovementType  = MovementType::MEDIUM_RANGE;
     _status.movementStartTime = 0;
     _status.totalMovementTime = 0;
@@ -50,8 +50,8 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.targetAngle       = 0.0f;
     _status.isMoving          = false;
     _status.isEnabled         = false;
-    _status.currentMicrosteps = 0;
-    _status.targetMicrosteps  = 0;
+    _status.currentSteps      = 0;
+    _status.targetSteps       = 0;
     _status.lastMovementType  = MovementType::MEDIUM_RANGE;
     _status.movementStartTime = 0;
     _status.totalMovementTime = 0;
@@ -90,8 +90,8 @@ bool PositionController::begin()
 
     // Set current position to 0
     _stepper.setCurrentPosition(0);
-    _status.currentMicrosteps = 0;
-    _status.currentAngle      = 0.0f;
+    _status.currentSteps = 0;
+    _status.currentAngle = 0.0f;
 
     _initialized = true;
     Serial.printf("[PositionController] Motor %d initialized\n", _motorId + 1);
@@ -101,8 +101,8 @@ bool PositionController::begin()
 void PositionController::setCurrentPosition(int32_t position)
 {
     _stepper.setCurrentPosition(position);
-    _status.currentMicrosteps = position;
-    _status.currentAngle      = convertFromMSteps(position).DEGREES_FROM_STEPS;
+    _status.currentSteps = position;
+    _status.currentAngle = convertFromMSteps(position).DEGREES_FROM_STEPS;
 }
 // Enable/Disable
 void PositionController::enable()
@@ -229,8 +229,8 @@ float PositionController::getCurrentAngle() const
     if (!_initialized)
         return 0.0f;
 
-    int32_t currentMicrosteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return convertFromMSteps(currentMicrosteps).DEGREES_FROM_STEPS;
+    int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
+    return convertFromMSteps(currentSteps).DEGREES_FROM_STEPS;
 }
 
 float PositionController::getTargetAngle() const
@@ -238,7 +238,7 @@ float PositionController::getTargetAngle() const
     return _status.targetAngle;
 }
 
-int32_t PositionController::getCurrentMicrosteps() const
+int32_t PositionController::getCurrentSteps() const
 {
     if (!_initialized)
         return 0;
@@ -246,9 +246,9 @@ int32_t PositionController::getCurrentMicrosteps() const
     return static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
 }
 
-int32_t PositionController::getTargetMicrosteps() const
+int32_t PositionController::getTargetSteps() const
 {
-    return _status.targetMicrosteps;
+    return _status.targetSteps;
 }
 
 MotorStatus PositionController::getStatus()
@@ -260,7 +260,7 @@ MotorStatus PositionController::getStatus()
     status.currentAngle = wrapAngle(getCurrentAngle());
     int32_t steps       = convertFromDegrees(status.currentAngle).STEPS_FROM_DEGREES;
     setCurrentPosition(steps);
-    // status.currentMicrosteps = getCurrentMicrosteps();
+    // status.currentSteps = getCurrentSteps();
     status.isMoving  = isMoving();
     status.isEnabled = isEnabled();
 
@@ -401,9 +401,9 @@ void PositionController::updateStatus()
 
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
-        _status.currentMicrosteps = static_cast<int32_t>(_stepper.currentPosition());
-        _status.currentAngle      = convertFromMSteps(_status.currentMicrosteps).DEGREES_FROM_STEPS;
-        _status.isMoving          = _stepper.distanceToGo() != 0;
+        _status.currentSteps = static_cast<int32_t>(_stepper.currentPosition());
+        _status.currentAngle = convertFromMSteps(_status.currentSteps).DEGREES_FROM_STEPS;
+        _status.isMoving     = _stepper.distanceToGo() != 0;
         xSemaphoreGive(_statusMutex);
     }
 }
@@ -439,22 +439,22 @@ bool PositionController::executeMovement(const MovementCommand& command)
         disableClosedLoop();
     }
 
-    // Calculate target microsteps
-    int32_t targetMicrosteps;
+    // Calculate target steps
+    int32_t targetSteps;
     if (command.relative)
     {
-        targetMicrosteps = _status.currentMicrosteps + convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
+        targetSteps = _status.currentSteps + convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
     }
     else
     {
-        targetMicrosteps = convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
+        targetSteps = convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
     }
 
     // Update status
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(100)) == pdTRUE)
     {
         _status.targetAngle       = command.targetAngle;
-        _status.targetMicrosteps  = targetMicrosteps;
+        _status.targetSteps       = targetSteps;
         _status.isMoving          = true;
         _status.movementStartTime = millis();
         _status.lastMovementType  = command.movementType;
@@ -466,7 +466,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
     setSpeedForMovement(command.movementType);
 
     // Execute movement
-    _stepper.moveTo(static_cast<long>(targetMicrosteps));
+    _stepper.moveTo(static_cast<long>(targetSteps));
 
     Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d, closed-loop: %s)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType), command.closedLoop ? "YES" : "NO");
 

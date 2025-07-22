@@ -62,12 +62,12 @@ struct ConvertValuesFromSteps
 struct MotorStatus
 {
     uint8_t      motorId;
-    float        currentAngle;       // Current angle in degrees
-    float        targetAngle;        // Target angle in degrees
-    bool         isMoving;           // True if motor is currently moving
-    bool         isEnabled;          // True if motor is enabled
-    int32_t      currentMicrosteps;  // Current position in microsteps
-    int32_t      targetMicrosteps;   // Target position in microsteps
+    float        currentAngle;  // Current angle in degrees
+    float        targetAngle;   // Target angle in degrees
+    bool         isMoving;      // True if motor is currently moving
+    bool         isEnabled;     // True if motor is enabled
+    int32_t      currentSteps;  // Current position in steps
+    int32_t      targetSteps;   // Target position in steps
     MovementType lastMovementType;
     uint32_t     movementStartTime;  // Time when movement started
     uint32_t     totalMovementTime;  // Total time for movement
@@ -102,8 +102,8 @@ public:
     // Status and information
     float       getCurrentAngle() const;
     float       getTargetAngle() const;
-    int32_t     getCurrentMicrosteps() const;
-    int32_t     getTargetMicrosteps() const;
+    int32_t     getCurrentSteps() const;
+    int32_t     getTargetSteps() const;
     MotorStatus getStatus();
 
     // Configuration
@@ -120,9 +120,9 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 3200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 3200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 3200, int32_t resolution = ENCODER_RESOLUTION) const;
     float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
 
 private:
