@@ -590,7 +590,7 @@ void PositionController::runPositionControl()
 
         if (isClosedLoopEnabled())
         {
-            float finalError = calculatePositionError();
+            // float finalError = calculatePositionError();
             // Serial.printf("[PositionController] Motor %d reached target (closed-loop). Final error: %.2f°\n", _motorId + 1, finalError);
             Serial.printf("[PositionController] Motor %d reached target (closed-loop).\n", _motorId + 1);
         }
