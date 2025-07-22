@@ -5,6 +5,7 @@
 
 SimpleCLI cli;
 Command   cmdMotor;
+Command   cmdReference;
 Command   cmdOrgin;
 Command   cmdStop;
 Command   cmdRestart;
@@ -16,6 +17,8 @@ void initializeCLI()
     cmdMotor = cli.addCmd("motor");
     cmdMotor.addArg("n", "1");    // motor number argument
     cmdMotor.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdMotor.addArg("h", "0.0");  // positional argument (pixel)
+    cmdMotor.addArg("g", "0.0");  // positional argument (angle)
     cmdMotor.addArg("o", "0");    // current position
     cmdMotor.addFlagArg("c");     // current position
     cmdMotor.addFlagArg("d");     // disable flag
@@ -42,6 +45,15 @@ void initializeCLI()
     cmdOrgin = cli.addCmd("orgin");
     cmdOrgin.addArg("n", "1");  // motor number argument
     cmdOrgin.setDescription("Set origin position of motor");
+
+    cmdReference = cli.addCmd("ref");
+    cmdReference.addArg("n", "1");    // motor number argument
+    cmdReference.addArg("h", "0.0");  // positional argument (pixel)
+    cmdReference.addArg("g", "0.0");  // positional argument (angle)
+    cmdReference.setDescription("Control motor movement\r\n"
+                                "  -n: Motor number (1-4, required)\r\n"
+                                "  -h: pixel reference position\r\n"
+                                "  -g: angle reference position\r\n");
 
     cmdStop = cli.addCmd("stop");
     cmdStop.setDescription("Stop the motor");

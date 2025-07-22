@@ -25,9 +25,11 @@ TaskHandle_t              serialReadTaskHandle = NULL;
 // Command history support
 #define HISTORY_SIZE 10
 static String  commandHistory[HISTORY_SIZE];
-static int     historyCount = 0;
-static int     historyIndex = -1;  // -1 means not navigating
-static uint8_t currentIndex = 1;   // Current driver index
+static int     historyCount   = 0;
+static int     historyIndex   = -1;   // -1 means not navigating
+static uint8_t currentIndex   = 1;    // Current driver index
+static float   pixelReference = 0.0;  // Pixel reference position
+static float   angleReference = 0.0;  // Angle reference position
 
 // K key press timing
 static uint32_t lastKPressTime = 0;  // Timestamp of last K key press
@@ -586,9 +588,13 @@ void serialReadTask(void* pvParameters)
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Current="));
                 Serial.print(status.currentAngle, 2);
-                Serial.print(F("°, Target="));
+                Serial.print(F("° ("));
+                Serial.print("");
+                Serial.print(F(" px), Target="));
                 Serial.print(status.targetAngle, 2);
-                Serial.print(F("°, Moving="));
+                Serial.print(F("° ("));
+                Serial.print("");
+                Serial.print(F(" px), Moving="));
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
@@ -597,9 +603,7 @@ void serialReadTask(void* pvParameters)
 
                 if (status.isClosedLoop)
                 {
-                    // Serial.print(F(", Encoder="));
-                    // Serial.print(status.encoderAngle, 2);
-                    Serial.print(F(", Error="));  // Serial.print(F("°, Error="));
+                    Serial.print(F(", Error="));
                     Serial.print(status.positionError, 2);
                     Serial.print(F("°"));
                 }
@@ -836,47 +840,73 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdOrgin)
             {
-                String motorIdStr = c.getArgument("n").getValue();
-                setMotorId(motorIdStr);
-
-                if (!encoder[currentIndex].isEnabled())
+                if (c.getArgument("n").isSet())
                 {
-                    Serial.println(F("[Error] Encoder not enabled"));
-                    return;
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+
+                    if (!encoder[currentIndex].isEnabled())
+                    {
+                        Serial.println(F("[Error] Encoder not enabled"));
+                        return;
+                    }
+                    // Process encoder to get current reading
+                    encoder[currentIndex].processPWM();
+
+                    // Get encoder state
+                    EncoderState encoderState = encoder[currentIndex].getState();
+
+                    float value = encoderState.position_degrees;
+
+                    ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
+                    ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
+                    ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
+
+                    Serial.print(F("From Degrees: "));
+                    Serial.print(cvfd.PULSES_FROM_DEGREES);
+                    Serial.print(F(", "));
+                    Serial.println(cvfd.STEPS_FROM_DEGREES);
+
+                    Serial.print(F("From Pulses: "));
+                    Serial.print(cvfp.DEGREES_FROM_PULSES);
+                    Serial.print(F(", "));
+                    Serial.println(cvfp.STEPS_FROM_PULSES);
+
+                    Serial.print(F("From Steps: "));
+                    Serial.print(cvfs.DEGREES_FROM_STEPS);
+                    Serial.print(F(", "));
+                    Serial.println(cvfs.PULSES_FROM_STEPS);
+                    positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
+
+                    // Store origin position in Preferences
+                    esp_task_wdt_reset();
+                    storeOriginPosition(currentIndex, value);
+                    esp_task_wdt_reset();
                 }
-                // Process encoder to get current reading
-                encoder[currentIndex].processPWM();
-
-                // Get encoder state
-                EncoderState encoderState = encoder[currentIndex].getState();
-
-                float value = encoderState.position_degrees;
-
-                ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
-                ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
-                ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
-
-                Serial.print(F("From Degrees: "));
-                Serial.print(cvfd.PULSES_FROM_DEGREES);
-                Serial.print(F(", "));
-                Serial.println(cvfd.STEPS_FROM_DEGREES);
-
-                Serial.print(F("From Pulses: "));
-                Serial.print(cvfp.DEGREES_FROM_PULSES);
-                Serial.print(F(", "));
-                Serial.println(cvfp.STEPS_FROM_PULSES);
-
-                Serial.print(F("From Steps: "));
-                Serial.print(cvfs.DEGREES_FROM_STEPS);
-                Serial.print(F(", "));
-                Serial.println(cvfs.PULSES_FROM_STEPS);
-                positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
-
-                // Store origin position in Preferences
-                esp_task_wdt_reset();
-                storeOriginPosition(currentIndex, value);
-                esp_task_wdt_reset();
             }
+            else if (c == cmdReference)
+            {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
+                if (c.getArgument("h").isSet())
+                {
+                    String pixelStr = c.getArgument("h").getValue();
+                    pixelReference  = pixelStr.toFloat();
+                    Serial.print(F("[Info] Pixel reference set to "));
+                    Serial.println(pixelReference);
+                }
+                if (c.getArgument("g").isSet())
+                {
+                    String angleStr = c.getArgument("g").getValue();
+                    angleReference  = angleStr.toFloat();
+                    Serial.print(F("[Info] Angle reference set to "));
+                    Serial.println(angleReference);
+                }
+            }
+
             else if (c == cmdRestart)
             {
                 ESP.restart();

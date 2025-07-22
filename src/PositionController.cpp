@@ -669,20 +669,14 @@ ConvertValuesFromSteps PositionController::convertFromMSteps(int32_t steps, int3
     return convert;
 }
 
-float PositionController::pixelToMirrorAngle(int32_t currentPixel, int32_t targetPixel)
+float PositionController::calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg)
 {
-    float deltaX_mm       = (currentPixel - targetPixel) * PIXEL_SIZE_MM;
-    float angle_rad       = atan(deltaX_mm / CAMERA_TO_MIRROR_LENGTH_MM);
-    float mirrorAngle_deg = (angle_rad * 180.0f / M_PI) / 2.0f;
-    return mirrorAngle_deg;
-}
+    float deltaPixel     = newPixel - refPixel;
+    float delta_mm       = deltaPixel * PIXEL_SIZE_MM;
+    float mirrorAngleRad = atan(delta_mm / CAMERA_TO_MIRROR_LENGTH_MM);
+    float motorAngleDeg  = refMotorDeg + (mirrorAngleRad * 180.0 / M_PI);
 
-int32_t PositionController::mirrorAngleToPixel(float mirrorAngle_deg)
-{
-    float   totalAngle_rad = mirrorAngle_deg * 2.0f * M_PI / 180.0f;
-    float   deltaX_mm      = tan(totalAngle_rad) * CAMERA_TO_MIRROR_LENGTH_MM;
-    int32_t deltaPixel     = round(deltaX_mm / PIXEL_SIZE_MM);
-    return deltaPixel;
+    return motorAngleDeg;
 }
 
 // Global functions for RTOS integration

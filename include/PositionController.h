@@ -123,8 +123,7 @@ public:
     ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
     ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
     ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    float                    pixelToMirrorAngle(int32_t currentPixel, int32_t targetPixel);
-    int32_t                  mirrorAngleToPixel(float mirrorAngle_deg);
+    float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
 
 private:
     // Hardware components
