@@ -237,8 +237,13 @@ void printAllOriginPositions()
     Serial.println(F("[Preferences] Current origin positions:"));
     for (uint8_t i = 0; i < 4; i++)
     {
-        String key            = "motor" + String(i) + "_origin";
-        float  originPosition = prefs.getFloat(key.c_str(), 0.0f);
+        float originPosition = 0.0f;
+
+        String key = "motor" + String(i) + "_origin";
+        if (prefs.isKey(key.c_str()))
+        {
+            originPosition = prefs.getFloat(key.c_str(), 0.0f);
+        }
         Serial.print(F("  Motor "));
         Serial.print(i + 1);
         Serial.print(F(": "));

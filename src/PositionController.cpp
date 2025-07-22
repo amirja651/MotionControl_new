@@ -113,36 +113,6 @@ void PositionController::enable()
     _stepper.enableOutputs();
     _enabled          = true;
     _status.isEnabled = true;
-
-    // Read encoder value and use it as starting position
-    // ReadEncoderValue();
-}
-
-void PositionController::ReadEncoderValue()
-{
-    if (_encoder != nullptr && _encoder->isEnabled())  // amir
-    {
-        // Process encoder data to get current reading
-        _encoder->processPWM();
-
-        // Get encoder context with current position
-        EncoderState encoderState = _encoder->getState();
-        float        encoderAngle = encoderState.position_degrees;
-
-        // Convert encoder angle to microsteps and set as current position
-        int32_t encoderMicrosteps = convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
-        _stepper.setCurrentPosition(static_cast<long>(encoderMicrosteps));
-
-        // Update status
-        _status.currentAngle      = encoderAngle;
-        _status.currentMicrosteps = encoderMicrosteps;
-
-        // Serial.printf("[PositionController] Motor %d enabled, encoder position: %.2f° (%u microsteps)\n", _motorId + 1, encoderAngle, encoderMicrosteps);
-    }
-    else
-    {
-        // Serial.printf("[PositionController] Motor %d enabled (no encoder feedback)\n", _motorId + 1);
-    }
 }
 
 void PositionController::disable()
@@ -201,7 +171,6 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     if (!_enabled || !_initialized)
         return false;
 
-    // ReadEncoderValue();
     float currentAngle = getCurrentAngle();
     float targetAngle  = wrapAngle(currentAngle + deltaAngle);
 
@@ -298,7 +267,6 @@ MotorStatus PositionController::getStatus()
     // Update closed-loop information
     if (isClosedLoopEnabled())
     {
-        status.encoderAngle  = getEncoderAngle();
         status.positionError = calculatePositionError();
     }
 
@@ -590,9 +558,8 @@ void PositionController::runPositionControl()
 
         if (isClosedLoopEnabled())
         {
-            // float finalError = calculatePositionError();
-            // Serial.printf("[PositionController] Motor %d reached target (closed-loop). Final error: %.2f°\n", _motorId + 1, finalError);
-            Serial.printf("[PositionController] Motor %d reached target (closed-loop).\n", _motorId + 1);
+            float finalError = calculatePositionError();
+            Serial.printf("[PositionController] Motor %d reached target (closed-loop). Final error: %.2f°\n", _motorId + 1, finalError);
         }
         else
         {

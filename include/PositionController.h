@@ -85,7 +85,6 @@ public:
     bool begin();
     void setCurrentPosition(int32_t position);
     void enable();
-    void ReadEncoderValue();
     void disable();
     bool isEnabled() const;
 
