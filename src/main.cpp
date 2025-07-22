@@ -612,7 +612,7 @@ void serialReadTask(void* pvParameters)
                 encoder[currentIndex].processPWM();
                 EncoderState encoderState = encoder[currentIndex].getState();
                 Serial.print(F(", (Encoder: "));
-                Serial.print(encoderState.position_degrees, 3);
+                Serial.print(encoderState.position_degrees, 2);
                 Serial.print(F("°,"));
                 Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
                 Serial.print(F(", "));
@@ -678,7 +678,7 @@ void serialReadTask(void* pvParameters)
                     EncoderState encoderState = encoder[currentIndex].getState();
 
                     Serial.print(F("  Encoder Position: "));
-                    Serial.print(encoderState.position_degrees, 3);
+                    Serial.print(encoderState.position_degrees, 2);
                     Serial.print(F("° ("));
                     Serial.print(encoderState.position_pulse);
                     Serial.println(F(" pulses)"));
