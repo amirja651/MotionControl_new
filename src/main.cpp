@@ -25,11 +25,9 @@ TaskHandle_t              serialReadTaskHandle = NULL;
 // Command history support
 #define HISTORY_SIZE 10
 static String  commandHistory[HISTORY_SIZE];
-static int     historyCount   = 0;
-static int     historyIndex   = -1;   // -1 means not navigating
-static uint8_t currentIndex   = 1;    // Current driver index
-static float   pixelReference = 0.0;  // Pixel reference position
-static float   angleReference = 0.0;  // Angle reference position
+static int     historyCount = 0;
+static int     historyIndex = -1;  // -1 means not navigating
+static uint8_t currentIndex = 1;   // Current driver index
 
 // K key press timing
 static uint32_t lastKPressTime = 0;  // Timestamp of last K key press
@@ -588,13 +586,9 @@ void serialReadTask(void* pvParameters)
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Current="));
                 Serial.print(status.currentAngle, 2);
-                Serial.print(F("° ("));
-                Serial.print("");
-                Serial.print(F(" px), Target="));
+                Serial.print(F("°, Target="));
                 Serial.print(status.targetAngle, 2);
-                Serial.print(F("° ("));
-                Serial.print("");
-                Serial.print(F(" px), Moving="));
+                Serial.print(F("°, Moving="));
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
@@ -884,29 +878,6 @@ void serialReadTask(void* pvParameters)
                     esp_task_wdt_reset();
                 }
             }
-            else if (c == cmdReference)
-            {
-                if (c.getArgument("n").isSet())
-                {
-                    String motorIdStr = c.getArgument("n").getValue();
-                    setMotorId(motorIdStr);
-                }
-                if (c.getArgument("h").isSet())
-                {
-                    String pixelStr = c.getArgument("h").getValue();
-                    pixelReference  = pixelStr.toFloat();
-                    Serial.print(F("[Info] Pixel reference set to "));
-                    Serial.println(pixelReference);
-                }
-                if (c.getArgument("g").isSet())
-                {
-                    String angleStr = c.getArgument("g").getValue();
-                    angleReference  = angleStr.toFloat();
-                    Serial.print(F("[Info] Angle reference set to "));
-                    Serial.println(angleReference);
-                }
-            }
-
             else if (c == cmdRestart)
             {
                 ESP.restart();
