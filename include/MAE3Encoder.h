@@ -12,13 +12,11 @@
 #include <vector>
 
 // Physical parameters
-#define PIXEL_SIZE_UM      5.2f  // Size of each pixel in the camera (micrometers)
-#define PIXEL_SIZE_MM      (PIXEL_SIZE_UM * 1e-3f)
-#define L_MM               195.0f  // Distance from mirror to camera in millimeters (can be measured accurately)
-#define MICROSTEP          16      // Or 256
-#define STEPS_PER_REV      200     // Motor step = 1.8° = 200 steps
-#define ENCODER_RESOLUTION 4096    // Encoder 12 bits
-#define GEAR_RATIO         1.0f    // If there is no gear ratio = 1
+
+#define MICROSTEP          16    // Or 256
+#define STEPS_PER_REV      200   // Motor step = 1.8° = 200 steps
+#define ENCODER_RESOLUTION 4096  // Encoder 12 bits
+#define GEAR_RATIO         1.0f  // If there is no gear ratio = 1
 // Calculate the number of actual pulses in one complete motor revolution
 #define TOTAL_PULSES_PER_REV (STEPS_PER_REV * MICROSTEP)
 
@@ -80,16 +78,6 @@ public:
     bool isStopped(int64_t threshold_us = 500000 /* 500ms */) const;
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
     void diagnoseEncoderSignals();
-
-    float calculateMirrorAngle(int currentPixel, int referencePixel);
-    float calculateDistanceToMirror(int currentPixel, int referencePixel, float mirrorAngleDeg);
-    float calculateEncoderAngle(int currentCount, int previousCount, int encoderResolution = 4096, float gearRatio = 1.0);
-
-    float pixelToMirrorAngle(int deltaPixel);
-    int   mirrorAngleToPulses(float mirrorAngleDeg);
-    int   pixelToPulses(int deltaPixel);
-    int   mirrorAngleToPulses(float mirrorAngleDeg, int microstep, int stepsPerRev = 200, float gearRatio = 1.0);
-    int   encoderToPulses(int encoderValue, int microstep, int stepsPerRev = 200, int encoderResolution = 4096);
 
     EncoderState getState() const
     {

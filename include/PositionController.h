@@ -17,6 +17,10 @@ static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(DEFAUL
 static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;     // 6400 microsteps
 static constexpr float   POSITION_ACCURACY_DEGREES = 0.1f;                                           // Target accuracy
 
+static constexpr float PIXEL_SIZE_UM              = 5.2f;  // Size of each pixel in the camera (micrometers)
+static constexpr float PIXEL_SIZE_MM              = (PIXEL_SIZE_UM * 1e-3f);
+static constexpr float CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from mirror to camera in millimeters (can be measured accurately)
+
 // Movement types
 enum class MovementType
 {
@@ -119,6 +123,8 @@ public:
     ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
     ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
     ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 63 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    float                    pixelToMirrorAngle(int32_t currentPixel, int32_t targetPixel);
+    int32_t                  mirrorAngleToPixel(float mirrorAngle_deg);
 
 private:
     // Hardware components
