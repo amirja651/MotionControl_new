@@ -246,7 +246,7 @@ void MAE3Encoder::detachInterruptHandler()
 }
 
 // method for processing interrupt *** amir
-void IRAM_ATTR MAE3Encoder::processInterrupt()
+void MAE3Encoder::processInterrupt()
 {
     if (!_enabled)
         return;
@@ -373,25 +373,25 @@ int32_t MAE3Encoder::getMostFrequentValue() const
 }
 
 // Individual interrupt handlers for each encoder
-void IRAM_ATTR MAE3Encoder::interruptHandler0(void* arg)
+void MAE3Encoder::interruptHandler0(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
         encoder->processInterrupt();
 }
-void IRAM_ATTR MAE3Encoder::interruptHandler1(void* arg)
+void MAE3Encoder::interruptHandler1(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
         encoder->processInterrupt();
 }
-void IRAM_ATTR MAE3Encoder::interruptHandler2(void* arg)
+void MAE3Encoder::interruptHandler2(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
         encoder->processInterrupt();
 }
-void IRAM_ATTR MAE3Encoder::interruptHandler3(void* arg)
+void MAE3Encoder::interruptHandler3(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)

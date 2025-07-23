@@ -89,9 +89,7 @@ bool PositionController::begin()
     _stepper.setAcceleration(_speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)].acceleration);
 
     // Set current position to 0
-    _stepper.setCurrentPosition(0);
-    _status.currentSteps = 0;
-    _status.currentAngle = 0.0f;
+    setCurrentPosition(0);
 
     _initialized = true;
     Serial.printf("[PositionController] Motor %d initialized\n", _motorId + 1);
@@ -100,6 +98,7 @@ bool PositionController::begin()
 
 void PositionController::setCurrentPosition(int32_t position)
 {
+    Serial.printf("[PositionController] Motor %d setCurrentPosition: %d\n", _motorId + 1, position);
     _stepper.setCurrentPosition(position);
     _status.currentSteps = position;
     _status.currentAngle = convertFromMSteps(position).DEGREES_FROM_STEPS;

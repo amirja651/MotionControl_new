@@ -49,15 +49,15 @@ static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 Preferences prefs;
 
 // Function declarations
-uint16_t        calculateByNumber(uint16_t rms_current, uint8_t number);
-void IRAM_ATTR  storeOriginPosition(uint8_t motorIndex, float originDegrees);
-float IRAM_ATTR loadOriginPosition(uint8_t motorIndex);
-void            clearAllOriginPositions();
-void            printAllOriginPositions();
-void            printCurrentSettingsAndKeyboardControls();
-void            clearLine();
-void            setMotorId(String motorId);
-void            serialReadTask(void* pvParameters);
+uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
+void     storeOriginPosition(uint8_t motorIndex, float originDegrees);
+float    loadOriginPosition(uint8_t motorIndex);
+void     clearAllOriginPositions();
+void     printAllOriginPositions();
+void     printCurrentSettingsAndKeyboardControls();
+void     clearLine();
+void     setMotorId(String motorId);
+void     serialReadTask(void* pvParameters);
 
 void setup()
 {
@@ -97,11 +97,20 @@ void setup()
     SystemDiagnostics::printSystemStatus();
 
     // for disable all drivers pins - for avoid conflict in SPI bus
-    // Initialize CS pins and turn them off
+    // Initialize CS pins and turn them off with safety checks
     for (uint8_t index = 0; index < 4; index++)
     {
-        pinMode(DriverPins::CS[index], OUTPUT);
-        gpio_set_level((gpio_num_t)DriverPins::CS[index], HIGH);
+        // Validate pin number before using
+        if (DriverPins::CS[index] < 40)  // ESP32 has max 40 GPIO pins
+        {
+            pinMode(DriverPins::CS[index], OUTPUT);
+            // Use digitalWrite instead of gpio_set_level for safety
+            digitalWrite(DriverPins::CS[index], HIGH);
+        }
+        else
+        {
+            Serial.printf("[Error] Invalid CS pin number: %d\n", DriverPins::CS[index]);
+        }
     }
 
     // Initialize TMC5160 drivers
@@ -135,14 +144,29 @@ void setup()
     initializePositionControllers();
     startPositionControlSystem();
     setMotorId("2");
-    printAllOriginPositions();
 
-    esp_task_wdt_init(5, true);  // Increased timeout to 5 seconds
-    esp_task_wdt_add(NULL);      // Add the current task (setup)
+    // Add longer delay before accessing preferences to ensure stability
+    delay(500);
+
+    // Call printAllOriginPositions with error handling
+    try
+    {
+        printAllOriginPositions();
+    }
+    catch (...)
+    {
+        Serial.println(F("[Error] Failed to print origin positions, continuing..."));
+    }
+
+    delay(1000);
+
+    // Increase watchdog timeout and add better error handling
+    esp_task_wdt_init(15, true);  // Increased timeout to 15 seconds
+    esp_task_wdt_add(NULL);       // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
-    // Create serial read task
-    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 4096, NULL, 2, &serialReadTaskHandle, 0);
+    // Create serial read task with larger stack
+    xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 8192, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
     Serial.println(F("[Info] Position control system initialized"));
@@ -151,6 +175,35 @@ void setup()
 
 void loop()
 {
+    // Monitor system health
+    static uint32_t lastHealthCheck = 0;
+    static uint32_t resetCount      = 0;
+
+    uint32_t currentTime = millis();
+
+    // Health check every 30 seconds
+    if (currentTime - lastHealthCheck > 30000)
+    {
+        lastHealthCheck = currentTime;
+
+        // Check free heap
+        uint32_t freeHeap = ESP.getFreeHeap();
+        if (freeHeap < 10000)
+        {  // Less than 10KB free
+            Serial.printf("[Warning] Low memory: %d bytes free\n", freeHeap);
+        }
+
+        // Check stack usage
+        uint32_t stackHighWater = uxTaskGetStackHighWaterMark(NULL);
+        if (stackHighWater < 1000)
+        {  // Less than 1KB stack free
+            Serial.printf("[Warning] Low stack: %d bytes free\n", stackHighWater);
+        }
+
+        // Log system uptime
+        Serial.printf("[Info] System uptime: %u seconds, Reset count: %u\n", (unsigned int)(currentTime / 1000), (unsigned int)++resetCount);
+    }
+
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(100));
 }
@@ -160,7 +213,7 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
     return (rms_current * number) / 32;
 }
 
-void IRAM_ATTR storeOriginPosition(uint8_t motorIndex, float originDegrees)
+void storeOriginPosition(uint8_t motorIndex, float originDegrees)
 {
     if (motorIndex >= 4)
     {
@@ -176,8 +229,17 @@ void IRAM_ATTR storeOriginPosition(uint8_t motorIndex, float originDegrees)
     // Create a unique key for each motor's origin position
     String key = "motor" + String(motorIndex) + "_origin";
 
-    // Store the origin position in Preferences
-    bool success = prefs.putFloat(key.c_str(), wrappedAngle);
+    // Store the origin position in Preferences with error handling
+    bool success = false;
+    try
+    {
+        success = prefs.putFloat(key.c_str(), wrappedAngle);
+    }
+    catch (...)
+    {
+        Serial.printf("[Error] Exception occurred while storing origin position for motor %d\n", motorIndex + 1);
+        return;
+    }
 
     if (success)
     {
@@ -197,7 +259,7 @@ void IRAM_ATTR storeOriginPosition(uint8_t motorIndex, float originDegrees)
     }
 }
 
-float IRAM_ATTR loadOriginPosition(uint8_t motorIndex)
+float loadOriginPosition(uint8_t motorIndex)
 {
     if (motorIndex >= 4)
     {
@@ -208,8 +270,17 @@ float IRAM_ATTR loadOriginPosition(uint8_t motorIndex)
     // Create a unique key for each motor's origin position
     String key = "motor" + String(motorIndex) + "_origin";
 
-    // Load the origin position from Preferences
-    float originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
+    // Load the origin position from Preferences with error handling
+    float originPosition = 0.0f;
+    try
+    {
+        originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
+    }
+    catch (...)
+    {
+        Serial.printf("[Error] Exception occurred while loading origin position for motor %d\n", motorIndex + 1);
+        return 0.0f;
+    }
 
     Serial.print(F("[Preferences] Motor "));
     Serial.print(motorIndex + 1);
@@ -235,26 +306,51 @@ void clearAllOriginPositions()
 void printAllOriginPositions()
 {
     Serial.println(F("[Preferences] Current origin positions:"));
+
+    // Add delay to ensure system stability
+    delay(10);
+
     for (uint8_t i = 0; i < 4; i++)
     {
         float originPosition = 0.0f;
 
         String key = "motor" + String(i) + "_origin";
+
+        // Add error handling for preferences access
         if (prefs.isKey(key.c_str()))
         {
-            originPosition = prefs.getFloat(key.c_str(), 0.0f);
+            try
+            {
+                originPosition = prefs.getFloat(key.c_str(), 0.0f);
+            }
+            catch (...)
+            {
+                Serial.printf("[Error] Failed to read origin position for motor %d\n", i + 1);
+                originPosition = 0.0f;
+            }
         }
+
         Serial.print(F("  Motor "));
         Serial.print(i + 1);
         Serial.print(F(": "));
         Serial.print(originPosition, 2);
         Serial.println(F("°"));
+
+        // Small delay between each motor to prevent overload
+        delay(5);
     }
 
     // Print total number of keys for debugging
-    size_t totalKeys = prefs.freeEntries();
-    Serial.print(F("[Preferences] Total free entries: "));
-    Serial.println(totalKeys);
+    try
+    {
+        size_t totalKeys = prefs.freeEntries();
+        Serial.print(F("[Preferences] Total free entries: "));
+        Serial.println(totalKeys);
+    }
+    catch (...)
+    {
+        Serial.println(F("[Error] Failed to get preferences free entries"));
+    }
 }
 
 void printCurrentSettingsAndKeyboardControls()
@@ -341,8 +437,24 @@ void serialReadTask(void* pvParameters)
     String           inputBuffer   = "";
     String           lastInput     = "";
 
+    // Task health monitoring
+    static uint32_t taskStartTime      = millis();
+    static uint32_t watchdogResetCount = 0;
+
     while (1)
     {
+        // Reset watchdog more frequently and track it
+        esp_task_wdt_reset();
+        watchdogResetCount++;
+
+        // Log task health every 1000 cycles (about 100 seconds)
+        if (watchdogResetCount % 1000 == 0)
+        {
+            uint32_t taskUptime = (millis() - taskStartTime) / 1000;
+            uint32_t stackFree  = uxTaskGetStackHighWaterMark(NULL);
+            Serial.printf("[Task] SerialRead uptime: %u s, Stack: %u bytes, WDT resets: %u\n", (unsigned int)taskUptime, (unsigned int)stackFree, (unsigned int)watchdogResetCount);
+        }
+
         while (Serial.available())
         {
             char c = Serial.read();
@@ -418,7 +530,17 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("# "));
                     Serial.print(inputBuffer.c_str());
                     Serial.print(F("\r\n"));
-                    cli.parse(inputBuffer);
+
+                    // Add error handling for CLI parsing
+                    try
+                    {
+                        cli.parse(inputBuffer);
+                    }
+                    catch (...)
+                    {
+                        Serial.println(F("[Error] CLI parsing failed"));
+                    }
+
                     // Add to history
                     if (historyCount == 0 || commandHistory[(historyCount - 1) % HISTORY_SIZE] != inputBuffer)
                     {
@@ -580,11 +702,20 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == 'L')  // Show position status
             {
+                encoder[currentIndex].processPWM();
+                EncoderState encoderState = encoder[currentIndex].getState();
+
                 MotorStatus status = positionController[currentIndex].getStatus();
                 Serial.println();
                 Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Current="));
+                if (status.currentAngle == 0)
+                {
+                    int32_t steps = positionController[currentIndex].convertFromDegrees(positionController[currentIndex].getEncoderAngle()).STEPS_FROM_DEGREES;
+                    positionController[currentIndex].setCurrentPosition(steps);
+                    status.currentAngle = positionController[currentIndex].getCurrentAngle();
+                }
                 Serial.print(status.currentAngle, 2);
                 Serial.print(F("°, Target="));
                 Serial.print(status.targetAngle, 2);
@@ -609,8 +740,6 @@ void serialReadTask(void* pvParameters)
                     return;
                 }
 
-                encoder[currentIndex].processPWM();
-                EncoderState encoderState = encoder[currentIndex].getState();
                 Serial.print(F(", (Encoder: "));
                 Serial.print(encoderState.position_degrees, 2);
                 Serial.print(F("°,"));

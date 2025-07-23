@@ -13,12 +13,7 @@
 
 // Physical parameters
 
-#define MICROSTEP          16    // Or 256
-#define STEPS_PER_REV      200   // Motor step = 1.8° = 200 steps
 #define ENCODER_RESOLUTION 4096  // Encoder 12 bits
-#define GEAR_RATIO         1.0f  // If there is no gear ratio = 1
-// Calculate the number of actual pulses in one complete motor revolution
-#define TOTAL_PULSES_PER_REV (STEPS_PER_REV * MICROSTEP)
 
 // Direction enum
 enum class Direction
@@ -132,7 +127,7 @@ private:
     void attachInterruptHandler();  // Attaches high-priority GPIO interrupt
     void detachInterruptHandler();
 
-    void IRAM_ATTR processInterrupt();
+    void processInterrupt();
 
     int64_t get_median_width_high() const;
     int64_t get_median_width_low() const;
@@ -140,10 +135,10 @@ private:
     // Voting mechanism helper methods
     int32_t getMostFrequentValue() const;  // Returns the most frequently occurring value in voting buffer
 
-    static void IRAM_ATTR interruptHandler0(void* arg);
-    static void IRAM_ATTR interruptHandler1(void* arg);
-    static void IRAM_ATTR interruptHandler2(void* arg);
-    static void IRAM_ATTR interruptHandler3(void* arg);
+    static void interruptHandler0(void* arg);
+    static void interruptHandler1(void* arg);
+    static void interruptHandler2(void* arg);
+    static void interruptHandler3(void* arg);
 };
 
 #endif  // MAE3_ENCODER2_H

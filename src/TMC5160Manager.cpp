@@ -261,7 +261,8 @@ void TMC5160Manager::configureDriver_All_Motors(bool useStealth)
 
 void TMC5160Manager::DriverOff()
 {
-    gpio_set_level((gpio_num_t)_pinCS, HIGH);
+    // Use digitalWrite instead of gpio_set_level for safety
+    digitalWrite(_pinCS, HIGH);
     delay(5);
 }
 

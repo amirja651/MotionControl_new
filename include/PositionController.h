@@ -120,10 +120,11 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 3200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 3200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 3200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 64 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 64 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 64 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
     float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
+    float                    getEncoderAngle();
 
 private:
     // Hardware components
@@ -165,9 +166,9 @@ private:
     float calculateOptimalSpeed(float distance, MovementType type);
 
     // Closed-loop control methods
-    void  enableClosedLoop();
-    void  disableClosedLoop();
-    float getEncoderAngle();
+    void enableClosedLoop();
+    void disableClosedLoop();
+
     float calculatePositionError();
     void  applyClosedLoopCorrection();
     bool  isClosedLoopEnabled() const;
