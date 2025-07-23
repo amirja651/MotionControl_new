@@ -701,13 +701,6 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(", "));
                 Serial.print(encoderState.position_pulse);
                 Serial.print(F(" pulses)"));
-                Serial.print(F(", High: "));
-                Serial.print(encoderState.width_high);
-                Serial.print(F(", Low: "));
-                Serial.print(encoderState.width_low);
-                Serial.print(F(", Interval: "));
-                Serial.print(encoderState.width_interval);
-                Serial.print(F(" pulses)"));
                 Serial.println();
                 inputBuffer = "";
                 lastInput   = "";

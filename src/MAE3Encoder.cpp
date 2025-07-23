@@ -127,12 +127,12 @@ void MAE3Encoder::processPWM(bool print)
         return;
 
     noInterrupts();
-    int32_t voted_reading = getMostFrequentValue();
-    _dataReady            = false;
+    votePair voted_reading = getMostFrequentValue();
+    _dataReady             = false;
     interrupts();
 
     // Debug output if requested
-    if (0)
+    if (1)
     {
         Serial.printf("[Encoder %d] Voting Buffer: [", _encoderId + 1);
         for (size_t i = 0; i < VOTING_BUFFER_SIZE; ++i)
@@ -141,13 +141,13 @@ void MAE3Encoder::processPWM(bool print)
             if (i < VOTING_BUFFER_SIZE - 1)
                 Serial.printf(", ");
         }
-        Serial.printf("] -> Voted: %d\n", voted_reading);
+        Serial.printf("] -> Voted: %d (count: %d)\n", voted_reading.value, voted_reading.count);
     }
 
     // Use the voted reading as the final position
-    if (voted_reading <= 4094)
-        _state.position_pulse = voted_reading;
-    else if (voted_reading == 4096 || voted_reading == 4097)
+    if (voted_reading.value <= 4094)
+        _state.position_pulse = voted_reading.value;
+    else if (voted_reading.value == 4096 || voted_reading.value == 4097)
         _state.position_pulse = 4095;
     else
     {
@@ -345,7 +345,7 @@ int64_t MAE3Encoder::get_median_width_low() const
 }
 
 // Voting mechanism implementation
-int32_t MAE3Encoder::getMostFrequentValue() const
+votePair MAE3Encoder::getMostFrequentValue() const
 {
     // Create a map to count occurrences of each value
     std::unordered_map<int32_t, int> frequency_map;
@@ -369,7 +369,7 @@ int32_t MAE3Encoder::getMostFrequentValue() const
         }
     }
 
-    return most_frequent_value;
+    return {most_frequent_value, max_frequency};
 }
 
 // Individual interrupt handlers for each encoder

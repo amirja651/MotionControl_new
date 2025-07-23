@@ -15,6 +15,12 @@
 
 #define ENCODER_RESOLUTION 4096  // Encoder 12 bits
 
+struct votePair
+{
+    int32_t value;
+    int32_t count;
+};
+
 // Direction enum
 enum class Direction
 {
@@ -112,7 +118,7 @@ private:
     size_t                                 _pulseBufferIndex;
 
     // Voting mechanism for encoder readings
-    static constexpr size_t                 VOTING_BUFFER_SIZE = 16;    // Number of readings to vote on
+    static constexpr size_t                 VOTING_BUFFER_SIZE = 15;    // Number of readings to vote on
     std::array<int32_t, VOTING_BUFFER_SIZE> _votingBuffer{};            // Buffer for voting
     size_t                                  _votingIndex      = 0;      // Current index in voting buffer
     bool                                    _votingBufferFull = false;  // Whether voting buffer is full
@@ -133,7 +139,7 @@ private:
     int64_t get_median_width_low() const;
 
     // Voting mechanism helper methods
-    int32_t getMostFrequentValue() const;  // Returns the most frequently occurring value in voting buffer
+    votePair getMostFrequentValue() const;  // Returns the most frequently occurring value in voting buffer
 
     static void IRAM_ATTR interruptHandler0(void* arg);
     static void IRAM_ATTR interruptHandler1(void* arg);
