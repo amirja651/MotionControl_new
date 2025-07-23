@@ -15,13 +15,6 @@
 
 #define ENCODER_RESOLUTION 4096  // Encoder 12 bits
 
-struct OrginData
-{
-    uint8_t motorIndex = 0;
-    float   value      = 0.0f;
-    bool    save       = false;
-} orgin;
-
 struct votePair
 {
     uint32_t value;
