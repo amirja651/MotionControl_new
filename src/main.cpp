@@ -8,6 +8,13 @@
 #include <SPI.h>
 #include <esp_task_wdt.h>
 
+struct OrginData
+{
+    uint8_t motorIndex = 0;
+    float   value      = 0.0f;
+    bool    save       = false;
+} orgin;
+
 // Driver status tracking
 static bool    driverEnabled[4] = {false, false, false, false};
 TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
@@ -220,33 +227,19 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
         return;
     }
 
-    // Validate angle range (0-360 degrees)
-    float wrappedAngle = fmod(originDegrees, 360.0f);
-    if (wrappedAngle < 0)
-        wrappedAngle += 360.0f;
+    float wrappedAngle = positionController[motorIndex].wrapAngle(originDegrees);
 
     // Create a unique key for each motor's origin position
     String key = "motor" + String(motorIndex) + "_origin";
 
-    bool success = false;
-    try
-    {
-        success = prefs.putFloat(key.c_str(), wrappedAngle);
-    }
-    catch (...)
-    {
-        log_e("Exception occurred while storing origin position for motor %d", motorIndex + 1);
-        return;
-    }
+    Serial.print("key: ");
+    Serial.println(key.c_str());
+    Serial.print("wrappedAngle: ");
+    Serial.println(wrappedAngle);
 
-    if (success)
-    {
-        if (0)
-        {
-            log_i("Motor %d origin position stored: %f°", motorIndex + 1, wrappedAngle);
-        }
-    }
-    else
+    bool success = prefs.putFloat(key.c_str(), wrappedAngle);
+
+    if (!success)
     {
         log_e("Failed to store origin position for motor %d", motorIndex + 1);
     }
@@ -420,7 +413,6 @@ void serialReadTask(void* pvParameters)
     while (1)
     {
         // Reset watchdog more frequently and track it
-        esp_task_wdt_reset();
         watchdogResetCount++;
 
         // Log task health every 1000 cycles (about 100 seconds)
@@ -440,18 +432,12 @@ void serialReadTask(void* pvParameters)
             if (escState == 0 && c == '\x1b')
             {
                 escState = 1;
-                esp_task_wdt_reset();
-                vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                continue;
             }
-            if (escState == 1 && c == '[')
+            else if (escState == 1 && c == '[')
             {
                 escState = 2;
-                esp_task_wdt_reset();
-                vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                continue;
             }
-            if (escState == 2)
+            else if (escState == 2)
             {
                 if (c == 'A')
                 {  // Up arrow
@@ -460,14 +446,10 @@ void serialReadTask(void* pvParameters)
                         if (historyIndex < historyCount - 1)
                             historyIndex++;
                         inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
-                        // Clear current line and print inputBuffer
                         clearLine();
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
-                    esp_task_wdt_reset();
-                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                    continue;
                 }
                 else if (c == 'B')
                 {  // Down arrow
@@ -487,18 +469,11 @@ void serialReadTask(void* pvParameters)
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
-                    esp_task_wdt_reset();
-                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                    continue;
                 }
-                escState = 0;
-                esp_task_wdt_reset();
-                vTaskDelayUntil(&xLastWakeTime, xFrequency);
-                continue;
             }
 
             // Handle Enter
-            if (c == '\n')
+            else if (c == '\n')
             {
                 if (inputBuffer.length() > 0)
                 {
@@ -794,15 +769,11 @@ void serialReadTask(void* pvParameters)
                 if (historyIndex == -1)
                     lastInput = inputBuffer;
             }
-            esp_task_wdt_reset();
-            vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
 
         if (cli.available())
         {
             Command c = cli.getCmd();
-
-            // Handle motor commands
             if (c == cmdMotor)
             {
                 // Get Motor Id
@@ -877,11 +848,7 @@ void serialReadTask(void* pvParameters)
                             Serial.println(cvfs.PULSES_FROM_STEPS);
                         }
                         positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
-
-                        // Store origin position in Preferences
-                        esp_task_wdt_reset();
                         storeOriginPosition(currentIndex, value);
-                        esp_task_wdt_reset();
                     }
                     else
                     {
@@ -948,10 +915,9 @@ void serialReadTask(void* pvParameters)
                     }
                     positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
 
-                    // Store origin position in Preferences
-                    esp_task_wdt_reset();
-                    storeOriginPosition(currentIndex, value);
-                    esp_task_wdt_reset();
+                    orgin.motorIndex = currentIndex;
+                    orgin.value      = value;
+                    orgin.save       = true;
                 }
             }
             else if (c == cmdRestart)

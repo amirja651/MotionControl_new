@@ -15,6 +15,13 @@
 
 #define ENCODER_RESOLUTION 4096  // Encoder 12 bits
 
+struct OrginData
+{
+    uint8_t motorIndex = 0;
+    float   value      = 0.0f;
+    bool    save       = false;
+} orgin;
+
 struct votePair
 {
     uint32_t value;
@@ -74,7 +81,7 @@ public:
 
     uint32_t umToPulses(float um);
     uint32_t degreesToPulses(float degrees);
-    float   pulsesToUm(float pulses);
+    float    pulsesToUm(float pulses);
 
     bool isStopped(uint32_t threshold_us = 500000 /* 500ms */) const;
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
@@ -105,7 +112,7 @@ private:
     volatile bool     _enabled;
     volatile bool     _dataReady;
     bool              _initialized;
-    uint32_t           _last_pulse;
+    uint32_t          _last_pulse;
 
     // Maximum number of encoders supported
     static constexpr float  LEAD_SCREW_PITCH_MM = 0.2f;  // Lead screw pitch in mm
@@ -118,10 +125,10 @@ private:
     size_t                                  _pulseBufferIndex;
 
     // Voting mechanism for encoder readings
-    static constexpr size_t                 VOTING_BUFFER_SIZE = 32;    // Number of readings to vote on
+    static constexpr size_t                  VOTING_BUFFER_SIZE = 32;    // Number of readings to vote on
     std::array<uint32_t, VOTING_BUFFER_SIZE> _votingBuffer{};            // Buffer for voting
-    size_t                                  _votingIndex      = 0;      // Current index in voting buffer
-    bool                                    _votingBufferFull = false;  // Whether voting buffer is full
+    size_t                                   _votingIndex      = 0;      // Current index in voting buffer
+    bool                                     _votingBufferFull = false;  // Whether voting buffer is full
 
     // Interrupt counters
     volatile uint32_t _interruptCount = 0;  // Total interrupt count
