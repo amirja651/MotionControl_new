@@ -48,9 +48,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.println();
-        Serial.print(F("[TestConnection] Driver: "));
-        Serial.println(_driverIndex + 1);
+        log_i("Driver: %d", _driverIndex + 1);
     }
 
     static bool connection_failed = false;
@@ -58,9 +56,7 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.print(F("Invalid version (0x"));
-            Serial.print(version, HEX);
-            Serial.println(F(")"));
+            log_e("Invalid version (0x%08X)", version);
         }
         connection_failed = true;
     }
@@ -68,7 +64,7 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F("GCONF register read failed"));
+            log_e("GCONF register read failed");
         }
         connection_failed = true;
     }
@@ -76,7 +72,7 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F("DRV_STATUS register read failed"));
+            log_e("DRV_STATUS register read failed");
         }
         connection_failed = true;
     }
@@ -84,7 +80,7 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F("CHOPCONF register read failed"));
+            log_e("CHOPCONF register read failed");
         }
         connection_failed = true;
     }
@@ -92,15 +88,14 @@ bool TMC5160Manager::testConnection(bool print)
     {
         if (print)
         {
-            Serial.println(F("GCONF register write/read mismatch"));
+            log_e("GCONF register write/read mismatch");
         }
     }
     if (connection_failed)
     {
         if (print)
         {
-            Serial.println(F("connection failed!\r\n"));
-            Serial.println();
+            log_e("connection failed!");
         }
         DriverOff();
         return false;
@@ -108,8 +103,7 @@ bool TMC5160Manager::testConnection(bool print)
 
     if (print)
     {
-        Serial.println(F("✅ connected successfully"));
-        Serial.println();
+        log_i("✅ connected successfully");
     }
 
     DriverOff();
@@ -261,7 +255,6 @@ void TMC5160Manager::configureDriver_All_Motors(bool useStealth)
 
 void TMC5160Manager::DriverOff()
 {
-    // Use digitalWrite instead of gpio_set_level for safety
     digitalWrite(_pinCS, HIGH);
     delay(5);
 }

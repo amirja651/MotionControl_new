@@ -92,13 +92,12 @@ bool PositionController::begin()
     setCurrentPosition(0);
 
     _initialized = true;
-    Serial.printf("[PositionController] Motor %d initialized\n", _motorId + 1);
+    log_i("Motor %d initialized", _motorId + 1);
     return true;
 }
 
 void PositionController::setCurrentPosition(int32_t position)
 {
-    Serial.printf("[PositionController] Motor %d setCurrentPosition: %d\n", _motorId + 1, position);
     _stepper.setCurrentPosition(position);
     _status.currentSteps = position;
     _status.currentAngle = convertFromMSteps(position).DEGREES_FROM_STEPS;
@@ -123,7 +122,7 @@ void PositionController::disable()
     _stepper.disableOutputs();
     _enabled          = false;
     _status.isEnabled = false;
-    Serial.printf("[PositionController] Motor %d disabled\n", _motorId + 1);
+    log_i("Motor %d disabled", _motorId + 1);
 }
 
 bool PositionController::isEnabled() const
@@ -136,22 +135,12 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
 {
     if (!_enabled || !_initialized)
         return false;
-    // Serial.printf("[PositionController] Motor %d targetAngle: %.2f\n", _motorId + 1, targetAngle);
-
     // Wrap target angle to 0-360 range
     targetAngle = wrapAngle(targetAngle);
-    // Serial.printf("[PositionController] Motor %d targetAngle: %.2f\n", _motorId + 1, targetAngle);
-
     // Read encoder value and use it as starting position
-    float currentAngle = wrapAngle(getCurrentAngle());
-    // Serial.printf("[PositionController] Motor %d currentAngle: %.2f\n", _motorId + 1, currentAngle);
-
-    float delta = calculateShortestPath(currentAngle, targetAngle);
-    // Serial.printf("[PositionController] Motor %d delta: %.2f\n", _motorId + 1, delta);
-
+    float currentAngle   = wrapAngle(getCurrentAngle());
+    float delta          = calculateShortestPath(currentAngle, targetAngle);
     float adjustedTarget = currentAngle + delta;
-    // Serial.printf("[PositionController] Motor %d adjustedTarget: %.2f\n", _motorId + 1, adjustedTarget);
-
     // Create movement command
     MovementCommand command;
     command.motorId      = _motorId;
@@ -331,7 +320,7 @@ void PositionController::startPositionControlTask()
     _movementCommandQueue = xQueueCreate(10, sizeof(MovementCommand));
     if (_movementCommandQueue == nullptr)
     {
-        Serial.println("[PositionController] Failed to create command queue");
+        log_e("Failed to create command queue");
         return;
     }
 
@@ -339,7 +328,7 @@ void PositionController::startPositionControlTask()
     _statusMutex = xSemaphoreCreateMutex();
     if (_statusMutex == nullptr)
     {
-        Serial.println("[PositionController] Failed to create status mutex");
+        log_e("Failed to create status mutex");
         return;
     }
 
@@ -352,12 +341,12 @@ void PositionController::startPositionControlTask()
 
     if (result == pdPASS)
     {
-        Serial.println("[PositionController] Position control task started");
+        log_i("Position control task started");
         esp_task_wdt_add(_positionControlTaskHandle);
     }
     else
     {
-        Serial.println("[PositionController] Failed to create position control task");
+        log_e("Failed to create position control task");
     }
 }
 
@@ -381,7 +370,7 @@ void PositionController::stopPositionControlTask()
         _statusMutex = nullptr;
     }
 
-    Serial.println("[PositionController] Position control task stopped");
+    log_i("Position control task stopped");
 }
 
 bool PositionController::queueMovementCommand(const MovementCommand& command)
@@ -493,7 +482,7 @@ void PositionController::positionControlTask(void* parameter)
     TickType_t       lastWakeTime = xTaskGetTickCount();
     const TickType_t frequency    = pdMS_TO_TICKS(10);  // 10ms task period
 
-    Serial.println("[PositionController] Position control task running");
+    log_i("Position control task running");
 
     while (true)
     {
@@ -574,11 +563,11 @@ void PositionController::enableClosedLoop()
     {
         _closedLoopEnabled   = true;
         _status.isClosedLoop = true;
-        Serial.printf("[PositionController] Motor %d closed-loop control enabled\n", _motorId + 1);
+        log_i("Motor %d closed-loop control enabled", _motorId + 1);
     }
     else
     {
-        Serial.printf("[PositionController] Motor %d cannot enable closed-loop: encoder not available\n", _motorId + 1);
+        log_e("Motor %d cannot enable closed-loop: encoder not available", _motorId + 1);
     }
 }
 
@@ -586,7 +575,7 @@ void PositionController::disableClosedLoop()
 {
     _closedLoopEnabled   = false;
     _status.isClosedLoop = false;
-    Serial.printf("[PositionController] Motor %d closed-loop control disabled\n", _motorId + 1);
+    log_i("Motor %d closed-loop control disabled", _motorId + 1);
 }
 
 bool PositionController::isClosedLoopEnabled() const
@@ -639,8 +628,6 @@ void PositionController::applyClosedLoopCorrection()
 
         // Apply correction
         _stepper.moveTo(newTarget);
-
-        // Serial.printf("[PositionController] Motor %d closed-loop correction: error=%.2f°, correction=%d steps\n", _motorId + 1, error, static_cast<int>(correctionSteps));
     }
 }
 

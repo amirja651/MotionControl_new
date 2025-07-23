@@ -127,7 +127,7 @@ private:
     void attachInterruptHandler();  // Attaches high-priority GPIO interrupt
     void detachInterruptHandler();
 
-    void processInterrupt();
+    void IRAM_ATTR processInterrupt();
 
     int64_t get_median_width_high() const;
     int64_t get_median_width_low() const;
@@ -135,10 +135,10 @@ private:
     // Voting mechanism helper methods
     int32_t getMostFrequentValue() const;  // Returns the most frequently occurring value in voting buffer
 
-    static void interruptHandler0(void* arg);
-    static void interruptHandler1(void* arg);
-    static void interruptHandler2(void* arg);
-    static void interruptHandler3(void* arg);
+    static void IRAM_ATTR interruptHandler0(void* arg);
+    static void IRAM_ATTR interruptHandler1(void* arg);
+    static void IRAM_ATTR interruptHandler2(void* arg);
+    static void IRAM_ATTR interruptHandler3(void* arg);
 };
 
 #endif  // MAE3_ENCODER2_H

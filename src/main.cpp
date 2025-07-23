@@ -70,11 +70,11 @@ void setup()
     // Initialize Preferences for storing motor origin positions
     if (!prefs.begin("motion_control", false))  // false = read/write mode
     {
-        Serial.println(F("[Preferences] Error: Failed to initialize Preferences"));
+        log_e("Failed to initialize Preferences");
     }
     else
     {
-        Serial.println(F("[Preferences] Successfully initialized"));
+        log_i("Preferences successfully initialized");
     }
 
     delay(1000);
@@ -84,9 +84,9 @@ void setup()
     }
 
 #ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
-    Serial.println(F("Stack overflow checking enabled"));
+    log_i("Stack overflow checking enabled");
 #else
-    Serial.println(F("Stack overflow checking **NOT** enabled"));
+    log_i("Stack overflow checking **NOT** enabled");
 #endif
 
     // Initialize CLI
@@ -104,12 +104,11 @@ void setup()
         if (DriverPins::CS[index] < 40)  // ESP32 has max 40 GPIO pins
         {
             pinMode(DriverPins::CS[index], OUTPUT);
-            // Use digitalWrite instead of gpio_set_level for safety
             digitalWrite(DriverPins::CS[index], HIGH);
         }
         else
         {
-            Serial.printf("[Error] Invalid CS pin number: %d\n", DriverPins::CS[index]);
+            log_e("Invalid CS pin number: %d", DriverPins::CS[index]);
         }
     }
 
@@ -148,19 +147,17 @@ void setup()
     // Add longer delay before accessing preferences to ensure stability
     delay(500);
 
-    // Call printAllOriginPositions with error handling
     try
     {
         printAllOriginPositions();
     }
     catch (...)
     {
-        Serial.println(F("[Error] Failed to print origin positions, continuing..."));
+        log_e("Failed to print origin positions, continuing...");
     }
 
     delay(1000);
 
-    // Increase watchdog timeout and add better error handling
     esp_task_wdt_init(15, true);  // Increased timeout to 15 seconds
     esp_task_wdt_add(NULL);       // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
@@ -169,8 +166,8 @@ void setup()
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 8192, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
-    Serial.println(F("[Info] Position control system initialized"));
-    Serial.println(F("[Info] Use 'L' to show position status"));
+    log_i("Position control system initialized");
+    log_i("Use 'L' to show position status");
 }
 
 void loop()
@@ -190,18 +187,18 @@ void loop()
         uint32_t freeHeap = ESP.getFreeHeap();
         if (freeHeap < 10000)
         {  // Less than 10KB free
-            Serial.printf("[Warning] Low memory: %d bytes free\n", freeHeap);
+            log_w("Low memory: %d bytes free", freeHeap);
         }
 
         // Check stack usage
         uint32_t stackHighWater = uxTaskGetStackHighWaterMark(NULL);
         if (stackHighWater < 1000)
         {  // Less than 1KB stack free
-            Serial.printf("[Warning] Low stack: %d bytes free\n", stackHighWater);
+            log_w("Low stack: %d bytes free", stackHighWater);
         }
 
         // Log system uptime
-        Serial.printf("[Info] System uptime: %u seconds, Reset count: %u\n", (unsigned int)(currentTime / 1000), (unsigned int)++resetCount);
+        log_i("System uptime: %u seconds, Reset count: %u", (unsigned int)(currentTime / 1000), (unsigned int)++resetCount);
     }
 
     esp_task_wdt_reset();
@@ -217,7 +214,7 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
 {
     if (motorIndex >= 4)
     {
-        Serial.println(F("[Preferences] Error: Invalid motor index"));
+        log_e("Invalid motor index");
         return;
     }
 
@@ -229,7 +226,6 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
     // Create a unique key for each motor's origin position
     String key = "motor" + String(motorIndex) + "_origin";
 
-    // Store the origin position in Preferences with error handling
     bool success = false;
     try
     {
@@ -237,7 +233,7 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
     }
     catch (...)
     {
-        Serial.printf("[Error] Exception occurred while storing origin position for motor %d\n", motorIndex + 1);
+        log_e("Exception occurred while storing origin position for motor %d", motorIndex + 1);
         return;
     }
 
@@ -245,17 +241,12 @@ void storeOriginPosition(uint8_t motorIndex, float originDegrees)
     {
         if (0)
         {
-            Serial.print(F("[Preferences] Motor "));
-            Serial.print(motorIndex + 1);
-            Serial.print(F(" origin position stored: "));
-            Serial.print(wrappedAngle, 2);
-            Serial.println(F("°"));
+            log_i("Motor %d origin position stored: %f°", motorIndex + 1, wrappedAngle);
         }
     }
     else
     {
-        Serial.print(F("[Preferences] Error: Failed to store origin position for motor "));
-        Serial.println(motorIndex + 1);
+        log_e("Failed to store origin position for motor %d", motorIndex + 1);
     }
 }
 
@@ -263,14 +254,13 @@ float loadOriginPosition(uint8_t motorIndex)
 {
     if (motorIndex >= 4)
     {
-        Serial.println(F("[Preferences] Error: Invalid motor index, using 0.0"));
+        log_e("Invalid motor index, using 0.0");
         return 0.0f;
     }
 
     // Create a unique key for each motor's origin position
     String key = "motor" + String(motorIndex) + "_origin";
 
-    // Load the origin position from Preferences with error handling
     float originPosition = 0.0f;
     try
     {
@@ -278,15 +268,11 @@ float loadOriginPosition(uint8_t motorIndex)
     }
     catch (...)
     {
-        Serial.printf("[Error] Exception occurred while loading origin position for motor %d\n", motorIndex + 1);
+        log_e("Exception occurred while loading origin position for motor %d", motorIndex + 1);
         return 0.0f;
     }
 
-    Serial.print(F("[Preferences] Motor "));
-    Serial.print(motorIndex + 1);
-    Serial.print(F(" origin position loaded: "));
-    Serial.print(originPosition, 2);
-    Serial.println(F("°"));
+    log_i("Motor %d origin position loaded: %f°", motorIndex + 1, originPosition);
 
     return originPosition;
 }
@@ -300,12 +286,12 @@ void clearAllOriginPositions()
         prefs.remove(key.c_str());
     }
 
-    Serial.println(F("[Preferences] All motor origin positions cleared"));
+    log_i("All motor origin positions cleared");
 }
 
 void printAllOriginPositions()
 {
-    Serial.println(F("[Preferences] Current origin positions:"));
+    log_i("Current origin positions:");
 
     // Add delay to ensure system stability
     delay(10);
@@ -316,25 +302,16 @@ void printAllOriginPositions()
 
         String key = "motor" + String(i) + "_origin";
 
-        // Add error handling for preferences access
-        if (prefs.isKey(key.c_str()))
+        try
         {
-            try
-            {
-                originPosition = prefs.getFloat(key.c_str(), 0.0f);
-            }
-            catch (...)
-            {
-                Serial.printf("[Error] Failed to read origin position for motor %d\n", i + 1);
-                originPosition = 0.0f;
-            }
+            originPosition = prefs.getFloat(key.c_str(), 0.0f);
+            log_i("Motor %d: %f°", i + 1, originPosition);
         }
-
-        Serial.print(F("  Motor "));
-        Serial.print(i + 1);
-        Serial.print(F(": "));
-        Serial.print(originPosition, 2);
-        Serial.println(F("°"));
+        catch (...)
+        {
+            log_e("Failed to read origin position for motor %d", i + 1);
+            originPosition = 0.0f;
+        }
 
         // Small delay between each motor to prevent overload
         delay(5);
@@ -344,12 +321,11 @@ void printAllOriginPositions()
     try
     {
         size_t totalKeys = prefs.freeEntries();
-        Serial.print(F("[Preferences] Total free entries: "));
-        Serial.println(totalKeys);
+        log_i("Total free entries: %d", totalKeys);
     }
     catch (...)
     {
-        Serial.println(F("[Error] Failed to get preferences free entries"));
+        log_e("Failed to get preferences free entries");
     }
 }
 
@@ -400,8 +376,7 @@ void setMotorId(String motorId)
     {
         if (!isDigit(motorId[i]))
         {
-            Serial.print(F("[Error][M101] Invalid Motor Id. limit: 1-"));
-            Serial.println(4);
+            log_e("Invalid Motor Id. limit: 1-4");
             return;
         }
     }
@@ -410,8 +385,7 @@ void setMotorId(String motorId)
     int index = motorId.toInt();
     if (index < 1 || index > 4)
     {
-        Serial.print(F("[Error][M101] Invalid Motor Id. limit: 1-"));
-        Serial.println(4);
+        log_e("Invalid Motor Id. limit: 1-4");
         return;
     }
 
@@ -452,7 +426,7 @@ void serialReadTask(void* pvParameters)
         {
             uint32_t taskUptime = (millis() - taskStartTime) / 1000;
             uint32_t stackFree  = uxTaskGetStackHighWaterMark(NULL);
-            Serial.printf("[Task] SerialRead uptime: %u s, Stack: %u bytes, WDT resets: %u\n", (unsigned int)taskUptime, (unsigned int)stackFree, (unsigned int)watchdogResetCount);
+            log_i("SerialRead uptime: %u s, Stack: %u bytes, WDT resets: %u", (unsigned int)taskUptime, (unsigned int)stackFree, (unsigned int)watchdogResetCount);
         }
 
         while (Serial.available())
@@ -526,19 +500,17 @@ void serialReadTask(void* pvParameters)
             {
                 if (inputBuffer.length() > 0)
                 {
-                    Serial.print(F("\r\n"));
+                    Serial.println();
                     Serial.print(F("# "));
-                    Serial.print(inputBuffer.c_str());
-                    Serial.print(F("\r\n"));
+                    Serial.println(inputBuffer.c_str());
 
-                    // Add error handling for CLI parsing
                     try
                     {
                         cli.parse(inputBuffer);
                     }
                     catch (...)
                     {
-                        Serial.println(F("[Error] CLI parsing failed"));
+                        log_e("CLI parsing failed");
                     }
 
                     // Add to history
@@ -653,15 +625,11 @@ void serialReadTask(void* pvParameters)
 
                 if (success)
                 {
-                    Serial.print(F("[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.print(F(" moving to "));
-                    Serial.print(targetAngle, 2);
-                    Serial.println(F(" degrees (open-loop)"));
+                    log_i("Motor %d moving to %f degrees (open-loop)", currentIndex + 1, targetAngle);
                 }
                 else
                 {
-                    Serial.println(F("[Error] Failed to queue movement command"));
+                    log_e("Failed to queue movement command");
                 }
 
                 inputBuffer = "";
@@ -686,15 +654,11 @@ void serialReadTask(void* pvParameters)
 
                 if (success)
                 {
-                    Serial.print(F("[Info] Motor "));
-                    Serial.print(currentIndex + 1);
-                    Serial.print(F(" moving to "));
-                    Serial.print(targetAngle, 2);
-                    Serial.println(F(" degrees (closed-loop)"));
+                    log_i("Motor %d moving to %f degrees (closed-loop)", currentIndex + 1, targetAngle);
                 }
                 else
                 {
-                    Serial.println(F("[Error] Failed to queue movement command"));
+                    log_e("Failed to queue movement command");
                 }
 
                 inputBuffer = "";
@@ -704,42 +668,32 @@ void serialReadTask(void* pvParameters)
             {
                 encoder[currentIndex].processPWM();
                 EncoderState encoderState = encoder[currentIndex].getState();
-
-                MotorStatus status = positionController[currentIndex].getStatus();
-                Serial.println();
-                Serial.print(F("[Position Status] Motor "));
-                Serial.print(currentIndex + 1);
-                Serial.print(F(": Current="));
+                MotorStatus  status       = positionController[currentIndex].getStatus();
                 if (status.currentAngle == 0)
                 {
                     int32_t steps = positionController[currentIndex].convertFromDegrees(positionController[currentIndex].getEncoderAngle()).STEPS_FROM_DEGREES;
                     positionController[currentIndex].setCurrentPosition(steps);
                     status.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
-                Serial.print(status.currentAngle, 2);
+                Serial.println();
+                Serial.print(F("[Position Status] Motor "));
+                Serial.print(currentIndex + 1);
+                Serial.print(F(": Current="));
+                Serial.print(status.currentAngle);
                 Serial.print(F("°, Target="));
-                Serial.print(status.targetAngle, 2);
+                Serial.print(status.targetAngle);
                 Serial.print(F("°, Moving="));
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
                 Serial.print(F(", Closed-Loop="));
                 Serial.print(status.isClosedLoop ? F("YES") : F("NO"));
-
                 if (status.isClosedLoop)
                 {
                     Serial.print(F(", Error="));
                     Serial.print(status.positionError, 2);
                     Serial.print(F("°"));
                 }
-
-                if (currentIndex >= 4 || !driverEnabled[currentIndex] || !encoder[currentIndex].isEnabled())
-                {
-                    Serial.println();
-                    Serial.println(F("[Encoder] Error: Invalid motor index or encoder not enabled"));
-                    return;
-                }
-
                 Serial.print(F(", (Encoder: "));
                 Serial.print(encoderState.position_degrees, 2);
                 Serial.print(F("°,"));
@@ -747,18 +701,17 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(", "));
                 Serial.print(encoderState.position_pulse);
                 Serial.print(F(" pulses)"));
-                /*Serial.print(F(", High: "));
+                Serial.print(F(", High: "));
                 Serial.print(encoderState.width_high);
                 Serial.print(F(", Low: "));
                 Serial.print(encoderState.width_low);
                 Serial.print(F(", Interval: "));
                 Serial.print(encoderState.width_interval);
-                Serial.print(F(" pulses)"));*/
-
+                Serial.print(F(" pulses)"));
                 Serial.println();
-
                 inputBuffer = "";
                 lastInput   = "";
+                Serial.flush();
             }
             else if (c == 'K')  // Show encoder interrupt counters
             {
@@ -771,13 +724,14 @@ void serialReadTask(void* pvParameters)
                     timeInterval = currentTime - lastKPressTime;
                 }
 
-                Serial.print(F("\r\n[Encoder Interrupt Counters] Motor "));
+                Serial.println();
+                Serial.print(F("[Encoder Interrupt Counters] Motor "));
                 Serial.print(currentIndex + 1);
-                Serial.print(F(":\r\n"));
+                Serial.println(F(":"));
 
                 if (currentIndex >= 4 || !driverEnabled[currentIndex])
                 {
-                    Serial.println(F("[Encoder] Error: Invalid motor index or driver not enabled"));
+                    log_e("Invalid motor index or driver not enabled");
                     inputBuffer = "";
                     lastInput   = "";
                     return;
@@ -796,30 +750,19 @@ void serialReadTask(void* pvParameters)
                 Serial.println(lowEdges);
                 Serial.print(F("  Encoder Enabled: "));
                 Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
-
-                // Get and display encoder position
                 if (encoder[currentIndex].isEnabled())
                 {
-                    // Process encoder to get current reading
                     encoder[currentIndex].processPWM();
-
-                    // Get encoder state
                     EncoderState encoderState = encoder[currentIndex].getState();
-
                     Serial.print(F("  Encoder Position: "));
                     Serial.print(encoderState.position_degrees, 2);
                     Serial.print(F("° ("));
                     Serial.print(encoderState.position_pulse);
                     Serial.println(F(" pulses)"));
-                    if (0)
-                    {
-                        Serial.print(F("  Encoder Direction: "));
-                        Serial.println(encoderState.direction == Direction::CLOCKWISE ? F("CLOCKWISE") : encoderState.direction == Direction::COUNTER_CLOCKWISE ? F("COUNTER_CLOCKWISE") : F("UNKNOWN"));
-                    }
                 }
                 else
                 {
-                    Serial.println(F("  Encoder Position: DISABLED"));
+                    log_w("Encoder not enabled");
                 }
 
                 // Display time interval
@@ -843,6 +786,7 @@ void serialReadTask(void* pvParameters)
 
                 inputBuffer = "";
                 lastInput   = "";
+                Serial.flush();
             }
             else if (c != 'A' && c != 'Z' && c != 'S' && c != 'X' && c != 'D' && c != 'C' && c != 'Q' && c != 'L' && c != 'K')  // Only add to buffer if not a direct command
             {
@@ -892,17 +836,11 @@ void serialReadTask(void* pvParameters)
 
                     if (success)
                     {
-                        Serial.print(F("[Info] Motor "));
-                        Serial.print(currentIndex + 1);
-                        Serial.print(F(" moving to "));
-                        Serial.print(targetAngle, 2);
-                        Serial.print(F(" degrees ("));
-                        Serial.print(closedLoop ? F("closed-loop") : F("open-loop"));
-                        Serial.println(F(")"));
+                        log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, closedLoop ? "closed-loop" : "open-loop");
                     }
                     else
                     {
-                        Serial.println(F("[Error] Failed to queue movement command"));
+                        log_e("Failed to queue movement command");
                     }
                 }
                 else if (c.getArgument("o").isSet())
@@ -915,21 +853,21 @@ void serialReadTask(void* pvParameters)
                         ConvertValuesFromDegrees cvfd  = positionController[currentIndex].convertFromDegrees(value);
                         ConvertValuesFromPulses  cvfp  = positionController[currentIndex].convertFromPulses(value);
                         ConvertValuesFromSteps   cvfs  = positionController[currentIndex].convertFromMSteps(value);
-
-                        Serial.print(F("From Degrees: "));
-                        Serial.print(cvfd.PULSES_FROM_DEGREES);
-                        Serial.print(F(", "));
-                        Serial.println(cvfd.STEPS_FROM_DEGREES);
-
-                        Serial.print(F("From Pulses: "));
-                        Serial.print(cvfp.DEGREES_FROM_PULSES);
-                        Serial.print(F(", "));
-                        Serial.println(cvfp.STEPS_FROM_PULSES);
-
-                        Serial.print(F("From Steps: "));
-                        Serial.print(cvfs.DEGREES_FROM_STEPS);
-                        Serial.print(F(", "));
-                        Serial.println(cvfs.PULSES_FROM_STEPS);
+                        if (1)
+                        {
+                            Serial.print(F("From Degrees: "));
+                            Serial.print(cvfd.PULSES_FROM_DEGREES);
+                            Serial.print(F(", "));
+                            Serial.println(cvfd.STEPS_FROM_DEGREES);
+                            Serial.print(F("From Pulses: "));
+                            Serial.print(cvfp.DEGREES_FROM_PULSES);
+                            Serial.print(F(", "));
+                            Serial.println(cvfp.STEPS_FROM_PULSES);
+                            Serial.print(F("From Steps: "));
+                            Serial.print(cvfs.DEGREES_FROM_STEPS);
+                            Serial.print(F(", "));
+                            Serial.println(cvfs.PULSES_FROM_STEPS);
+                        }
                         positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
 
                         // Store origin position in Preferences
@@ -970,7 +908,7 @@ void serialReadTask(void* pvParameters)
 
                     if (!encoder[currentIndex].isEnabled())
                     {
-                        Serial.println(F("[Error] Encoder not enabled"));
+                        log_e("Encoder not enabled");
                         return;
                     }
                     // Process encoder to get current reading
@@ -985,20 +923,21 @@ void serialReadTask(void* pvParameters)
                     ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
                     ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
 
-                    Serial.print(F("From Degrees: "));
-                    Serial.print(cvfd.PULSES_FROM_DEGREES);
-                    Serial.print(F(", "));
-                    Serial.println(cvfd.STEPS_FROM_DEGREES);
-
-                    Serial.print(F("From Pulses: "));
-                    Serial.print(cvfp.DEGREES_FROM_PULSES);
-                    Serial.print(F(", "));
-                    Serial.println(cvfp.STEPS_FROM_PULSES);
-
-                    Serial.print(F("From Steps: "));
-                    Serial.print(cvfs.DEGREES_FROM_STEPS);
-                    Serial.print(F(", "));
-                    Serial.println(cvfs.PULSES_FROM_STEPS);
+                    if (1)
+                    {
+                        Serial.print(F("From Degrees: "));
+                        Serial.print(cvfd.PULSES_FROM_DEGREES);
+                        Serial.print(F(", "));
+                        Serial.println(cvfd.STEPS_FROM_DEGREES);
+                        Serial.print(F("From Pulses: "));
+                        Serial.print(cvfp.DEGREES_FROM_PULSES);
+                        Serial.print(F(", "));
+                        Serial.println(cvfp.STEPS_FROM_PULSES);
+                        Serial.print(F("From Steps: "));
+                        Serial.print(cvfs.DEGREES_FROM_STEPS);
+                        Serial.print(F(", "));
+                        Serial.println(cvfs.PULSES_FROM_STEPS);
+                    }
                     positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
 
                     // Store origin position in Preferences
@@ -1030,9 +969,7 @@ void serialReadTask(void* pvParameters)
         if (cli.errored())
         {
             String cmdError = cli.getError().toString();
-            Serial.print(F("ERROR: "));
-            Serial.print(cmdError);
-            Serial.println();
+            log_e("ERROR: %s", cmdError.c_str());
         }
 
         esp_task_wdt_reset();

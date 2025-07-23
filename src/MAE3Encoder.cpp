@@ -246,13 +246,13 @@ void MAE3Encoder::detachInterruptHandler()
 }
 
 // method for processing interrupt *** amir
-void MAE3Encoder::processInterrupt()
+void IRAM_ATTR MAE3Encoder::processInterrupt()
 {
     if (!_enabled)
         return;
 
-    int     level       = gpio_get_level((gpio_num_t)_signalPin);  // digitalRead(_signalPin);
-    int64_t currentTime = esp_timer_get_time();                    // Current time in microseconds
+    int     level       = gpio_get_level((gpio_num_t)_signalPin);          // digitalRead(_signalPin);
+    int64_t currentTime = static_cast<int64_t>(xthal_get_ccount()) / 240;  // esp_timer_get_time();                    // Current time in microseconds
     _r_pulse.duration_us_count++;
     _interruptCount++;  // Increment total interrupt count
 
@@ -373,25 +373,25 @@ int32_t MAE3Encoder::getMostFrequentValue() const
 }
 
 // Individual interrupt handlers for each encoder
-void MAE3Encoder::interruptHandler0(void* arg)
+void IRAM_ATTR MAE3Encoder::interruptHandler0(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
         encoder->processInterrupt();
 }
-void MAE3Encoder::interruptHandler1(void* arg)
+void IRAM_ATTR MAE3Encoder::interruptHandler1(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
         encoder->processInterrupt();
 }
-void MAE3Encoder::interruptHandler2(void* arg)
+void IRAM_ATTR MAE3Encoder::interruptHandler2(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
         encoder->processInterrupt();
 }
-void MAE3Encoder::interruptHandler3(void* arg)
+void IRAM_ATTR MAE3Encoder::interruptHandler3(void* arg)
 {
     MAE3Encoder* encoder = static_cast<MAE3Encoder*>(arg);
     if (encoder)
