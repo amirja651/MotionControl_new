@@ -182,23 +182,25 @@ void loop()
     if (currentTime - lastHealthCheck > 30000)
     {
         lastHealthCheck = currentTime;
+        if (0)
+        {
+            // Check free heap
+            uint32_t freeHeap = ESP.getFreeHeap();
+            if (freeHeap < 10000)
+            {  // Less than 10KB free
+                log_w("Low memory: %d bytes free", freeHeap);
+            }
 
-        // Check free heap
-        uint32_t freeHeap = ESP.getFreeHeap();
-        if (freeHeap < 10000)
-        {  // Less than 10KB free
-            log_w("Low memory: %d bytes free", freeHeap);
+            // Check stack usage
+            uint32_t stackHighWater = uxTaskGetStackHighWaterMark(NULL);
+            if (stackHighWater < 1000)
+            {  // Less than 1KB stack free
+                log_w("Low stack: %d bytes free", stackHighWater);
+            }
+
+            // Log system uptime
+            log_i("System uptime: %u seconds, Reset count: %u", (unsigned int)(currentTime / 1000), (unsigned int)++resetCount);
         }
-
-        // Check stack usage
-        uint32_t stackHighWater = uxTaskGetStackHighWaterMark(NULL);
-        if (stackHighWater < 1000)
-        {  // Less than 1KB stack free
-            log_w("Low stack: %d bytes free", stackHighWater);
-        }
-
-        // Log system uptime
-        log_i("System uptime: %u seconds, Reset count: %u", (unsigned int)(currentTime / 1000), (unsigned int)++resetCount);
     }
 
     esp_task_wdt_reset();

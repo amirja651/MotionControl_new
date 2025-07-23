@@ -164,7 +164,7 @@ void MAE3Encoder::processPWM(bool print)
         return;
     }
 
-    int32_t delta = _state.position_pulse - _last_pulse;
+    uint32_t delta = _state.position_pulse - _last_pulse;
 
     if (delta > 1000)
     {
@@ -178,7 +178,7 @@ void MAE3Encoder::processPWM(bool print)
     }
     else
     {
-        int32_t delta_circular = ((delta + 4096 / 2) % 4096) - 4096 / 2;
+        uint32_t delta_circular = ((delta + 4096 / 2) % 4096) - 4096 / 2;
 
         if (delta_circular > 2)
             _state.direction = Direction::CLOCKWISE;
@@ -195,16 +195,16 @@ void MAE3Encoder::processPWM(bool print)
     }
 }
 
-int32_t MAE3Encoder::umToPulses(float um)
+uint32_t MAE3Encoder::umToPulses(float um)
 {
     float mm            = um / 1000.0f;
     float pulses_per_mm = 4096 / LEAD_SCREW_PITCH_MM;
-    return static_cast<int32_t>(mm * pulses_per_mm);
+    return static_cast<uint32_t>(mm * pulses_per_mm);
 }
-int32_t MAE3Encoder::degreesToPulses(float degrees)
+uint32_t MAE3Encoder::degreesToPulses(float degrees)
 {
     float pulses_per_degree = 4096 / 360.0f;
-    return static_cast<int32_t>(degrees * pulses_per_degree);
+    return static_cast<uint32_t>(degrees * pulses_per_degree);
 }
 float MAE3Encoder::pulsesToUm(float pulses)
 {
@@ -252,10 +252,8 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
     if (!_enabled)
         return;
 
-    int level = gpio_get_level((gpio_num_t)_signalPin);  // digitalRead(_signalPin);
-    // uint32_t currentTime = xthal_get_ccount() / 240;                // esp_timer_get_time();                    // Current time in microseconds
-
-    int     freq  = esp_clk_cpu_freq();  //  240000000
+    int     level = gpio_get_level((gpio_num_t)_signalPin);  // digitalRead(_signalPin);
+    int     freq  = esp_clk_cpu_freq();                      //  240000000
     int64_t nowUs = static_cast<int64_t>(xthal_get_ccount()) / (freq / 1000000);
 
     _r_pulse.duration_us_count++;
@@ -295,7 +293,7 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
             }
 
             // Calculate current encoder reading
-            int32_t x_measured = ((_r_pulse.high * 4098) / _r_pulse.pulse_Interval) - 1;
+            uint32_t x_measured = ((_r_pulse.high * 4098) / _r_pulse.pulse_Interval) - 1;
 
             // Add reading to voting buffer
             _votingBuffer[_votingIndex] = x_measured;
@@ -353,7 +351,7 @@ uint32_t MAE3Encoder::get_median_width_low() const
 votePair MAE3Encoder::getMostFrequentValue() const
 {
     // Create a map to count occurrences of each value
-    std::unordered_map<int32_t, int> frequency_map;
+    std::unordered_map<uint32_t, int> frequency_map;
 
     // Count occurrences of each value in the voting buffer
     for (size_t i = 0; i < VOTING_BUFFER_SIZE; ++i)
@@ -362,8 +360,8 @@ votePair MAE3Encoder::getMostFrequentValue() const
     }
 
     // Find the value with the highest frequency
-    int32_t most_frequent_value = _votingBuffer[0];  // Default to first value
-    int     max_frequency       = 0;
+    uint32_t most_frequent_value = _votingBuffer[0];  // Default to first value
+    uint32_t max_frequency       = 0;
 
     for (const auto& pair : frequency_map)
     {

@@ -17,8 +17,8 @@
 
 struct votePair
 {
-    int32_t value;
-    int32_t count;
+    uint32_t value;
+    uint32_t count;
 };
 
 // Direction enum
@@ -35,8 +35,8 @@ struct EncoderState
     volatile uint32_t width_low;
     volatile uint32_t width_interval;
 
-    int32_t lap_id;
-    int32_t position_pulse;
+    uint32_t lap_id;
+    uint32_t position_pulse;
 
     float position_degrees;
     float position_mm;
@@ -72,8 +72,8 @@ public:
     void reset();
     void processPWM(bool print = false);
 
-    int32_t umToPulses(float um);
-    int32_t degreesToPulses(float degrees);
+    uint32_t umToPulses(float um);
+    uint32_t degreesToPulses(float degrees);
     float   pulsesToUm(float pulses);
 
     bool isStopped(uint32_t threshold_us = 500000 /* 500ms */) const;
@@ -105,7 +105,7 @@ private:
     volatile bool     _enabled;
     volatile bool     _dataReady;
     bool              _initialized;
-    int32_t           _last_pulse;
+    uint32_t           _last_pulse;
 
     // Maximum number of encoders supported
     static constexpr float  LEAD_SCREW_PITCH_MM = 0.2f;  // Lead screw pitch in mm
@@ -118,8 +118,8 @@ private:
     size_t                                  _pulseBufferIndex;
 
     // Voting mechanism for encoder readings
-    static constexpr size_t                 VOTING_BUFFER_SIZE = 15;    // Number of readings to vote on
-    std::array<int32_t, VOTING_BUFFER_SIZE> _votingBuffer{};            // Buffer for voting
+    static constexpr size_t                 VOTING_BUFFER_SIZE = 32;    // Number of readings to vote on
+    std::array<uint32_t, VOTING_BUFFER_SIZE> _votingBuffer{};            // Buffer for voting
     size_t                                  _votingIndex      = 0;      // Current index in voting buffer
     bool                                    _votingBufferFull = false;  // Whether voting buffer is full
 
