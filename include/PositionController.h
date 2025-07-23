@@ -29,6 +29,14 @@ enum class MovementType
     LONG_RANGE     // Long range
 };
 
+// Control modes
+enum class ControlMode
+{
+    OPEN_LOOP,    // Open-loop control only
+    CLOSED_LOOP,  // Continuous closed-loop control
+    HYBRID        // Read encoder once at start, then open-loop
+};
+
 // Movement command structure
 struct MovementCommand
 {
@@ -37,7 +45,7 @@ struct MovementCommand
     MovementType movementType;  // Type of movement
     bool         relative;      // True for relative movement, false for absolute
     uint32_t     priority;      // Command priority (higher = more important)
-    bool         closedLoop;    // True for closed-loop control, false for open-loop
+    ControlMode  controlMode;   // Control mode (open-loop, closed-loop, hybrid)
 };
 
 struct ConvertValuesFromDegrees
@@ -71,7 +79,7 @@ struct MotorStatus
     MovementType lastMovementType;
     uint32_t     movementStartTime;  // Time when movement started
     uint32_t     totalMovementTime;  // Total time for movement
-    bool         isClosedLoop;       // True if using closed-loop control
+    ControlMode  controlMode;        // Current control mode
     float        positionError;      // Position error in degrees
     float        encoderAngle;       // Encoder reading in degrees
 };
@@ -93,8 +101,8 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, bool closedLoop = false);
-    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, bool closedLoop = false);
+    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -120,9 +128,9 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = 64 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = 64 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = 64 * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200, int32_t resolution = ENCODER_RESOLUTION) const;
     float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     float                    getEncoderAngle();
 
@@ -140,7 +148,7 @@ private:
     MotorStatus _status;
     bool        _enabled;
     bool        _initialized;
-    bool        _closedLoopEnabled;
+    ControlMode _controlMode;
 
     // Speed profiles for different movement types
     struct SpeedProfile
@@ -165,13 +173,15 @@ private:
     bool  executeMovement(const MovementCommand& command);
     float calculateOptimalSpeed(float distance, MovementType type);
 
-    // Closed-loop control methods
-    void enableClosedLoop();
-    void disableClosedLoop();
+    // Control mode methods
+    void        setControlMode(ControlMode mode);
+    ControlMode getControlMode() const;
+    bool        isClosedLoopEnabled() const;
+    bool        isHybridModeEnabled() const;
 
     float calculatePositionError();
     void  applyClosedLoopCorrection();
-    bool  isClosedLoopEnabled() const;
+    void  applyHybridModeCorrection();
 
     // RTOS task function
     static void positionControlTask(void* parameter);

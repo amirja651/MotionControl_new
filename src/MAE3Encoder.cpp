@@ -1,4 +1,5 @@
 #include "MAE3Encoder.h"
+#include "esp32/clk.h"
 #include <driver/gpio.h>
 
 #define ENCODER_DEBUG true
@@ -211,7 +212,7 @@ float MAE3Encoder::pulsesToUm(float pulses)
     return mm * 1000.0f;
 }
 
-bool MAE3Encoder::isStopped(int64_t threshold_us) const
+bool MAE3Encoder::isStopped(uint32_t threshold_us) const
 {
     return (esp_timer_get_time() - _lastPulseTime) > threshold_us;
 }
@@ -251,8 +252,12 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
     if (!_enabled)
         return;
 
-    int     level       = gpio_get_level((gpio_num_t)_signalPin);          // digitalRead(_signalPin);
-    int64_t currentTime = static_cast<int64_t>(xthal_get_ccount()) / 240;  // esp_timer_get_time();                    // Current time in microseconds
+    int level = gpio_get_level((gpio_num_t)_signalPin);  // digitalRead(_signalPin);
+    // uint32_t currentTime = xthal_get_ccount() / 240;                // esp_timer_get_time();                    // Current time in microseconds
+
+    int     freq  = esp_clk_cpu_freq();  //  240000000
+    int64_t nowUs = static_cast<int64_t>(xthal_get_ccount()) / (freq / 1000000);
+
     _r_pulse.duration_us_count++;
     _interruptCount++;  // Increment total interrupt count
 
@@ -260,17 +265,17 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
     {
         // Falling edge
         _lowEdgeCount++;  // Increment falling edge count
-        _lowStart = currentTime;
+        _lowStart = nowUs;
     }
     else
     {
         // Rising edge
         _highEdgeCount++;  // Increment rising edge count
-        _lowEnd      = currentTime;
+        _lowEnd      = nowUs;
         _r_pulse.low = _lowEnd - _lowStart;
 
         _lastRisingEdgeTime = _currentRisingEdge;
-        _currentRisingEdge  = currentTime;
+        _currentRisingEdge  = nowUs;
 
         if (_lastRisingEdgeTime != 0)
         {
@@ -314,14 +319,14 @@ void IRAM_ATTR MAE3Encoder::processInterrupt()
 }
 
 // Get median width of high and low pulses
-int64_t MAE3Encoder::get_median_width_high() const
+uint32_t MAE3Encoder::get_median_width_high() const
 {
-    std::array<int64_t, PULSE_BUFFER_SIZE> temp;
+    std::array<uint32_t, PULSE_BUFFER_SIZE> temp;
 
     //  Use memcpy for faster copy inside critical section
-    memcpy(temp.data(), _width_h_buffer.data(), sizeof(int64_t) * PULSE_BUFFER_SIZE);
+    memcpy(temp.data(), _width_h_buffer.data(), sizeof(uint32_t) * PULSE_BUFFER_SIZE);
 
-    int countNonZero = std::count_if(temp.begin(), temp.end(), [](int64_t v) { return v > 0; });
+    int countNonZero = std::count_if(temp.begin(), temp.end(), [](uint32_t v) { return v > 0; });
     if (countNonZero < 3)
         return _state.width_high;  // Not enough valid data yet and return the last valid value
 
@@ -329,14 +334,14 @@ int64_t MAE3Encoder::get_median_width_high() const
     return temp[PULSE_BUFFER_SIZE / 2];
 }
 
-int64_t MAE3Encoder::get_median_width_low() const
+uint32_t MAE3Encoder::get_median_width_low() const
 {
-    std::array<int64_t, PULSE_BUFFER_SIZE> temp;
+    std::array<uint32_t, PULSE_BUFFER_SIZE> temp;
 
     //  Use memcpy for faster copy inside critical section
-    memcpy(temp.data(), _width_l_buffer.data(), sizeof(int64_t) * PULSE_BUFFER_SIZE);
+    memcpy(temp.data(), _width_l_buffer.data(), sizeof(uint32_t) * PULSE_BUFFER_SIZE);
 
-    int countNonZero = std::count_if(temp.begin(), temp.end(), [](int64_t v) { return v > 0; });
+    int countNonZero = std::count_if(temp.begin(), temp.end(), [](uint32_t v) { return v > 0; });
     if (countNonZero < 3)
         return _state.width_low;  // Not enough valid data yet and return the last valid value
 

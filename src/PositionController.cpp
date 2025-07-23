@@ -10,7 +10,7 @@ PositionController* PositionController::_instances[4]              = {nullptr};
 
 // Constructor with encoder
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
-    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(&encoder), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _closedLoopEnabled(false)
+    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(&encoder), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _controlMode(ControlMode::OPEN_LOOP)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -23,7 +23,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.lastMovementType  = MovementType::MEDIUM_RANGE;
     _status.movementStartTime = 0;
     _status.totalMovementTime = 0;
-    _status.isClosedLoop      = false;
+    _status.controlMode       = ControlMode::OPEN_LOOP;
     _status.positionError     = 0.0f;
     _status.encoderAngle      = 0.0f;
 
@@ -42,7 +42,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 
 // Constructor without encoder (for demo)
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin)
-    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(nullptr), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _closedLoopEnabled(false)
+    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(nullptr), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _controlMode(ControlMode::OPEN_LOOP)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -131,7 +131,7 @@ bool PositionController::isEnabled() const
 }
 
 // Position control methods
-bool PositionController::moveToAngle(float targetAngle, MovementType movementType, bool closedLoop)
+bool PositionController::moveToAngle(float targetAngle, MovementType movementType, ControlMode controlMode)
 {
     if (!_enabled || !_initialized)
         return false;
@@ -148,13 +148,13 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
     command.movementType = movementType;
     command.relative     = false;
     command.priority     = 1;
-    command.closedLoop   = closedLoop;
+    command.controlMode  = controlMode;
 
     // Queue the command
     return queueMovementCommand(command);
 }
 
-bool PositionController::moveRelative(float deltaAngle, MovementType movementType, bool closedLoop)
+bool PositionController::moveRelative(float deltaAngle, MovementType movementType, ControlMode controlMode)
 {
     if (!_enabled || !_initialized)
         return false;
@@ -169,7 +169,7 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     command.movementType = movementType;
     command.relative     = true;
     command.priority     = 1;
-    command.closedLoop   = closedLoop;
+    command.controlMode  = controlMode;
 
     // Queue the command
     return queueMovementCommand(command);
@@ -417,15 +417,8 @@ bool PositionController::executeMovement(const MovementCommand& command)
     if (!_enabled || !_initialized)
         return false;
 
-    // Enable/disable closed-loop based on command
-    if (command.closedLoop)
-    {
-        enableClosedLoop();
-    }
-    else
-    {
-        disableClosedLoop();
-    }
+    // Set control mode based on command
+    setControlMode(command.controlMode);
 
     // Calculate target steps
     int32_t targetSteps;
@@ -446,7 +439,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
         _status.isMoving          = true;
         _status.movementStartTime = millis();
         _status.lastMovementType  = command.movementType;
-        _status.isClosedLoop      = command.closedLoop;
+        _status.controlMode       = command.controlMode;
         xSemaphoreGive(_statusMutex);
     }
 
@@ -456,7 +449,8 @@ bool PositionController::executeMovement(const MovementCommand& command)
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetSteps));
 
-    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d, closed-loop: %s)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType), command.closedLoop ? "YES" : "NO");
+    const char* modeStr = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d, mode: %s)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType), modeStr);
 
     return true;
 }
@@ -520,10 +514,17 @@ void PositionController::runPositionControl()
     // Run the stepper motor
     _stepper.run();
 
-    // Apply closed-loop correction if enabled
-    if (isClosedLoopEnabled() && _status.isMoving)
+    // Apply control mode corrections if enabled
+    if (_status.isMoving)
     {
-        applyClosedLoopCorrection();
+        if (isClosedLoopEnabled())
+        {
+            applyClosedLoopCorrection();
+        }
+        else if (isHybridModeEnabled())
+        {
+            applyHybridModeCorrection();
+        }
     }
 
     // Update status periodically
@@ -544,43 +545,34 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
 
-        if (isClosedLoopEnabled())
+        const char* modeStr = (_controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (_controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+
+        if (_controlMode == ControlMode::CLOSED_LOOP)
         {
             float finalError = calculatePositionError();
-            Serial.printf("[PositionController] Motor %d reached target (closed-loop). Final error: %.2f°\n", _motorId + 1, finalError);
+            Serial.printf("[PositionController] Motor %d reached target (%s). Final error: %.2f°\n", _motorId + 1, modeStr, finalError);
         }
         else
         {
-            Serial.printf("[PositionController] Motor %d reached target (open-loop).\n", _motorId + 1);
+            Serial.printf("[PositionController] Motor %d reached target (%s).\n", _motorId + 1, modeStr);
         }
     }
 }
 
-// Closed-loop control methods
-void PositionController::enableClosedLoop()
+// Control mode methods
+ControlMode PositionController::getControlMode() const
 {
-    if (_encoder != nullptr && _encoder->isEnabled())
-    {
-        _closedLoopEnabled   = true;
-        _status.isClosedLoop = true;
-        log_i("Motor %d closed-loop control enabled", _motorId + 1);
-    }
-    else
-    {
-        log_e("Motor %d cannot enable closed-loop: encoder not available", _motorId + 1);
-    }
-}
-
-void PositionController::disableClosedLoop()
-{
-    _closedLoopEnabled   = false;
-    _status.isClosedLoop = false;
-    log_i("Motor %d closed-loop control disabled", _motorId + 1);
+    return _controlMode;
 }
 
 bool PositionController::isClosedLoopEnabled() const
 {
-    return _closedLoopEnabled && _encoder != nullptr && _encoder->isEnabled();
+    return _controlMode == ControlMode::CLOSED_LOOP && _encoder != nullptr && _encoder->isEnabled();
+}
+
+bool PositionController::isHybridModeEnabled() const
+{
+    return _controlMode == ControlMode::HYBRID && _encoder != nullptr && _encoder->isEnabled();
 }
 
 float PositionController::getEncoderAngle()
@@ -698,4 +690,59 @@ void stopPositionControlSystem()
 
     // Stop RTOS task
     PositionController::stopPositionControlTask();
+}
+
+void PositionController::applyHybridModeCorrection()
+{
+    if (!isHybridModeEnabled() || !_status.isMoving)
+        return;
+
+    // In hybrid mode, we only read the encoder once at the start
+    // No continuous correction is applied during movement
+    // The encoder reading was already done in setControlMode()
+}
+
+// Control mode methods
+void PositionController::setControlMode(ControlMode mode)
+{
+    _controlMode = mode;
+
+    switch (mode)
+    {
+        case ControlMode::OPEN_LOOP:
+            // No special setup needed for open-loop
+            break;
+
+        case ControlMode::CLOSED_LOOP:
+            // Enable continuous closed-loop control
+            if (_encoder != nullptr && _encoder->isEnabled())
+            {
+                _status.controlMode = ControlMode::CLOSED_LOOP;
+            }
+            else
+            {
+                log_w("Motor %d: Cannot enable closed-loop - encoder not available", _motorId + 1);
+                _controlMode        = ControlMode::OPEN_LOOP;
+                _status.controlMode = ControlMode::OPEN_LOOP;
+            }
+            break;
+
+        case ControlMode::HYBRID:
+            // Enable hybrid mode - read encoder once at start
+            if (_encoder != nullptr && _encoder->isEnabled())
+            {
+                _status.controlMode = ControlMode::HYBRID;
+                // Read current encoder position and use it as starting position
+                float encoderAngle   = getEncoderAngle();
+                _status.encoderAngle = encoderAngle;
+                log_i("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1, encoderAngle);
+            }
+            else
+            {
+                log_w("Motor %d: Cannot enable hybrid mode - encoder not available", _motorId + 1);
+                _controlMode        = ControlMode::OPEN_LOOP;
+                _status.controlMode = ControlMode::OPEN_LOOP;
+            }
+            break;
+    }
 }

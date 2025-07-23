@@ -621,7 +621,7 @@ void serialReadTask(void* pvParameters)
                 else if (targetAngle == 360)
                     targetAngle = 359.9955f;
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, false);
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, ControlMode::OPEN_LOOP);
 
                 if (success)
                 {
@@ -650,7 +650,7 @@ void serialReadTask(void* pvParameters)
                 else if (targetAngle == 360)
                     targetAngle = 359.9955f;
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, true);
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, ControlMode::CLOSED_LOOP);
 
                 if (success)
                 {
@@ -675,10 +675,13 @@ void serialReadTask(void* pvParameters)
                     positionController[currentIndex].setCurrentPosition(steps);
                     status.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
+                float diff = status.currentAngle - encoderState.position_degrees;
                 Serial.println();
                 Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
-                Serial.print(F(": Current="));
+                Serial.print(F(": Diff="));
+                Serial.print(diff);
+                Serial.print(F("°, Current="));
                 Serial.print(status.currentAngle);
                 Serial.print(F("°, Target="));
                 Serial.print(status.targetAngle);
@@ -686,16 +689,17 @@ void serialReadTask(void* pvParameters)
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
-                Serial.print(F(", Closed-Loop="));
-                Serial.print(status.isClosedLoop ? F("YES") : F("NO"));
-                if (status.isClosedLoop)
+                Serial.print(F(", Control Mode="));
+                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+                Serial.print(modeStr);
+                if (status.controlMode == ControlMode::CLOSED_LOOP)
                 {
                     Serial.print(F(", Error="));
                     Serial.print(status.positionError, 2);
                     Serial.print(F("°"));
                 }
                 Serial.print(F(", (Encoder: "));
-                Serial.print(encoderState.position_degrees, 2);
+                Serial.print(encoderState.position_degrees);
                 Serial.print(F("°,"));
                 Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
                 Serial.print(F(", "));
@@ -810,8 +814,16 @@ void serialReadTask(void* pvParameters)
                     String degreesStr  = c.getArgument("p").getValue();
                     float  targetAngle = degreesStr.toFloat();
 
-                    // Check if closed-loop flag is set
-                    bool closedLoop = c.getArgument("j").isSet();
+                    // Check control mode flags
+                    ControlMode controlMode = ControlMode::OPEN_LOOP;
+                    if (c.getArgument("j").isSet())
+                    {
+                        controlMode = ControlMode::CLOSED_LOOP;
+                    }
+                    else if (c.getArgument("h").isSet())
+                    {
+                        controlMode = ControlMode::HYBRID;
+                    }
 
                     // Use new position controller
                     MovementType movementType = MovementType::MEDIUM_RANGE;
@@ -825,11 +837,12 @@ void serialReadTask(void* pvParameters)
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
-                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, closedLoop);
+                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, controlMode);
 
                     if (success)
                     {
-                        log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, closedLoop ? "closed-loop" : "open-loop");
+                        const char* modeStr = (controlMode == ControlMode::OPEN_LOOP) ? "open-loop" : (controlMode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
+                        log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
                     }
                     else
                     {
