@@ -1,6 +1,7 @@
 #include "MAE3Encoder.h"
 #include "esp32/clk.h"
 #include <driver/gpio.h>
+#include <esp_task_wdt.h>
 
 #define ENCODER_DEBUG true
 
@@ -24,7 +25,9 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
       _last_pulse(0),
       _width_l_buffer{},
       _width_h_buffer{},
-      _pulseBufferIndex(0)
+      _pulseBufferIndex(0),
+      _storageCompleteFlag(false),
+      _onComplete(nullptr)
 {
 }
 
@@ -128,6 +131,7 @@ void MAE3Encoder::processPWM(bool print)
         return;
 
     noInterrupts();
+    _storageCompleteFlag   = true;
     votePair voted_reading = getMostFrequentValue();
     _dataReady             = false;
     interrupts();
@@ -483,4 +487,22 @@ void MAE3Encoder::resetInterruptCounters()
     _interruptCount = 0;
     _highEdgeCount  = 0;
     _lowEdgeCount   = 0;
+}
+
+void MAE3Encoder::attachOnComplete(void (*callback)())
+{
+    _onComplete = callback;
+}
+void MAE3Encoder::handleMovementComplete()
+{
+    if (_storageCompleteFlag)
+    {
+        _storageCompleteFlag = false;
+        if (_onComplete)
+            _onComplete();
+    }
+}
+void MAE3Encoder::setStorageCompleteFlag(bool flag)
+{
+    _storageCompleteFlag = flag;
 }

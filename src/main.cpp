@@ -57,7 +57,7 @@ Preferences prefs;
 
 // Function declarations
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
-void     storeOriginPosition(uint8_t motorIndex, float originDegrees);
+void     storeOriginPosition();
 float    loadOriginPosition(uint8_t motorIndex);
 void     clearAllOriginPositions();
 void     printAllOriginPositions();
@@ -179,39 +179,10 @@ void setup()
 
 void loop()
 {
-    // Monitor system health
-    static uint32_t lastHealthCheck = 0;
-    static uint32_t resetCount      = 0;
-
-    uint32_t currentTime = millis();
-
-    // Health check every 30 seconds
-    if (currentTime - lastHealthCheck > 30000)
-    {
-        lastHealthCheck = currentTime;
-        if (0)
-        {
-            // Check free heap
-            uint32_t freeHeap = ESP.getFreeHeap();
-            if (freeHeap < 10000)
-            {  // Less than 10KB free
-                log_w("Low memory: %d bytes free", freeHeap);
-            }
-
-            // Check stack usage
-            uint32_t stackHighWater = uxTaskGetStackHighWaterMark(NULL);
-            if (stackHighWater < 1000)
-            {  // Less than 1KB stack free
-                log_w("Low stack: %d bytes free", stackHighWater);
-            }
-
-            // Log system uptime
-            log_i("System uptime: %u seconds, Reset count: %u", (unsigned int)(currentTime / 1000), (unsigned int)++resetCount);
-        }
-    }
-
+    // Handle movement complete outside ISR
+    encoder[currentIndex].handleMovementComplete();
     esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(1));
 }
 
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
@@ -219,30 +190,34 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
     return (rms_current * number) / 32;
 }
 
-void storeOriginPosition(uint8_t motorIndex, float originDegrees)
+void storeOriginPosition()
 {
-    if (motorIndex >= 4)
+    if (!orgin.save)
+    {
+        encoder[currentIndex].setStorageCompleteFlag(false);
+        return;
+    }
+
+    if (orgin.motorIndex >= 4)
     {
         log_e("Invalid motor index");
         return;
     }
 
-    float wrappedAngle = positionController[motorIndex].wrapAngle(originDegrees);
+    orgin.save = false;
 
     // Create a unique key for each motor's origin position
-    String key = "motor" + String(motorIndex) + "_origin";
-
-    Serial.print("key: ");
-    Serial.println(key.c_str());
-    Serial.print("wrappedAngle: ");
-    Serial.println(wrappedAngle);
-
-    bool success = prefs.putFloat(key.c_str(), wrappedAngle);
-
+    String key = "motor" + String(orgin.motorIndex) + "_origin";
+    log_i("Key: %s, Value: %f", key.c_str(), orgin.value);
+    noInterrupts();
+    bool success = prefs.putFloat(key.c_str(), orgin.value);
+    interrupts();
     if (!success)
     {
-        log_e("Failed to store origin position for motor %d", motorIndex + 1);
+        log_e("Failed to store origin position for motor %d", orgin.motorIndex + 1);
     }
+
+    encoder[currentIndex].setStorageCompleteFlag(false);
 }
 
 float loadOriginPosition(uint8_t motorIndex)
@@ -810,6 +785,7 @@ void serialReadTask(void* pvParameters)
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
+                    encoder[currentIndex].attachOnComplete(storeOriginPosition);
                     bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, controlMode);
 
                     if (success)
@@ -820,39 +796,6 @@ void serialReadTask(void* pvParameters)
                     else
                     {
                         log_e("Failed to queue movement command");
-                    }
-                }
-                else if (c.getArgument("o").isSet())
-                {
-                    String valueStr = c.getArgument("o").getValue();
-
-                    if (valueStr != "-9999.0")
-                    {
-                        float                    value = valueStr.toFloat();
-                        ConvertValuesFromDegrees cvfd  = positionController[currentIndex].convertFromDegrees(value);
-                        ConvertValuesFromPulses  cvfp  = positionController[currentIndex].convertFromPulses(value);
-                        ConvertValuesFromSteps   cvfs  = positionController[currentIndex].convertFromMSteps(value);
-                        if (1)
-                        {
-                            Serial.print(F("From Degrees: "));
-                            Serial.print(cvfd.PULSES_FROM_DEGREES);
-                            Serial.print(F(", "));
-                            Serial.println(cvfd.STEPS_FROM_DEGREES);
-                            Serial.print(F("From Pulses: "));
-                            Serial.print(cvfp.DEGREES_FROM_PULSES);
-                            Serial.print(F(", "));
-                            Serial.println(cvfp.STEPS_FROM_PULSES);
-                            Serial.print(F("From Steps: "));
-                            Serial.print(cvfs.DEGREES_FROM_STEPS);
-                            Serial.print(F(", "));
-                            Serial.println(cvfs.PULSES_FROM_STEPS);
-                        }
-                        positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
-                        storeOriginPosition(currentIndex, value);
-                    }
-                    else
-                    {
-                        loadOriginPosition(currentIndex);
                     }
                 }
                 else if (c.getArgument("c").isSet())

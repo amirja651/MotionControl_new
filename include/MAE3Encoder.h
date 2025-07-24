@@ -90,6 +90,11 @@ public:
     uint32_t getLowEdgeCount() const;
     void     resetInterruptCounters();
 
+    // Optional: attach a callback to be called when movement completes
+    void attachOnComplete(void (*callback)());
+    void handleMovementComplete();
+    void setStorageCompleteFlag(bool flag);
+
 private:
     // Pin assignments
     const uint8_t     _signalPin;
@@ -145,6 +150,10 @@ private:
     static void interruptHandler1(void* arg);
     static void interruptHandler2(void* arg);
     static void interruptHandler3(void* arg);
+
+    // Optional movement complete callback
+    volatile bool _storageCompleteFlag;
+    void          (*_onComplete)();
 };
 
 #endif  // MAE3_ENCODER2_H

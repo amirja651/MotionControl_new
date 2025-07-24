@@ -17,7 +17,6 @@ void initializeCLI()
     cmdMotor.addArg("n", "1");    // motor number argument
     cmdMotor.addArg("p", "0.0");  // positional argument (um or deg)
     cmdMotor.addArg("g", "0.0");  // positional argument (angle)
-    cmdMotor.addArg("o", "0");    // current position
     cmdMotor.addFlagArg("c");     // current position
     cmdMotor.addFlagArg("d");     // disable flag
     cmdMotor.addFlagArg("e");     // enable flag
@@ -28,7 +27,6 @@ void initializeCLI()
                             "  -n: Motor number (1-4, required)\r\n"
                             "  -p: Target position (required for movement)\r\n"
                             "  -c: Get current position\r\n"
-                            "  -o: Set origin position\r\n"
                             "  -d: Disable motor\r\n"
                             "  -e: Enable motor\r\n"
                             "  -j: Enable closed-loop control\r\n"
@@ -39,7 +37,6 @@ void initializeCLI()
                             "  motor -n 1 -p 160.0 -j # Move motor 1 to 160 degrees (closed-loop)\r\n"
                             "  motor -n 1 -p 160.0 -h # Move motor 1 to 160 degrees (hybrid mode)\r\n"
                             "  motor -n 1 -c          # Get current position of motor 1\r\n"
-                            "  motor -n 1 -o 0.0      # Set origin position of motor 1\r\n"
                             "  motor -n 1 -d          # Disable motor 1\r\n"
                             "  motor -n 1 -e          # Enable motor 1\r\n");
 
