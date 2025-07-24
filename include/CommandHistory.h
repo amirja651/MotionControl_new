@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <array>
 
-template <size_t SIZE = 16> class CommandHistory
+template <size_t SIZE = 5> class CommandHistory
 {
 public:
     CommandHistory() : _head(0), _count(0), _cursor(-1) {}
