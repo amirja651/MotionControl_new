@@ -476,9 +476,12 @@ void serialReadTask(void* pvParameters)
                         if (historyCount < HISTORY_SIZE)
                             historyCount++;
                     }
-                    historyIndex = -1;
-                    lastInput    = "";
-                    inputBuffer  = "";  // Clear the buffer
+                    if (historyIndex > 0)
+                        historyIndex = historyCount;
+                    else
+                        historyIndex = -1;
+                    lastInput   = "";
+                    inputBuffer = "";  // Clear the buffer
                 }
             }
             else if (c == '\b' || c == 127)  // Handle backspace
@@ -616,7 +619,7 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
                 Serial.print(F(", Mode="));
-                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L." : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L." : "HYBRID";
+                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L" : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L" : "HYBRID";
                 Serial.print(modeStr);
                 if (status.controlMode == ControlMode::CLOSED_LOOP)
                 {
