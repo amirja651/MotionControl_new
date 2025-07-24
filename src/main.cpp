@@ -1,3 +1,4 @@
+#include "CommandHistory.h"
 #include "MAE3Encoder.h"
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
@@ -7,6 +8,8 @@
 #include <Preferences.h>
 #include <SPI.h>
 #include <esp_task_wdt.h>
+
+CommandHistory<16> history;
 
 struct OrginData
 {
@@ -416,14 +419,24 @@ void serialReadTask(void* pvParameters)
             {
                 if (c == 'A')
                 {  // Up arrow
-                    if (historyCount > 0)
+
+                    inputBuffer = history.up();
+                    clearLine();
+                    Serial.print("> ");
+                    Serial.print(inputBuffer);
+
+                    if (0)
                     {
-                        if (historyIndex < historyCount - 1)
-                            historyIndex++;
-                        inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
-                        clearLine();
-                        Serial.print(inputBuffer);
+                        if (historyCount > 0)
+                        {
+                            if (historyIndex < historyCount - 1)
+                                historyIndex++;
+                            inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
+                            clearLine();
+                            Serial.print(inputBuffer);
+                        }
                     }
+
                     escState = 0;
                     esp_task_wdt_reset();
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -431,21 +444,31 @@ void serialReadTask(void* pvParameters)
                 }
                 if (c == 'B')
                 {  // Down arrow
-                    if (historyCount > 0 && historyIndex > 0)
+
+                    inputBuffer = history.down();
+                    clearLine();
+                    Serial.print("> ");
+                    Serial.print(inputBuffer);
+
+                    if (0)
                     {
-                        historyIndex--;
-                        inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
-                        clearLine();
-                        Serial.print(inputBuffer);
+                        if (historyCount > 0 && historyIndex > 0)
+                        {
+                            historyIndex--;
+                            inputBuffer = commandHistory[(historyCount - 1 - historyIndex) % HISTORY_SIZE];
+                            clearLine();
+                            Serial.print(inputBuffer);
+                        }
+                        else if (historyIndex == 0 && isPrintable(c))
+                        {
+                            historyIndex = -1;
+                            inputBuffer  = lastInput;
+                            clearLine();
+                            Serial.print(F("> "));
+                            Serial.print(inputBuffer);
+                        }
                     }
-                    else if (historyIndex == 0 && isPrintable(c))
-                    {
-                        historyIndex = -1;
-                        inputBuffer  = lastInput;
-                        clearLine();
-                        Serial.print(F("> "));
-                        Serial.print(inputBuffer);
-                    }
+
                     escState = 0;
                     esp_task_wdt_reset();
                     vTaskDelayUntil(&xLastWakeTime, xFrequency);
@@ -468,18 +491,22 @@ void serialReadTask(void* pvParameters)
                     Serial.println(inputBuffer.c_str());
                     cli.parse(inputBuffer);
 
-                    // Add to history
-                    if (historyCount == 0 || commandHistory[(historyCount - 1) % HISTORY_SIZE] != inputBuffer)
-                    {
-                        commandHistory[historyCount % HISTORY_SIZE] = inputBuffer;
+                    history.push(inputBuffer);
+                    history.resetCursor();  // go back to the end
 
-                        if (historyCount < HISTORY_SIZE)
-                            historyCount++;
+                    if (0)
+                    {
+                        // Add to history
+                        if (historyCount == 0 || commandHistory[(historyCount - 1) % HISTORY_SIZE] != inputBuffer)
+                        {
+                            commandHistory[historyCount % HISTORY_SIZE] = inputBuffer;
+
+                            if (historyCount < HISTORY_SIZE)
+                                historyCount++;
+                        }
+                        if (historyIndex > 0)
+                            historyIndex = historyCount;
                     }
-                    if (historyIndex > 0)
-                        historyIndex = historyCount;
-                    else
-                        historyIndex = -1;
                     lastInput   = "";
                     inputBuffer = "";  // Clear the buffer
                 }
