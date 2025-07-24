@@ -29,6 +29,17 @@ enum class MovementType
     LONG_RANGE     // Long range
 };
 
+// Distance-based movement types for precise control
+enum class DistanceType
+{
+    NEGLIGIBLE,  // < 0.1° - ignored
+    VERY_SHORT,  // 0.1° - 0.5°
+    SHORT,       // 0.5° - 1°
+    MEDIUM,      // 1° - 5°
+    LONG,        // 5° - 10°
+    VERY_LONG    // > 10°
+};
+
 // Control modes
 enum class ControlMode
 {
@@ -40,12 +51,14 @@ enum class ControlMode
 // Movement command structure
 struct MovementCommand
 {
-    uint8_t      motorId;       // Motor ID (0-3)
-    float        targetAngle;   // Target angle in degrees (0-360)
-    MovementType movementType;  // Type of movement
-    bool         relative;      // True for relative movement, false for absolute
-    uint32_t     priority;      // Command priority (higher = more important)
-    ControlMode  controlMode;   // Control mode (open-loop, closed-loop, hybrid)
+    uint8_t      motorId;           // Motor ID (0-3)
+    float        targetAngle;       // Target angle in degrees (0-360)
+    MovementType movementType;      // Type of movement
+    DistanceType distanceType;      // Distance-based type
+    bool         relative;          // True for relative movement, false for absolute
+    uint32_t     priority;          // Command priority (higher = more important)
+    ControlMode  controlMode;       // Control mode (open-loop, closed-loop, hybrid)
+    float        movementDistance;  // Calculated movement distance in degrees
 };
 
 struct ConvertValuesFromDegrees
@@ -119,6 +132,14 @@ public:
     void setAcceleration(float accelerationStepsPerSec2);
     void setSpeedProfile(MovementType type, float maxSpeed, float acceleration);
 
+    // Distance-based control methods
+    DistanceType calculateDistanceType(float distance);
+    bool         isValidMovementDistance(float distance);
+    void         setDistanceBasedSpeedProfile(DistanceType distanceType);
+    float        calculateOptimalSpeedForDistance(float distance);
+    float        calculateOptimalAccelerationForDistance(float distance);
+    void         configureSpeedForDistance(float distance);
+
     // Angle utilities
     static float wrapAngle(float angle);
     static float calculateShortestPath(float currentAngle, float targetAngle);
@@ -157,6 +178,15 @@ private:
         float acceleration;  // Steps per second squared
     };
     SpeedProfile _speedProfiles[3];  // Indexed by MovementType
+
+    // Distance-based speed profiles for precise control
+    struct DistanceSpeedProfile
+    {
+        float maxSpeed;              // Steps per second
+        float acceleration;          // Steps per second squared
+        float decelerationDistance;  // Distance to start deceleration (degrees)
+    };
+    DistanceSpeedProfile _distanceSpeedProfiles[6];  // Indexed by DistanceType
 
     // RTOS components
     static TaskHandle_t      _positionControlTaskHandle;

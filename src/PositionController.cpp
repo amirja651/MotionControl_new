@@ -35,9 +35,24 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};   // Increased from 2000
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
 
-    // _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {1000.0f, 2000.0f};  // Slow and precise
-    // _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {2000.0f, 4000.0f};  // Balanced
-    // _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {4000.0f, 8000.0f};  // Fast
+    // Initialize distance-based speed profiles for precise control
+    // NEGLIGIBLE (< 0.1°) - Not used, but defined for completeness
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0.0f};
+
+    // VERY_SHORT (0.1° - 0.5°) - Very slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 0.05f};
+
+    // SHORT (0.5° - 1°) - Slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)] = {1000.0f, 2000.0f, 0.1f};
+
+    // MEDIUM (1° - 5°) - Balanced speed and precision
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)] = {2000.0f, 4000.0f, 0.2f};
+
+    // LONG (5° - 10°) - Moderate speed
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)] = {4000.0f, 8000.0f, 0.5f};
+
+    // VERY_LONG (> 10°) - Higher speed for longer distances
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)] = {8000.0f, 16000.0f, 1.0f};
 }
 
 // Constructor without encoder (for demo)
@@ -63,6 +78,25 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {2000.0f, 4000.0f};   // Increased from 1000
     _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};   // Increased from 2000
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
+
+    // Initialize distance-based speed profiles for precise control
+    // NEGLIGIBLE (< 0.1°) - Not used, but defined for completeness
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0.0f};
+
+    // VERY_SHORT (0.1° - 0.5°) - Very slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 0.05f};
+
+    // SHORT (0.5° - 1°) - Slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)] = {1000.0f, 2000.0f, 0.1f};
+
+    // MEDIUM (1° - 5°) - Balanced speed and precision
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)] = {2000.0f, 4000.0f, 0.2f};
+
+    // LONG (5° - 10°) - Moderate speed
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)] = {4000.0f, 8000.0f, 0.5f};
+
+    // VERY_LONG (> 10°) - Higher speed for longer distances
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)] = {8000.0f, 16000.0f, 1.0f};
 }
 
 // Destructor
@@ -135,20 +169,35 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
 {
     if (!_enabled || !_initialized)
         return false;
+
     // Wrap target angle to 0-360 range
     targetAngle = wrapAngle(targetAngle);
-    // Read encoder value and use it as starting position
-    float currentAngle   = wrapAngle(getCurrentAngle());
-    float delta          = calculateShortestPath(currentAngle, targetAngle);
-    float adjustedTarget = currentAngle + delta;
+
+    // Calculate current angle and movement distance
+    float currentAngle     = wrapAngle(getCurrentAngle());
+    float delta            = calculateShortestPath(currentAngle, targetAngle);
+    float movementDistance = abs(delta);
+
+    // Validate movement distance
+    if (!isValidMovementDistance(movementDistance))
+    {
+        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.1°), ignoring", _motorId + 1, movementDistance);
+        return false;
+    }
+
+    // Calculate distance type for speed profile selection
+    DistanceType distanceType = calculateDistanceType(movementDistance);
+
     // Create movement command
     MovementCommand command;
-    command.motorId      = _motorId;
-    command.targetAngle  = adjustedTarget;
-    command.movementType = movementType;
-    command.relative     = false;
-    command.priority     = 1;
-    command.controlMode  = controlMode;
+    command.motorId          = _motorId;
+    command.targetAngle      = targetAngle;
+    command.movementType     = movementType;
+    command.distanceType     = distanceType;
+    command.relative         = false;
+    command.priority         = 1;
+    command.controlMode      = controlMode;
+    command.movementDistance = movementDistance;
 
     // Queue the command
     return queueMovementCommand(command);
@@ -159,17 +208,30 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     if (!_enabled || !_initialized)
         return false;
 
+    // Validate movement distance
+    float movementDistance = abs(deltaAngle);
+    if (!isValidMovementDistance(movementDistance))
+    {
+        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.1°), ignoring", _motorId + 1, movementDistance);
+        return false;
+    }
+
     float currentAngle = getCurrentAngle();
     float targetAngle  = wrapAngle(currentAngle + deltaAngle);
 
+    // Calculate distance type for speed profile selection
+    DistanceType distanceType = calculateDistanceType(movementDistance);
+
     // Create movement command
     MovementCommand command;
-    command.motorId      = _motorId;
-    command.targetAngle  = targetAngle;
-    command.movementType = movementType;
-    command.relative     = true;
-    command.priority     = 1;
-    command.controlMode  = controlMode;
+    command.motorId          = _motorId;
+    command.targetAngle      = targetAngle;
+    command.movementType     = movementType;
+    command.distanceType     = distanceType;
+    command.relative         = true;
+    command.priority         = 1;
+    command.controlMode      = controlMode;
+    command.movementDistance = movementDistance;
 
     // Queue the command
     return queueMovementCommand(command);
@@ -190,7 +252,7 @@ void PositionController::stop()
         xSemaphoreGive(_statusMutex);
     }
 
-    Serial.printf("[PositionController] Motor %d stopped\n", _motorId + 1);
+    log_i("Motor %d stopped", _motorId + 1);
 }
 
 bool PositionController::isMoving() const
@@ -443,14 +505,37 @@ bool PositionController::executeMovement(const MovementCommand& command)
         xSemaphoreGive(_statusMutex);
     }
 
-    // Configure speed for movement type
-    setSpeedForMovement(command.movementType);
+    // Configure speed based on movement distance for precise control
+    configureSpeedForDistance(command.movementDistance);
 
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetSteps));
 
-    const char* modeStr = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
-    Serial.printf("[PositionController] Motor %d moving to %.2f degrees (type: %d, mode: %s)\n", _motorId + 1, command.targetAngle, static_cast<int>(command.movementType), modeStr);
+    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+    const char* distanceStr = "";
+    switch (command.distanceType)
+    {
+        case DistanceType::VERY_SHORT:
+            distanceStr = "VERY_SHORT";
+            break;
+        case DistanceType::SHORT:
+            distanceStr = "SHORT";
+            break;
+        case DistanceType::MEDIUM:
+            distanceStr = "MEDIUM";
+            break;
+        case DistanceType::LONG:
+            distanceStr = "LONG";
+            break;
+        case DistanceType::VERY_LONG:
+            distanceStr = "VERY_LONG";
+            break;
+        default:
+            distanceStr = "UNKNOWN";
+            break;
+    }
+
+    log_i("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle, command.movementDistance, distanceStr, modeStr);
 
     return true;
 }
@@ -550,11 +635,11 @@ void PositionController::runPositionControl()
         if (_controlMode == ControlMode::CLOSED_LOOP)
         {
             float finalError = calculatePositionError();
-            Serial.printf("[PositionController] Motor %d reached target (%s). Final error: %.2f°\n", _motorId + 1, modeStr, finalError);
+            log_i("Motor %d reached target (%s). Final error: %.2f°", _motorId + 1, modeStr, finalError);
         }
         else
         {
-            Serial.printf("[PositionController] Motor %d reached target (%s).\n", _motorId + 1, modeStr);
+            log_i("Motor %d reached target (%s).", _motorId + 1, modeStr);
         }
     }
 }
@@ -745,4 +830,147 @@ void PositionController::setControlMode(ControlMode mode)
             }
             break;
     }
+}
+
+// Distance-based control methods
+DistanceType PositionController::calculateDistanceType(float distance)
+{
+    if (distance < 0.1f)
+        return DistanceType::NEGLIGIBLE;
+    else if (distance < 0.5f)
+        return DistanceType::VERY_SHORT;
+    else if (distance < 1.0f)
+        return DistanceType::SHORT;
+    else if (distance < 5.0f)
+        return DistanceType::MEDIUM;
+    else if (distance < 10.0f)
+        return DistanceType::LONG;
+    else
+        return DistanceType::VERY_LONG;
+}
+
+bool PositionController::isValidMovementDistance(float distance)
+{
+    return distance >= 0.1f;  // Ignore movements smaller than 0.1°
+}
+
+void PositionController::setDistanceBasedSpeedProfile(DistanceType distanceType)
+{
+    if (distanceType == DistanceType::NEGLIGIBLE)
+        return;
+
+    int index = static_cast<int>(distanceType);
+    if (index >= 0 && index < 6)
+    {
+        _stepper.setMaxSpeed(_distanceSpeedProfiles[index].maxSpeed);
+        _stepper.setAcceleration(_distanceSpeedProfiles[index].acceleration);
+    }
+}
+
+float PositionController::calculateOptimalSpeedForDistance(float distance)
+{
+    DistanceType distanceType = calculateDistanceType(distance);
+    if (distanceType == DistanceType::NEGLIGIBLE)
+        return 0.0f;
+
+    int index = static_cast<int>(distanceType);
+    if (index >= 0 && index < 6)
+    {
+        float baseSpeed = _distanceSpeedProfiles[index].maxSpeed;
+
+        // Fine-tune speed based on exact distance within the range
+        float speedMultiplier = 1.0f;
+
+        switch (distanceType)
+        {
+            case DistanceType::VERY_SHORT:
+                // 0.1° - 0.5°: Linear interpolation
+                speedMultiplier = 0.5f + (distance - 0.1f) * 0.5f / 0.4f;
+                break;
+            case DistanceType::SHORT:
+                // 0.5° - 1°: Linear interpolation
+                speedMultiplier = 0.7f + (distance - 0.5f) * 0.3f / 0.5f;
+                break;
+            case DistanceType::MEDIUM:
+                // 1° - 5°: Linear interpolation
+                speedMultiplier = 0.8f + (distance - 1.0f) * 0.2f / 4.0f;
+                break;
+            case DistanceType::LONG:
+                // 5° - 10°: Linear interpolation
+                speedMultiplier = 0.9f + (distance - 5.0f) * 0.1f / 5.0f;
+                break;
+            case DistanceType::VERY_LONG:
+                // > 10°: Full speed for longer distances
+                speedMultiplier = 1.0f;
+                break;
+            default:
+                speedMultiplier = 1.0f;
+                break;
+        }
+
+        return baseSpeed * speedMultiplier;
+    }
+
+    return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].maxSpeed;
+}
+
+float PositionController::calculateOptimalAccelerationForDistance(float distance)
+{
+    DistanceType distanceType = calculateDistanceType(distance);
+    if (distanceType == DistanceType::NEGLIGIBLE)
+        return 0.0f;
+
+    int index = static_cast<int>(distanceType);
+    if (index >= 0 && index < 6)
+    {
+        float baseAcceleration = _distanceSpeedProfiles[index].acceleration;
+
+        // Fine-tune acceleration based on exact distance within the range
+        float accelerationMultiplier = 1.0f;
+
+        switch (distanceType)
+        {
+            case DistanceType::VERY_SHORT:
+                // 0.1° - 0.5°: Lower acceleration for precision
+                accelerationMultiplier = 0.3f + (distance - 0.1f) * 0.4f / 0.4f;
+                break;
+            case DistanceType::SHORT:
+                // 0.5° - 1°: Moderate acceleration
+                accelerationMultiplier = 0.5f + (distance - 0.5f) * 0.3f / 0.5f;
+                break;
+            case DistanceType::MEDIUM:
+                // 1° - 5°: Balanced acceleration
+                accelerationMultiplier = 0.7f + (distance - 1.0f) * 0.2f / 4.0f;
+                break;
+            case DistanceType::LONG:
+                // 5° - 10°: Higher acceleration
+                accelerationMultiplier = 0.8f + (distance - 5.0f) * 0.2f / 5.0f;
+                break;
+            case DistanceType::VERY_LONG:
+                // > 10°: Full acceleration for longer distances
+                accelerationMultiplier = 1.0f;
+                break;
+            default:
+                accelerationMultiplier = 1.0f;
+                break;
+        }
+
+        return baseAcceleration * accelerationMultiplier;
+    }
+
+    return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].acceleration;
+}
+
+void PositionController::configureSpeedForDistance(float distance)
+{
+    if (!isValidMovementDistance(distance))
+        return;
+
+    float optimalSpeed        = calculateOptimalSpeedForDistance(distance);
+    float optimalAcceleration = calculateOptimalAccelerationForDistance(distance);
+
+    _stepper.setMaxSpeed(optimalSpeed);
+    _stepper.setAcceleration(optimalAcceleration);
+
+    log_i("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed, optimalAcceleration);
 }

@@ -328,8 +328,17 @@ void printCurrentSettingsAndKeyboardControls()
     Serial.println(F("  Position Control: 'J' Move to origin (closed-loop)"));
     Serial.println(F("  Position Status:  'L' Show position status"));
     Serial.println(F("  Encoder Counters: 'K' Show & reset interrupt counters"));
+    Serial.println(F("  Distance Test:    'T' Test distance-based speed control"));
+    Serial.println(F("  Test Movements:   '1'-'7' Test specific distances (0.2°-50°)"));
+    Serial.println(F(""));
+    Serial.println(F("Distance-Based Speed Control:"));
+    Serial.println(F("  < 0.1°: Ignored (negligible)"));
+    Serial.println(F("  0.1°-0.5°: Very slow & precise"));
+    Serial.println(F("  0.5°-1°: Slow & precise"));
+    Serial.println(F("  1°-5°: Balanced speed/precision"));
+    Serial.println(F("  5°-10°: Moderate speed"));
+    Serial.println(F("  > 10°: Higher speed"));
     Serial.println(F("========================================================================"));
-    Serial.flush();
 }
 
 void clearLine()
@@ -381,26 +390,8 @@ void serialReadTask(void* pvParameters)
     String           inputBuffer   = "";
     String           lastInput     = "";
 
-    // Task health monitoring
-    static uint32_t taskStartTime      = millis();
-    static uint32_t watchdogResetCount = 0;
-
     while (1)
     {
-        if (0)
-        {
-            // Reset watchdog more frequently and track it
-            watchdogResetCount++;
-
-            // Log task health every 1000 cycles (about 100 seconds)
-            if (watchdogResetCount % 1000 == 0)
-            {
-                uint32_t taskUptime = (millis() - taskStartTime) / 1000;
-                uint32_t stackFree  = uxTaskGetStackHighWaterMark(NULL);
-                log_i("SerialRead uptime: %u s, Stack: %u bytes, WDT resets: %u", (unsigned int)taskUptime, (unsigned int)stackFree, (unsigned int)watchdogResetCount);
-            }
-        }
-
         while (Serial.available())
         {
             char c = Serial.read();
@@ -410,12 +401,18 @@ void serialReadTask(void* pvParameters)
             if (escState == 0 && c == '\x1b')
             {
                 escState = 1;
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
             }
-            else if (escState == 1 && c == '[')
+            if (escState == 1 && c == '[')
             {
                 escState = 2;
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
             }
-            else if (escState == 2)
+            if (escState == 2)
             {
                 if (c == 'A')
                 {  // Up arrow
@@ -428,8 +425,11 @@ void serialReadTask(void* pvParameters)
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
                 }
-                else if (c == 'B')
+                if (c == 'B')
                 {  // Down arrow
                     if (historyCount > 0 && historyIndex > 0)
                     {
@@ -447,26 +447,26 @@ void serialReadTask(void* pvParameters)
                         Serial.print(inputBuffer);
                     }
                     escState = 0;
+                    esp_task_wdt_reset();
+                    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                    continue;
                 }
+                escState = 0;
+                esp_task_wdt_reset();
+                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                continue;
             }
 
+            const char* commands[] = {"A", "Z", "S", "X", "D", "C", "Q", "J", "L", "K", "T"};
             // Handle Enter
-            else if (c == '\n')
+            if (c == '\n')
             {
                 if (inputBuffer.length() > 0)
                 {
                     Serial.println();
                     Serial.print(F("# "));
                     Serial.println(inputBuffer.c_str());
-
-                    try
-                    {
-                        cli.parse(inputBuffer);
-                    }
-                    catch (...)
-                    {
-                        log_e("CLI parsing failed");
-                    }
+                    cli.parse(inputBuffer);
 
                     // Add to history
                     if (historyCount == 0 || commandHistory[(historyCount - 1) % HISTORY_SIZE] != inputBuffer)
@@ -489,7 +489,8 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("\b \b"));
                 }
             }
-            else if (c == 'A')  // Increase RMS current
+            /*
+            else if (c == commands[0][0])  // 'A' Increase RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
                 if (currentRms < MAX_RMS_CURRENT)
@@ -499,7 +500,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == 'Z')  // Decrease RMS current
+            else if (c == commands[1][0])  // 'Z' Decrease RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
                 if (currentRms > MIN_RMS_CURRENT)
@@ -509,7 +510,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == 'S')  // Increase IRUN
+            else if (c == commands[2][0])  // 'S' Increase IRUN
             {
                 uint8_t currentIrun = driver[currentIndex].getIrun();
                 if (currentIrun < MAX_IRUN)
@@ -519,7 +520,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == 'X')  // Decrease IRUN
+            else if (c == commands[3][0])  // 'X' Decrease IRUN
             {
                 uint8_t currentIrun = driver[currentIndex].getIrun();
                 if (currentIrun > MIN_IRUN)
@@ -529,7 +530,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == 'D')  // Increase IHOLD
+            else if (c == commands[4][0])  // 'D' Increase IHOLD
             {
                 uint8_t currentIhold = driver[currentIndex].getIhold();
                 if (currentIhold < MAX_IHOLD)
@@ -539,7 +540,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == 'C')  // Decrease IHOLD
+            else if (c == commands[5][0])  // 'C' Decrease IHOLD
             {
                 uint8_t currentIhold = driver[currentIndex].getIhold();
                 if (currentIhold > MIN_IHOLD)
@@ -549,22 +550,17 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == 'Q')  // Move to 0 degrees
+            */
+            else if (c == commands[6][0])  // 'Q' Move to 0 degrees
             {
                 float targetAngle = loadOriginPosition(currentIndex);
-                // Use new position controller
-                MovementType movementType = MovementType::MEDIUM_RANGE;
-                if (abs(targetAngle) <= 40.0f)
-                    movementType = MovementType::SHORT_RANGE;
-                else if (abs(targetAngle) >= 100.0f)
-                    movementType = MovementType::LONG_RANGE;
 
                 if (targetAngle == 0)
                     targetAngle = 0.01;
                 else if (targetAngle == 360)
                     targetAngle = 359.9955f;
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, ControlMode::OPEN_LOOP);
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
 
                 if (success)
                 {
@@ -575,22 +571,16 @@ void serialReadTask(void* pvParameters)
                     log_e("Failed to queue movement command");
                 }
             }
-            else if (c == 'J')  // Move to 0 degrees with closed-loop
+            else if (c == commands[7][0])  // 'J' Move to 0 degrees with closed-loop
             {
                 float targetAngle = loadOriginPosition(currentIndex);
-                // Use new position controller
-                MovementType movementType = MovementType::MEDIUM_RANGE;
-                if (abs(targetAngle) <= 40.0f)
-                    movementType = MovementType::SHORT_RANGE;
-                else if (abs(targetAngle) >= 100.0f)
-                    movementType = MovementType::LONG_RANGE;
 
                 if (targetAngle == 0)
                     targetAngle = 0.01;
                 else if (targetAngle == 360)
                     targetAngle = 359.9955f;
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, ControlMode::CLOSED_LOOP);
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, ControlMode::CLOSED_LOOP);
 
                 if (success)
                 {
@@ -601,7 +591,7 @@ void serialReadTask(void* pvParameters)
                     log_e("Failed to queue movement command");
                 }
             }
-            else if (c == 'L')  // Show position status
+            else if (c == commands[8][0])  // 'L' Show position status
             {
                 encoder[currentIndex].processPWM();
                 EncoderState encoderState = encoder[currentIndex].getState();
@@ -644,7 +634,7 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(" pulses)"));
                 Serial.println();
             }
-            else if (c == 'K')  // Show encoder interrupt counters
+            else if (c == commands[9][0])  // 'K' Show encoder interrupt counters
             {
                 uint32_t currentTime  = millis();
                 uint32_t timeInterval = 0;
@@ -714,16 +704,97 @@ void serialReadTask(void* pvParameters)
                     lastKPressTime = currentTime;
                 }
             }
-            else if (c != 'A' && c != 'Z' && c != 'S' && c != 'X' && c != 'D' && c != 'C' && c != 'Q' && c != 'L' && c != 'K')  // Only add to buffer if not a direct command
+            /*
+            else if (c == commands[10][0])  // 'T' Test distance-based speed control
             {
-                inputBuffer += c;  // Add character to buffer
-                Serial.print(c);
-                if (historyIndex == -1)
-                    lastInput = inputBuffer;
+                Serial.println();
+                Serial.println(F("[Distance-Based Speed Control Test]"));
+                Serial.println(F("Testing different movement distances:"));
+
+                // Test distances: 0.2°, 0.4°, 0.5°, 1°, 5°, 10°, 50°
+                float       testDistances[] = {0.2f, 0.4f, 0.5f, 1.0f, 5.0f, 10.0f, 50.0f};
+                const char* distanceNames[] = {"0.2°", "0.4°", "0.5°", "1°  ", "5°  ", "10° ", "50° "};
+
+                for (int i = 0; i < 7; i++)
+                {
+                    float        distance     = testDistances[i];
+                    DistanceType distanceType = positionController[currentIndex].calculateDistanceType(distance);
+                    float        optimalSpeed = positionController[currentIndex].calculateOptimalSpeedForDistance(distance);
+                    float        optimalAccel = positionController[currentIndex].calculateOptimalAccelerationForDistance(distance);
+
+                    const char* typeStr = "";
+                    switch (distanceType)
+                    {
+                        case DistanceType::VERY_SHORT:
+                            typeStr = "VERY_SHORT";
+                            break;
+                        case DistanceType::SHORT:
+                            typeStr = "SHORT";
+                            break;
+                        case DistanceType::MEDIUM:
+                            typeStr = "MEDIUM";
+                            break;
+                        case DistanceType::LONG:
+                            typeStr = "LONG";
+                            break;
+                        case DistanceType::VERY_LONG:
+                            typeStr = "VERY_LONG";
+                            break;
+                        default:
+                            typeStr = "NEGLIGIBLE";
+                            break;
+                    }
+
+                    Serial.printf("  %s: Type=%s, Speed=%.0f steps/s, Accel=%.0f steps/s²\n", distanceNames[i], typeStr, optimalSpeed, optimalAccel);
+                }
+
+                Serial.println(F("Press '1'-'7' to test these movements, or any other key to continue"));
+            }
+            else if (c >= '1' && c <= '7')  // Test specific distance movements
+            {
+                float testDistances[] = {0.2f, 0.4f, 0.5f, 1.0f, 5.0f, 10.0f, 50.0f};
+                int   index           = c - '1';
+                float distance        = testDistances[index];
+
+                float currentAngle = positionController[currentIndex].getCurrentAngle();
+                float targetAngle  = PositionController::wrapAngle(currentAngle + distance);
+
+                log_i("Testing %f° movement (current: %.2f° -> target: %.2f°)\n", distance, currentAngle, targetAngle);
+
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+
+                if (success)
+                {
+                    log_i("Motor %d testing %f° movement", currentIndex + 1, distance);
+                }
+                else
+                {
+                    log_e("Failed to queue test movement");
+                }
+            }
+            */
+            else  // Only add to buffer if not a direct command
+            {
+                bool isCommand = false;
+                for (int i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
+                {
+                    if (c == commands[i][0])
+                    {
+                        isCommand = true;
+                        break;
+                    }
+                }
+                if (!isCommand)
+                {
+                    inputBuffer += c;  // Add character to buffer
+                    Serial.print(c);
+                    if (historyIndex == -1)
+                        lastInput = inputBuffer;
+                }
             }
 
-            inputBuffer = "";
-            lastInput   = "";
+            esp_task_wdt_reset();
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
 
         if (cli.available())
@@ -753,20 +824,13 @@ void serialReadTask(void* pvParameters)
                         controlMode = ControlMode::HYBRID;
                     }
 
-                    // Use new position controller
-                    MovementType movementType = MovementType::MEDIUM_RANGE;
-                    if (abs(targetAngle) <= 40.0f)
-                        movementType = MovementType::SHORT_RANGE;
-                    else if (abs(targetAngle) >= 100.0f)
-                        movementType = MovementType::LONG_RANGE;
-
                     if (targetAngle == 0)
                         targetAngle = 0.01;
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
                     encoder[currentIndex].attachOnComplete(storeOriginPosition);
-                    bool success = positionController[currentIndex].moveToAngle(targetAngle, movementType, controlMode);
+                    bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, controlMode);
 
                     if (success)
                     {
@@ -871,7 +935,6 @@ void serialReadTask(void* pvParameters)
             log_e("ERROR: %s", cmdError.c_str());
         }
 
-        Serial.flush();
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
