@@ -603,7 +603,6 @@ void serialReadTask(void* pvParameters)
                     status.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
                 float diff = status.currentAngle - encoderState.position_degrees;
-                Serial.println();
                 Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Diff="));
@@ -616,8 +615,8 @@ void serialReadTask(void* pvParameters)
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
-                Serial.print(F(", Control Mode="));
-                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+                Serial.print(F(", Mode="));
+                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L." : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L." : "HYBRID";
                 Serial.print(modeStr);
                 if (status.controlMode == ControlMode::CLOSED_LOOP)
                 {
@@ -631,8 +630,7 @@ void serialReadTask(void* pvParameters)
                 Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
                 Serial.print(F(", "));
                 Serial.print(encoderState.position_pulse);
-                Serial.print(F(" pulses)"));
-                Serial.println();
+                Serial.println(F(" pulses)"));
             }
             else if (c == commands[9][0])  // 'K' Show encoder interrupt counters
             {
