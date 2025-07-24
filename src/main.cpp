@@ -387,15 +387,18 @@ void serialReadTask(void* pvParameters)
 
     while (1)
     {
-        // Reset watchdog more frequently and track it
-        watchdogResetCount++;
-
-        // Log task health every 1000 cycles (about 100 seconds)
-        if (watchdogResetCount % 1000 == 0)
+        if (0)
         {
-            uint32_t taskUptime = (millis() - taskStartTime) / 1000;
-            uint32_t stackFree  = uxTaskGetStackHighWaterMark(NULL);
-            log_i("SerialRead uptime: %u s, Stack: %u bytes, WDT resets: %u", (unsigned int)taskUptime, (unsigned int)stackFree, (unsigned int)watchdogResetCount);
+            // Reset watchdog more frequently and track it
+            watchdogResetCount++;
+
+            // Log task health every 1000 cycles (about 100 seconds)
+            if (watchdogResetCount % 1000 == 0)
+            {
+                uint32_t taskUptime = (millis() - taskStartTime) / 1000;
+                uint32_t stackFree  = uxTaskGetStackHighWaterMark(NULL);
+                log_i("SerialRead uptime: %u s, Stack: %u bytes, WDT resets: %u", (unsigned int)taskUptime, (unsigned int)stackFree, (unsigned int)watchdogResetCount);
+            }
         }
 
         while (Serial.available())
