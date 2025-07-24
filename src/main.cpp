@@ -498,8 +498,6 @@ void serialReadTask(void* pvParameters)
                     driver[currentIndex].setRmsCurrent(newRms);
                 }
                 printCurrentSettingsAndKeyboardControls();
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'Z')  // Decrease RMS current
             {
@@ -510,8 +508,6 @@ void serialReadTask(void* pvParameters)
                     driver[currentIndex].setRmsCurrent(newRms);
                 }
                 printCurrentSettingsAndKeyboardControls();
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'S')  // Increase IRUN
             {
@@ -522,8 +518,6 @@ void serialReadTask(void* pvParameters)
                     driver[currentIndex].setIrun(newIrun);
                 }
                 printCurrentSettingsAndKeyboardControls();
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'X')  // Decrease IRUN
             {
@@ -534,8 +528,6 @@ void serialReadTask(void* pvParameters)
                     driver[currentIndex].setIrun(newIrun);
                 }
                 printCurrentSettingsAndKeyboardControls();
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'D')  // Increase IHOLD
             {
@@ -546,8 +538,6 @@ void serialReadTask(void* pvParameters)
                     driver[currentIndex].setIhold(newIhold);
                 }
                 printCurrentSettingsAndKeyboardControls();
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'C')  // Decrease IHOLD
             {
@@ -558,8 +548,6 @@ void serialReadTask(void* pvParameters)
                     driver[currentIndex].setIhold(newIhold);
                 }
                 printCurrentSettingsAndKeyboardControls();
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'Q')  // Move to 0 degrees
             {
@@ -586,9 +574,6 @@ void serialReadTask(void* pvParameters)
                 {
                     log_e("Failed to queue movement command");
                 }
-
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'J')  // Move to 0 degrees with closed-loop
             {
@@ -615,9 +600,6 @@ void serialReadTask(void* pvParameters)
                 {
                     log_e("Failed to queue movement command");
                 }
-
-                inputBuffer = "";
-                lastInput   = "";
             }
             else if (c == 'L')  // Show position status
             {
@@ -661,9 +643,6 @@ void serialReadTask(void* pvParameters)
                 Serial.print(encoderState.position_pulse);
                 Serial.print(F(" pulses)"));
                 Serial.println();
-                inputBuffer = "";
-                lastInput   = "";
-                Serial.flush();
             }
             else if (c == 'K')  // Show encoder interrupt counters
             {
@@ -684,61 +663,56 @@ void serialReadTask(void* pvParameters)
                 if (currentIndex >= 4 || !driverEnabled[currentIndex])
                 {
                     log_e("Invalid motor index or driver not enabled");
-                    inputBuffer = "";
-                    lastInput   = "";
-                    return;
-                }
-
-                // Get interrupt counters
-                uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
-                uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
-                uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
-
-                Serial.print(F("  Total Interrupts: "));
-                Serial.println(totalInterrupts);
-                Serial.print(F("  Rising Edges (High): "));
-                Serial.println(highEdges);
-                Serial.print(F("  Falling Edges (Low): "));
-                Serial.println(lowEdges);
-                Serial.print(F("  Encoder Enabled: "));
-                Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
-                if (encoder[currentIndex].isEnabled())
-                {
-                    encoder[currentIndex].processPWM();
-                    EncoderState encoderState = encoder[currentIndex].getState();
-                    Serial.print(F("  Encoder Position: "));
-                    Serial.print(encoderState.position_degrees, 2);
-                    Serial.print(F("° ("));
-                    Serial.print(encoderState.position_pulse);
-                    Serial.println(F(" pulses)"));
                 }
                 else
                 {
-                    log_w("Encoder not enabled");
+                    // Get interrupt counters
+                    uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
+                    uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
+                    uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
+
+                    Serial.print(F("  Total Interrupts: "));
+                    Serial.println(totalInterrupts);
+                    Serial.print(F("  Rising Edges (High): "));
+                    Serial.println(highEdges);
+                    Serial.print(F("  Falling Edges (Low): "));
+                    Serial.println(lowEdges);
+                    Serial.print(F("  Encoder Enabled: "));
+                    Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
+                    if (encoder[currentIndex].isEnabled())
+                    {
+                        encoder[currentIndex].processPWM();
+                        EncoderState encoderState = encoder[currentIndex].getState();
+                        Serial.print(F("  Encoder Position: "));
+                        Serial.print(encoderState.position_degrees, 2);
+                        Serial.print(F("° ("));
+                        Serial.print(encoderState.position_pulse);
+                        Serial.println(F(" pulses)"));
+                    }
+                    else
+                    {
+                        log_w("Encoder not enabled");
+                    }
+
+                    // Display time interval
+                    if (lastKPressTime > 0)
+                    {
+                        Serial.print(F("  Time since last K press: "));
+                        Serial.print(timeInterval);
+                        Serial.println(F(" ms"));
+                    }
+                    else
+                    {
+                        Serial.println(F("  Time since last K press: First press"));
+                    }
+
+                    // Reset counters after displaying
+                    encoder[currentIndex].resetInterruptCounters();
+                    Serial.println(F("  [Counters Reset]"));
+
+                    // Update last K press time
+                    lastKPressTime = currentTime;
                 }
-
-                // Display time interval
-                if (lastKPressTime > 0)
-                {
-                    Serial.print(F("  Time since last K press: "));
-                    Serial.print(timeInterval);
-                    Serial.println(F(" ms"));
-                }
-                else
-                {
-                    Serial.println(F("  Time since last K press: First press"));
-                }
-
-                // Reset counters after displaying
-                encoder[currentIndex].resetInterruptCounters();
-                Serial.println(F("  [Counters Reset]"));
-
-                // Update last K press time
-                lastKPressTime = currentTime;
-
-                inputBuffer = "";
-                lastInput   = "";
-                Serial.flush();
             }
             else if (c != 'A' && c != 'Z' && c != 'S' && c != 'X' && c != 'D' && c != 'C' && c != 'Q' && c != 'L' && c != 'K')  // Only add to buffer if not a direct command
             {
@@ -747,6 +721,9 @@ void serialReadTask(void* pvParameters)
                 if (historyIndex == -1)
                     lastInput = inputBuffer;
             }
+
+            inputBuffer = "";
+            lastInput   = "";
         }
 
         if (cli.available())
@@ -830,40 +807,42 @@ void serialReadTask(void* pvParameters)
                     if (!encoder[currentIndex].isEnabled())
                     {
                         log_e("Encoder not enabled");
-                        return;
                     }
-                    // Process encoder to get current reading
-                    encoder[currentIndex].processPWM();
-
-                    // Get encoder state
-                    EncoderState encoderState = encoder[currentIndex].getState();
-
-                    float value = encoderState.position_degrees;
-
-                    ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
-                    ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
-                    ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
-
-                    if (1)
+                    else
                     {
-                        Serial.print(F("From Degrees: "));
-                        Serial.print(cvfd.PULSES_FROM_DEGREES);
-                        Serial.print(F(", "));
-                        Serial.println(cvfd.STEPS_FROM_DEGREES);
-                        Serial.print(F("From Pulses: "));
-                        Serial.print(cvfp.DEGREES_FROM_PULSES);
-                        Serial.print(F(", "));
-                        Serial.println(cvfp.STEPS_FROM_PULSES);
-                        Serial.print(F("From Steps: "));
-                        Serial.print(cvfs.DEGREES_FROM_STEPS);
-                        Serial.print(F(", "));
-                        Serial.println(cvfs.PULSES_FROM_STEPS);
-                    }
-                    positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
+                        // Process encoder to get current reading
+                        encoder[currentIndex].processPWM();
 
-                    orgin.motorIndex = currentIndex;
-                    orgin.value      = value;
-                    orgin.save       = true;
+                        // Get encoder state
+                        EncoderState encoderState = encoder[currentIndex].getState();
+
+                        float value = encoderState.position_degrees;
+
+                        ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
+                        ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
+                        ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
+
+                        if (1)
+                        {
+                            Serial.print(F("From Degrees: "));
+                            Serial.print(cvfd.PULSES_FROM_DEGREES);
+                            Serial.print(F(", "));
+                            Serial.println(cvfd.STEPS_FROM_DEGREES);
+                            Serial.print(F("From Pulses: "));
+                            Serial.print(cvfp.DEGREES_FROM_PULSES);
+                            Serial.print(F(", "));
+                            Serial.println(cvfp.STEPS_FROM_PULSES);
+                            Serial.print(F("From Steps: "));
+                            Serial.print(cvfs.DEGREES_FROM_STEPS);
+                            Serial.print(F(", "));
+                            Serial.println(cvfs.PULSES_FROM_STEPS);
+                        }
+                        positionController[currentIndex].setCurrentPosition(cvfd.STEPS_FROM_DEGREES);
+
+                        orgin.motorIndex = currentIndex;
+                        orgin.value      = value;
+                        orgin.save       = true;
+                    }
                 }
             }
             else if (c == cmdRestart)
@@ -892,6 +871,7 @@ void serialReadTask(void* pvParameters)
             log_e("ERROR: %s", cmdError.c_str());
         }
 
+        Serial.flush();
         esp_task_wdt_reset();
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
