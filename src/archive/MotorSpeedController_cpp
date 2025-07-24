@@ -134,7 +134,8 @@ void MotorSpeedController::stopTimer()
     Serial.println(_motorId);
 }
 
-MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN, uint16_t EN_PIN)
+MotorSpeedController::MotorSpeedController(uint8_t motorId, TMC5160Manager& driver, uint16_t DIR_PIN, uint16_t STEP_PIN,
+                                           uint16_t EN_PIN)
     : _driver(driver),
       _DIR_PIN(DIR_PIN),
       _STEP_PIN(STEP_PIN),

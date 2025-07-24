@@ -36,10 +36,10 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
 
     // Initialize distance-based speed profiles for precise control
-    // NEGLIGIBLE (< 0.1°) - Not used, but defined for completeness
+    // NEGLIGIBLE (< 0.01°) - Not used, but defined for completeness
     _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0.0f};
 
-    // VERY_SHORT (0.1° - 0.5°) - Very slow and precise
+    // VERY_SHORT (0.01° - 0.5°) - Very slow and precise
     _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 0.05f};
 
     // SHORT (0.5° - 1°) - Slow and precise
@@ -80,10 +80,10 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
 
     // Initialize distance-based speed profiles for precise control
-    // NEGLIGIBLE (< 0.1°) - Not used, but defined for completeness
+    // NEGLIGIBLE (< 0.01°) - Not used, but defined for completeness
     _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0.0f};
 
-    // VERY_SHORT (0.1° - 0.5°) - Very slow and precise
+    // VERY_SHORT (0.01° - 0.5°) - Very slow and precise
     _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 0.05f};
 
     // SHORT (0.5° - 1°) - Slow and precise
@@ -181,7 +181,7 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
     // Validate movement distance
     if (!isValidMovementDistance(movementDistance))
     {
-        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.1°), ignoring", _motorId + 1, movementDistance);
+        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.01°), ignoring", _motorId + 1, movementDistance);
         return false;
     }
 
@@ -212,7 +212,7 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     float movementDistance = abs(deltaAngle);
     if (!isValidMovementDistance(movementDistance))
     {
-        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.1°), ignoring", _motorId + 1, movementDistance);
+        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.01°), ignoring", _motorId + 1, movementDistance);
         return false;
     }
 
@@ -835,7 +835,7 @@ void PositionController::setControlMode(ControlMode mode)
 // Distance-based control methods
 DistanceType PositionController::calculateDistanceType(float distance)
 {
-    if (distance < 0.1f)
+    if (distance < 0.05f)
         return DistanceType::NEGLIGIBLE;
     else if (distance < 0.5f)
         return DistanceType::VERY_SHORT;
@@ -851,7 +851,7 @@ DistanceType PositionController::calculateDistanceType(float distance)
 
 bool PositionController::isValidMovementDistance(float distance)
 {
-    return distance >= 0.1f;  // Ignore movements smaller than 0.1°
+    return distance >= 0.01f;  // Ignore movements smaller than 0.01°
 }
 
 void PositionController::setDistanceBasedSpeedProfile(DistanceType distanceType)
@@ -884,8 +884,8 @@ float PositionController::calculateOptimalSpeedForDistance(float distance)
         switch (distanceType)
         {
             case DistanceType::VERY_SHORT:
-                // 0.1° - 0.5°: Linear interpolation
-                speedMultiplier = 0.5f + (distance - 0.1f) * 0.5f / 0.4f;
+                // 0.01° - 0.5°: Linear interpolation
+                speedMultiplier = 0.5f + (distance - 0.01f) * 0.5f / 0.4f;
                 break;
             case DistanceType::SHORT:
                 // 0.5° - 1°: Linear interpolation
@@ -931,8 +931,8 @@ float PositionController::calculateOptimalAccelerationForDistance(float distance
         switch (distanceType)
         {
             case DistanceType::VERY_SHORT:
-                // 0.1° - 0.5°: Lower acceleration for precision
-                accelerationMultiplier = 0.3f + (distance - 0.1f) * 0.4f / 0.4f;
+                // 0.01° - 0.5°: Lower acceleration for precision
+                accelerationMultiplier = 0.3f + (distance - 0.01f) * 0.4f / 0.4f;
                 break;
             case DistanceType::SHORT:
                 // 0.5° - 1°: Moderate acceleration
