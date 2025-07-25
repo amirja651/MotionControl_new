@@ -9,8 +9,21 @@ SemaphoreHandle_t   PositionController::_statusMutex               = nullptr;
 PositionController* PositionController::_instances[4]              = {nullptr};
 
 // Constructor with encoder
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
-    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(&encoder), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _controlMode(ControlMode::OPEN_LOOP)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin,
+                                       uint16_t enPin, MAE3Encoder& encoder)
+    : _driver(driver),
+      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
+      _encoder(&encoder),
+      _dirPin(dirPin),
+      _stepPin(stepPin),
+      _enPin(enPin),
+      _motorId(motorId),
+      _status{},
+      _enabled(false),
+      _initialized(false),
+      _controlMode(ControlMode::OPEN_LOOP),
+      _movementCompleteFlag(false),
+      _onComplete(nullptr)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -56,8 +69,21 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 }
 
 // Constructor without encoder (for demo)
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin)
-    : _driver(driver), _stepper(AccelStepper::DRIVER, stepPin, dirPin), _encoder(nullptr), _dirPin(dirPin), _stepPin(stepPin), _enPin(enPin), _motorId(motorId), _status{}, _enabled(false), _initialized(false), _controlMode(ControlMode::OPEN_LOOP)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin,
+                                       uint16_t enPin)
+    : _driver(driver),
+      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
+      _encoder(nullptr),
+      _dirPin(dirPin),
+      _stepPin(stepPin),
+      _enPin(enPin),
+      _motorId(motorId),
+      _status{},
+      _enabled(false),
+      _initialized(false),
+      _controlMode(ControlMode::OPEN_LOOP),
+      _movementCompleteFlag(false),
+      _onComplete(nullptr)
 {
     // Initialize status
     _status.motorId           = motorId;
@@ -511,7 +537,9 @@ bool PositionController::executeMovement(const MovementCommand& command)
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetSteps));
 
-    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP)     ? "OPEN-LOOP"
+                              : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP"
+                                                                                  : "HYBRID";
     const char* distanceStr = "";
     switch (command.distanceType)
     {
@@ -535,7 +563,8 @@ bool PositionController::executeMovement(const MovementCommand& command)
             break;
     }
 
-    log_i("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle, command.movementDistance, distanceStr, modeStr);
+    log_i("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle,
+          command.movementDistance, distanceStr, modeStr);
 
     return true;
 }
@@ -630,7 +659,9 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
 
-        const char* modeStr = (_controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (_controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+        const char* modeStr = (_controlMode == ControlMode::OPEN_LOOP)     ? "OPEN-LOOP"
+                              : (_controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP"
+                                                                           : "HYBRID";
 
         if (_controlMode == ControlMode::CLOSED_LOOP)
         {
@@ -639,6 +670,7 @@ void PositionController::runPositionControl()
         }
         else
         {
+            _movementCompleteFlag = true;
             log_i("Motor %d reached target (%s).", _motorId + 1, modeStr);
         }
     }
@@ -708,7 +740,8 @@ void PositionController::applyClosedLoopCorrection()
     }
 }
 
-ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, int32_t microsteps, int32_t resolution) const
+ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, int32_t microsteps,
+                                                                int32_t resolution) const
 {
     ConvertValuesFromDegrees convert;
     convert.PULSES_FROM_DEGREES = static_cast<int32_t>(std::round(degrees * (resolution / 360.0f)));
@@ -716,7 +749,8 @@ ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, i
     return convert;
 }
 
-ConvertValuesFromPulses PositionController::convertFromPulses(int32_t pulses, int32_t microsteps, int32_t resolution) const
+ConvertValuesFromPulses PositionController::convertFromPulses(int32_t pulses, int32_t microsteps,
+                                                              int32_t resolution) const
 {
     ConvertValuesFromPulses convert;
     convert.DEGREES_FROM_PULSES = static_cast<float>(pulses * (360.0f / resolution));
@@ -724,7 +758,8 @@ ConvertValuesFromPulses PositionController::convertFromPulses(int32_t pulses, in
     return convert;
 }
 
-ConvertValuesFromSteps PositionController::convertFromMSteps(int32_t steps, int32_t microsteps, int32_t resolution) const
+ConvertValuesFromSteps PositionController::convertFromMSteps(int32_t steps, int32_t microsteps,
+                                                             int32_t resolution) const
 {
     ConvertValuesFromSteps convert;
     convert.PULSES_FROM_STEPS  = static_cast<int32_t>(std::round(steps * (resolution / microsteps)));
@@ -820,7 +855,8 @@ void PositionController::setControlMode(ControlMode mode)
                 // Read current encoder position and use it as starting position
                 float encoderAngle   = getEncoderAngle();
                 _status.encoderAngle = encoderAngle;
-                log_i("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1, encoderAngle);
+                log_i("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1,
+                      encoderAngle);
             }
             else
             {
@@ -972,5 +1008,24 @@ void PositionController::configureSpeedForDistance(float distance)
     _stepper.setMaxSpeed(optimalSpeed);
     _stepper.setAcceleration(optimalAcceleration);
 
-    log_i("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed, optimalAcceleration);
+    log_i("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed,
+          optimalAcceleration);
+}
+
+void PositionController::attachOnComplete(void (*callback)())
+{
+    _onComplete = callback;
+}
+void PositionController::handleMovementComplete()
+{
+    if (_movementCompleteFlag)
+    {
+        _movementCompleteFlag = false;
+        if (_onComplete)
+            _onComplete();
+    }
+}
+void PositionController::setMovementCompleteFlag(bool flag)
+{
+    _movementCompleteFlag = flag;
 }

@@ -12,14 +12,15 @@
 #include <freertos/task.h>
 
 // Motor configuration constants
-static constexpr int16_t STEPS_PER_REVOLUTION      = 200;                                            // Standard stepper motor
+static constexpr int16_t STEPS_PER_REVOLUTION      = 200;  // Standard stepper motor
 static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(DEFAULT_CURRENT_PANCAKE);  // 32 microsteps
 static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;     // 6400 microsteps
 static constexpr float   POSITION_ACCURACY_DEGREES = 0.1f;                                           // Target accuracy
 
-static constexpr float PIXEL_SIZE_UM              = 5.2f;  // Size of each pixel in the camera (micrometers)
-static constexpr float PIXEL_SIZE_MM              = (PIXEL_SIZE_UM * 1e-3f);
-static constexpr float CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from mirror to camera in millimeters (can be measured accurately)
+static constexpr float PIXEL_SIZE_UM = 5.2f;  // Size of each pixel in the camera (micrometers)
+static constexpr float PIXEL_SIZE_MM = (PIXEL_SIZE_UM * 1e-3f);
+static constexpr float CAMERA_TO_MIRROR_LENGTH_MM =
+    195.0f;  // Distance from mirror to camera in millimeters (can be measured accurately)
 
 // Movement types
 enum class MovementType
@@ -102,8 +103,10 @@ class PositionController
 {
 public:
     // Constructor
-    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder);
-    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin);  // Constructor without encoder (for demo)
+    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin,
+                       MAE3Encoder& encoder);
+    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin,
+                       uint16_t enPin);  // Constructor without encoder (for demo)
     ~PositionController();
 
     // Initialization
@@ -114,8 +117,10 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
-    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE,
+                     ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE,
+                      ControlMode controlMode = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -149,11 +154,18 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200, int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200, int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200,
+                                                int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200,
+                                               int32_t resolution = ENCODER_RESOLUTION) const;
+    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200,
+                                               int32_t resolution = ENCODER_RESOLUTION) const;
     float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     float                    getEncoderAngle();
+
+    void attachOnComplete(void (*callback)());
+    void handleMovementComplete();
+    void setMovementCompleteFlag(bool flag);
 
 private:
     // Hardware components
@@ -216,6 +228,10 @@ private:
     // RTOS task function
     static void positionControlTask(void* parameter);
     void        runPositionControl();
+
+    // Optional movement complete callback
+    volatile bool _movementCompleteFlag;
+    void          (*_onComplete)();
 };
 
 // Global functions for RTOS integration

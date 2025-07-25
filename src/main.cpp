@@ -10,6 +10,7 @@
 #include <esp_task_wdt.h>
 
 CommandHistory<16> history;
+ControlMode        movementControlMode;
 
 struct OrginData
 {
@@ -69,6 +70,7 @@ void     clearLine();
 void     setMotorId(String motorId);
 void     serialReadTask(void* pvParameters);
 float    setCurrentPositionFromEncoder();
+void     checkDifference();
 
 void setup()
 {
@@ -185,6 +187,7 @@ void loop()
 {
     // Handle movement complete outside ISR
     encoder[currentIndex].handleMovementComplete();
+    positionController[currentIndex].handleMovementComplete();
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(1));
 }
@@ -810,12 +813,15 @@ void serialReadTask(void* pvParameters)
                         controlMode = ControlMode::HYBRID;
                     }
 
+                    movementControlMode = controlMode;
+
                     if (targetAngle == 0)
                         targetAngle = 0.01;
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
                     encoder[currentIndex].attachOnComplete(storeOriginPosition);
+                    positionController[currentIndex].attachOnComplete(checkDifference);
 
                     bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
                                                                                 controlMode);
@@ -927,4 +933,61 @@ float setCurrentPositionFromEncoder()
     int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
     positionController[currentIndex].setCurrentPosition(steps);
     return encoderAngle;
+}
+
+void checkDifference()
+{
+    encoder[currentIndex].processPWM();
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(300));
+    esp_task_wdt_reset();
+    float encoderAngle = positionController[currentIndex].getEncoderAngle();
+    float currentAngle = positionController[currentIndex].getCurrentAngle();
+    float targetAngle  = positionController[currentIndex].getTargetAngle();
+    Serial.printf("Encoder: %f, Current: %f, Target: %f\n", encoderAngle, currentAngle, targetAngle);
+
+    float difference = encoderAngle - currentAngle;
+    log_i("Diff Encoder Angle From Current: %f", difference);
+
+    float difference2 = targetAngle - currentAngle;
+    log_i("Diff Target Angle From Current: %f", difference2);
+
+    float difference3 = targetAngle - encoderAngle;
+    log_i("Diff Target Angle From Encoder: %f", difference3);
+
+    if (movementControlMode == ControlMode::OPEN_LOOP && fabs(difference) > 0.06)
+    {
+        int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
+        positionController[currentIndex].setCurrentPosition(steps);
+
+        if (targetAngle == 0)
+            targetAngle = 0.01;
+        else if (targetAngle == 360)
+            targetAngle = 359.9955f;
+
+        encoder[currentIndex].attachOnComplete(storeOriginPosition);
+        positionController[currentIndex].attachOnComplete(checkDifference);
+
+        bool success =
+            positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, movementControlMode);
+
+        if (success)
+        {
+            const char* modeStr = (movementControlMode == ControlMode::OPEN_LOOP)     ? "open-loop"
+                                  : (movementControlMode == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                                      : "hybrid";
+            log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+        }
+        else
+        {
+            log_e("Failed to queue movement command");
+        }
+    }
+    else
+    {
+        log_i("No movement needed, difference: %f, ControlMode: %s", difference,
+              (movementControlMode == ControlMode::OPEN_LOOP)     ? "open-loop"
+              : (movementControlMode == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                  : "hybrid");
+    }
 }
