@@ -218,6 +218,7 @@ void storeOriginPosition()
     log_i("Key: %s, Value: %f", key.c_str(), orgin.value);
     noInterrupts();
     bool success = prefs.putFloat(key.c_str(), orgin.value);
+    vTaskDelay(pdMS_TO_TICKS(100));
     interrupts();
     if (!success)
     {
@@ -955,7 +956,7 @@ void checkDifference()
     float difference3 = targetAngle - encoderAngle;
     log_i("Diff Target Angle From Encoder: %f", difference3);
 
-    if (movementControlMode == ControlMode::OPEN_LOOP && fabs(difference) > 0.06)
+    if (movementControlMode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
         int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
         positionController[currentIndex].setCurrentPosition(steps);
@@ -965,8 +966,8 @@ void checkDifference()
         else if (targetAngle == 360)
             targetAngle = 359.9955f;
 
-        encoder[currentIndex].attachOnComplete(storeOriginPosition);
-        positionController[currentIndex].attachOnComplete(checkDifference);
+        // encoder[currentIndex].attachOnComplete(storeOriginPosition);
+        // positionController[currentIndex].attachOnComplete(checkDifference);
 
         bool success =
             positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, movementControlMode);

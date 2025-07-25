@@ -15,7 +15,7 @@
 static constexpr int16_t STEPS_PER_REVOLUTION      = 200;  // Standard stepper motor
 static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(DEFAULT_CURRENT_PANCAKE);  // 32 microsteps
 static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;     // 6400 microsteps
-static constexpr float   POSITION_ACCURACY_DEGREES = 0.1f;                                           // Target accuracy
+static constexpr float   POSITION_ACCURACY_DEGREES = 0.05f;                                          // Target accuracy
 
 static constexpr float PIXEL_SIZE_UM = 5.2f;  // Size of each pixel in the camera (micrometers)
 static constexpr float PIXEL_SIZE_MM = (PIXEL_SIZE_UM * 1e-3f);
