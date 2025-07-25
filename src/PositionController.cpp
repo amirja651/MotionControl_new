@@ -500,7 +500,7 @@ void PositionController::setSpeedForMovement(MovementType type)
     _status.lastMovementType = type;
 }
 
-bool PositionController::executeMovement(const MovementCommand& command)
+bool PositionController::executeMovement(const MovementCommand& command)  // amir
 {
     if (!_enabled || !_initialized)
         return false;

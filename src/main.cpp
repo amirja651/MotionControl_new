@@ -93,7 +93,7 @@ void     clearLine();
 void     setMotorId(String motorId);
 void     serialReadTask(void* pvParameters);
 float    setCurrentPositionFromEncoder();
-void     checkDifference();
+void     checkDifferenceCorrection();
 
 void setup()
 {
@@ -274,6 +274,7 @@ void loadControlMode()
     String key = "motor" + String(currentIndex) + "_controlMode";
     data.controlMode.value =
         static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
+    log_i("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.controlMode.value));
 }
 
 void clearAllOriginPositions()
@@ -782,16 +783,16 @@ void serialReadTask(void* pvParameters)
                 {
                     String degreesStr  = c.getArgument("p").getValue();
                     float  targetAngle = degreesStr.toFloat();
-                    setCurrentPositionFromEncoder();
-                    loadControlMode();
-
                     if (targetAngle == 0)
                         targetAngle = 0.01;
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
+                    setCurrentPositionFromEncoder();  // amir
+                    loadControlMode();
+
                     encoder[currentIndex].attachOnComplete(storeToMemory);
-                    positionController[currentIndex].attachOnComplete(checkDifference);
+                    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
                     bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
                                                                                 data.controlMode.value);
@@ -924,15 +925,16 @@ void serialReadTask(void* pvParameters)
     }
 }
 
-float setCurrentPositionFromEncoder()
+float setCurrentPositionFromEncoder()  // amir
 {
     float   encoderAngle = positionController[currentIndex].getEncoderAngle();
     int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
     positionController[currentIndex].setCurrentPosition(steps);
+    log_i("Motor %d current position set to Angle: %f", currentIndex + 1, encoderAngle);
     return encoderAngle;
 }
 
-void checkDifference()
+void checkDifferenceCorrection()
 {
     encoder[currentIndex].processPWM();
     esp_task_wdt_reset();
@@ -963,7 +965,7 @@ void checkDifference()
             targetAngle = 359.9955f;
 
         // encoder[currentIndex].attachOnComplete(storeOriginPosition);
-        // positionController[currentIndex].attachOnComplete(checkDifference);
+        positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
         bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE,
                                                                     data.controlMode.value);
