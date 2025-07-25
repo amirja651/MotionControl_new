@@ -11,14 +11,35 @@
 #include <esp_task_wdt.h>
 
 CommandHistory<16> history;
-ControlMode        movementControlMode;
-
-struct OrginData
+const char*        commands[] = {"A", "Z", "S", "X", "D", "C", "!", "?", "L", "K", "T"};
+enum class CommandKey
 {
-    uint8_t motorIndex = 0;
-    float   value      = 0.0f;
-    bool    save       = false;
-} orgin;
+    A = 0,
+    Z = 1,
+    S = 2,
+    X = 3,
+    D = 4,
+    C = 5,
+    Q = 6,
+    J = 7,
+    L = 8,
+    K = 9,
+    T = 10,
+};
+
+struct Data
+{
+    struct OrginData
+    {
+        float value = 0.0f;
+        bool  save  = false;
+    } orgin;
+    struct ControlModeData
+    {
+        ControlMode value = ControlMode::OPEN_LOOP;
+        bool        save  = false;
+    } controlMode;
+} data;
 
 // Driver status tracking
 static bool    driverEnabled[4] = {false, false, false, false};
@@ -62,8 +83,9 @@ Preferences prefs;
 
 // Function declarations
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
-void     storeOriginPosition();
-float    loadOriginPosition(uint8_t motorIndex);
+void     storeToMemory();
+float    loadOriginPosition();
+void     loadControlMode();
 void     clearAllOriginPositions();
 void     printAllOriginPositions();
 void     printCurrentSettingsAndKeyboardControls();
@@ -198,62 +220,60 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
     return (rms_current * number) / 32;
 }
 
-void storeOriginPosition()
+void storeToMemory()
 {
-    if (!orgin.save)
-    {
-        encoder[currentIndex].setStorageCompleteFlag(false);
-        return;
-    }
-
-    if (orgin.motorIndex >= 4)
-    {
-        log_e("Invalid motor index");
-        return;
-    }
-
-    orgin.save = false;
-
-    // Create a unique key for each motor's origin position
-    String key = "motor" + String(orgin.motorIndex) + "_origin";
-    log_i("Key: %s, Value: %f", key.c_str(), orgin.value);
     noInterrupts();
-    bool success = prefs.putFloat(key.c_str(), orgin.value);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    interrupts();
-    if (!success)
+    if (data.orgin.save)
     {
-        log_e("Failed to store origin position for motor %d", orgin.motorIndex + 1);
+        data.orgin.save = false;
+        String key      = "motor" + String(currentIndex) + "_origin";
+        log_i("Key: %s, Value: %f", key.c_str(), data.orgin.value);
+        bool success = prefs.putFloat(key.c_str(), data.orgin.value);
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        if (!success)
+        {
+            log_e("Failed to store origin position for motor %d", currentIndex + 1);
+        }
     }
 
+    if (data.controlMode.save)
+    {
+        data.controlMode.save = false;
+        String key            = "motor" + String(currentIndex) + "_controlMode";
+        log_i("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.controlMode.value));
+        bool success = prefs.putInt(key.c_str(), static_cast<int>(data.controlMode.value));
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        if (!success)
+        {
+            log_e("Failed to store control mode for motor %d", currentIndex + 1);
+        }
+    }
+
+    interrupts();
     encoder[currentIndex].setStorageCompleteFlag(false);
 }
 
-float loadOriginPosition(uint8_t motorIndex)
+float loadOriginPosition()
 {
-    if (motorIndex >= 4)
+    if (currentIndex >= 4)
     {
         log_e("Invalid motor index, using 0.0");
         return 0.0f;
     }
 
-    // Create a unique key for each motor's origin position
-    String key = "motor" + String(motorIndex) + "_origin";
-
-    float originPosition = 0.0f;
-    try
-    {
-        originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
-    }
-    catch (...)
-    {
-        log_e("Exception occurred while loading origin position for motor %d", motorIndex + 1);
-        return 0.0f;
-    }
-
-    log_i("Motor %d origin position loaded: %f°", motorIndex + 1, originPosition);
-
+    String key            = "motor" + String(currentIndex) + "_origin";
+    float  originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
+    log_i("Motor %d origin position loaded: %f°", currentIndex + 1, originPosition);
     return originPosition;
+}
+
+void loadControlMode()
+{
+    String key = "motor" + String(currentIndex) + "_controlMode";
+    data.controlMode.value =
+        static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
 }
 
 void clearAllOriginPositions()
@@ -454,21 +474,6 @@ void serialReadTask(void* pvParameters)
                 continue;
             }
 
-            const char* commands[] = {"A", "Z", "S", "X", "D", "C", "Q", "?", "L", "K", "T"};
-            enum class CommandKey
-            {
-                A = 0,
-                Z = 1,
-                S = 2,
-                X = 3,
-                D = 4,
-                C = 5,
-                Q = 6,
-                J = 7,
-                L = 8,
-                K = 9,
-                T = 10,
-            };
             // Handle Enter
             if (c == '\n')
             {
@@ -554,27 +559,6 @@ void serialReadTask(void* pvParameters)
                 printCurrentSettingsAndKeyboardControls();
             }
             */
-            else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' Move to 0 degrees
-            {
-                float targetAngle = loadOriginPosition(currentIndex);
-
-                if (targetAngle == 0)
-                    targetAngle = 0.01;
-                else if (targetAngle == 360)
-                    targetAngle = 359.9955f;
-
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
-                                                                            ControlMode::OPEN_LOOP);
-
-                if (success)
-                {
-                    log_i("Motor %d moving to %f degrees (open-loop)", currentIndex + 1, targetAngle);
-                }
-                else
-                {
-                    log_e("Failed to queue movement command");
-                }
-            }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
                 encoder[currentIndex].processPWM();
@@ -799,36 +783,24 @@ void serialReadTask(void* pvParameters)
                     String degreesStr  = c.getArgument("p").getValue();
                     float  targetAngle = degreesStr.toFloat();
                     setCurrentPositionFromEncoder();
-
-                    // Check control mode flags
-                    ControlMode controlMode = ControlMode::OPEN_LOOP;
-                    if (c.getArgument("j").isSet())
-                    {
-                        controlMode = ControlMode::CLOSED_LOOP;
-                    }
-                    else if (c.getArgument("h").isSet())
-                    {
-                        controlMode = ControlMode::HYBRID;
-                    }
-
-                    movementControlMode = controlMode;
+                    loadControlMode();
 
                     if (targetAngle == 0)
                         targetAngle = 0.01;
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
-                    encoder[currentIndex].attachOnComplete(storeOriginPosition);
+                    encoder[currentIndex].attachOnComplete(storeToMemory);
                     positionController[currentIndex].attachOnComplete(checkDifference);
 
                     bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
-                                                                                controlMode);
+                                                                                data.controlMode.value);
 
                     if (success)
                     {
-                        const char* modeStr = (controlMode == ControlMode::OPEN_LOOP)     ? "open-loop"
-                                              : (controlMode == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                                          : "hybrid";
+                        const char* modeStr = (data.controlMode.value == ControlMode::OPEN_LOOP)     ? "open-loop"
+                                              : (data.controlMode.value == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                                                     : "hybrid";
                         log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
                     }
                     else
@@ -850,16 +822,19 @@ void serialReadTask(void* pvParameters)
             {
                 if (c.getArgument("c").isSet())
                 {
-                    movementControlMode = ControlMode::CLOSED_LOOP;
+                    data.controlMode.value = ControlMode::CLOSED_LOOP;
                 }
                 else if (c.getArgument("o").isSet())
                 {
-                    movementControlMode = ControlMode::OPEN_LOOP;
+                    data.controlMode.value = ControlMode::OPEN_LOOP;
                 }
                 else if (c.getArgument("h").isSet())
                 {
-                    movementControlMode = ControlMode::HYBRID;
+                    data.controlMode.value = ControlMode::HYBRID;
                 }
+
+                data.controlMode.save = true;
+                storeToMemory();
             }
             else if (c == cmdEnable)
             {
@@ -894,9 +869,8 @@ void serialReadTask(void* pvParameters)
                     else
                     {
                         float value      = setCurrentPositionFromEncoder();
-                        orgin.motorIndex = currentIndex;
-                        orgin.value      = value;
-                        orgin.save       = true;
+                        data.orgin.value = value;
+                        data.orgin.save  = true;
 
                         if (1)
                         {
@@ -978,7 +952,7 @@ void checkDifference()
     // float difference3 = targetAngle - encoderAngle;
     //  log_i("Diff Target Angle From Encoder: %f", difference3);
 
-    if (movementControlMode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
+    if (data.controlMode.value == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
         int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
         positionController[currentIndex].setCurrentPosition(steps);
@@ -991,8 +965,8 @@ void checkDifference()
         // encoder[currentIndex].attachOnComplete(storeOriginPosition);
         // positionController[currentIndex].attachOnComplete(checkDifference);
 
-        bool success =
-            positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, movementControlMode);
+        bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE,
+                                                                    data.controlMode.value);
 
         if (success)
         {
@@ -1006,8 +980,8 @@ void checkDifference()
     else
     {
         log_i("No movement needed, difference: %f, ControlMode: %s", difference,
-              (movementControlMode == ControlMode::OPEN_LOOP)     ? "open-loop"
-              : (movementControlMode == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                  : "hybrid");
+              (data.controlMode.value == ControlMode::OPEN_LOOP)     ? "open-loop"
+              : (data.controlMode.value == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                     : "hybrid");
     }
 }
