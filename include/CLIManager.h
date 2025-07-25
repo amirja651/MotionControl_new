@@ -4,48 +4,55 @@
 #include <SimpleCLI.h>
 
 SimpleCLI cli;
-Command   cmdMotor;
-Command   cmdOrgin;
-Command   cmdStop;
-Command   cmdRestart;
-Command   cmdShow;
-Command   cmdHelp;
+
+Command cmdMotor;
+Command cmdMove;
+Command cmdMoveRelative;
+Command cmdControlMode;
+Command cmdStop;
+Command cmdEnable;
+Command cmdDisable;
+Command cmdCurrentPosition;
+Command cmdSave;
+Command cmdRestart;
+Command cmdShow;
+Command cmdHelp;
 
 void initializeCLI()
 {
     cmdMotor = cli.addCmd("motor");
-    cmdMotor.addArg("n", "1");    // motor number argument
-    cmdMotor.addArg("p", "0.0");  // positional argument (um or deg)
-    cmdMotor.addArg("g", "0.0");  // positional argument (angle)
-    cmdMotor.addFlagArg("c");     // current position
-    cmdMotor.addFlagArg("d");     // disable flag
-    cmdMotor.addFlagArg("e");     // enable flag
-    cmdMotor.addFlagArg("j");     // closed-loop flag
-    cmdMotor.addFlagArg("h");     // hybrid mode flag
-    cmdMotor.setDescription("Control motor movement\r\n"
-                            "Usage: motor -n <number> [-p <position>] [-c] [-d] [-e] [-j] [-h]\r\n"
-                            "  -n: Motor number (1-4, required)\r\n"
-                            "  -p: Target position (required for movement)\r\n"
-                            "  -c: Get current position\r\n"
-                            "  -d: Disable motor\r\n"
-                            "  -e: Enable motor\r\n"
-                            "  -j: Enable closed-loop control\r\n"
-                            "  -h: Enable hybrid mode (read encoder once at start)\r\n"
-                            "Examples:\r\n"
-                            "  motor -n 1 -p 100.0    # Move motor 1 to 100 um (open-loop)\r\n"
-                            "  motor -n 2 -p 45.0     # Move motor 2 to 45 degrees (open-loop)\r\n"
-                            "  motor -n 1 -p 160.0 -j # Move motor 1 to 160 degrees (closed-loop)\r\n"
-                            "  motor -n 1 -p 160.0 -h # Move motor 1 to 160 degrees (hybrid mode)\r\n"
-                            "  motor -n 1 -c          # Get current position of motor 1\r\n"
-                            "  motor -n 1 -d          # Disable motor 1\r\n"
-                            "  motor -n 1 -e          # Enable motor 1\r\n");
+    cmdMotor.addArg("n", "1");  // motor number argument
+    cmdMotor.setDescription("Select the motor");
 
-    cmdOrgin = cli.addCmd("orgin");
-    cmdOrgin.addArg("n", "1");  // motor number argument
-    cmdOrgin.setDescription("Set origin position of motor");
+    cmdMove = cli.addCmd("move");
+    cmdMove.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdMove.setDescription("Move the current motor to the target position");
+
+    cmdMoveRelative = cli.addCmd("mover");
+    cmdMoveRelative.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdMoveRelative.setDescription("Move the current motor relative to the current position");
+
+    cmdControlMode = cli.addCmd("control");
+    cmdControlMode.addFlagArg("o");  // open loop
+    cmdControlMode.addFlagArg("h");  // hybrid
+    cmdControlMode.addFlagArg("c");  // closed loop
+    cmdControlMode.setDescription("Set control mode for current motor");
 
     cmdStop = cli.addCmd("stop");
-    cmdStop.setDescription("Stop the motor");
+    cmdStop.setDescription("Stop the current motor.");
+
+    cmdEnable = cli.addCmd("enable");
+    cmdEnable.setDescription("Enable the current motor.");
+
+    cmdDisable = cli.addCmd("disable");
+    cmdDisable.setDescription("Disable the current motor.");
+
+    cmdCurrentPosition = cli.addCmd("position");
+    cmdCurrentPosition.setDescription("Show the current position of the current motor");
+
+    cmdSave = cli.addCmd("save");
+    cmdSave.addFlagArg("o");  // orgin
+    cmdSave.setDescription("Save the current position as origin of current motor");
 
     cmdRestart = cli.addCmd("restart");
     cmdRestart.setDescription("Restart the ESP32 system");

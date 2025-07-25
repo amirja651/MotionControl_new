@@ -390,6 +390,7 @@ void setMotorId(String motorId)
     }
 
     encoder[currentIndex].enable();
+    log_i("Motor %d selected and enabled", currentIndex + 1);
 }
 
 // Serial read task (M101)
@@ -453,7 +454,21 @@ void serialReadTask(void* pvParameters)
                 continue;
             }
 
-            const char* commands[] = {"A", "Z", "S", "X", "D", "C", "Q", "J", "L", "K", "T"};
+            const char* commands[] = {"A", "Z", "S", "X", "D", "C", "Q", "?", "L", "K", "T"};
+            enum class CommandKey
+            {
+                A = 0,
+                Z = 1,
+                S = 2,
+                X = 3,
+                D = 4,
+                C = 5,
+                Q = 6,
+                J = 7,
+                L = 8,
+                K = 9,
+                T = 10,
+            };
             // Handle Enter
             if (c == '\n')
             {
@@ -478,7 +493,7 @@ void serialReadTask(void* pvParameters)
                 }
             }
             /*
-            else if (c == commands[0][0])  // 'A' Increase RMS current
+            else if (c == commands[static_cast<int>(CommandKey::A)][0])  // 'A' Increase RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
                 if (currentRms < MAX_RMS_CURRENT)
@@ -488,7 +503,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == commands[1][0])  // 'Z' Decrease RMS current
+            else if (c == commands[static_cast<int>(CommandKey::Z)][0])  // 'Z' Decrease RMS current
             {
                 uint16_t currentRms = driver[currentIndex].getRmsCurrent();
                 if (currentRms > MIN_RMS_CURRENT)
@@ -498,7 +513,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == commands[2][0])  // 'S' Increase IRUN
+            else if (c == commands[static_cast<int>(CommandKey::S)][0])  // 'S' Increase IRUN
             {
                 uint8_t currentIrun = driver[currentIndex].getIrun();
                 if (currentIrun < MAX_IRUN)
@@ -508,7 +523,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == commands[3][0])  // 'X' Decrease IRUN
+            else if (c == commands[static_cast<int>(CommandKey::X)][0])  // 'X' Decrease IRUN
             {
                 uint8_t currentIrun = driver[currentIndex].getIrun();
                 if (currentIrun > MIN_IRUN)
@@ -518,7 +533,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == commands[4][0])  // 'D' Increase IHOLD
+            else if (c == commands[static_cast<int>(CommandKey::D)][0])  // 'D' Increase IHOLD
             {
                 uint8_t currentIhold = driver[currentIndex].getIhold();
                 if (currentIhold < MAX_IHOLD)
@@ -528,7 +543,7 @@ void serialReadTask(void* pvParameters)
                 }
                 printCurrentSettingsAndKeyboardControls();
             }
-            else if (c == commands[5][0])  // 'C' Decrease IHOLD
+            else if (c == commands[static_cast<int>(CommandKey::C)][0])  // 'C' Decrease IHOLD
             {
                 uint8_t currentIhold = driver[currentIndex].getIhold();
                 if (currentIhold > MIN_IHOLD)
@@ -539,7 +554,7 @@ void serialReadTask(void* pvParameters)
                 printCurrentSettingsAndKeyboardControls();
             }
             */
-            else if (c == commands[6][0])  // 'Q' Move to 0 degrees
+            else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' Move to 0 degrees
             {
                 float targetAngle = loadOriginPosition(currentIndex);
 
@@ -560,28 +575,7 @@ void serialReadTask(void* pvParameters)
                     log_e("Failed to queue movement command");
                 }
             }
-            else if (c == commands[7][0])  // 'J' Move to 0 degrees with closed-loop
-            {
-                float targetAngle = loadOriginPosition(currentIndex);
-
-                if (targetAngle == 0)
-                    targetAngle = 0.01;
-                else if (targetAngle == 360)
-                    targetAngle = 359.9955f;
-
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
-                                                                            ControlMode::CLOSED_LOOP);
-
-                if (success)
-                {
-                    log_i("Motor %d moving to %f degrees (closed-loop)", currentIndex + 1, targetAngle);
-                }
-                else
-                {
-                    log_e("Failed to queue movement command");
-                }
-            }
-            else if (c == commands[8][0])  // 'L' Show position status
+            else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
                 encoder[currentIndex].processPWM();
                 EncoderState encoderState = encoder[currentIndex].getState();
@@ -623,7 +617,7 @@ void serialReadTask(void* pvParameters)
                 Serial.print(encoderState.position_pulse);
                 Serial.println(F(" pulses)"));
             }
-            else if (c == commands[9][0])  // 'K' Show encoder interrupt counters
+            else if (c == commands[static_cast<int>(CommandKey::K)][0])  // 'K' Show encoder interrupt counters
             {
                 uint32_t currentTime  = millis();
                 uint32_t timeInterval = 0;
@@ -694,7 +688,7 @@ void serialReadTask(void* pvParameters)
                 }
             }
             /*
-            else if (c == commands[10][0])  // 'T' Test distance-based speed control
+            else if (c == commands[static_cast<int>(CommandKey::T)][0])  // 'T' Test distance-based speed control
             {
                 Serial.println();
                 Serial.println(F("[Distance-Based Speed Control Test]"));
@@ -792,12 +786,14 @@ void serialReadTask(void* pvParameters)
             Command c = cli.getCmd();
             if (c == cmdMotor)
             {
-                // Get Motor Id
                 if (c.getArgument("n").isSet())
                 {
                     String motorIdStr = c.getArgument("n").getValue();
                     setMotorId(motorIdStr);
                 }
+            }
+            else if (c == cmdMove)
+            {
                 if (c.getArgument("p").isSet())
                 {
                     String degreesStr  = c.getArgument("p").getValue();
@@ -840,26 +836,51 @@ void serialReadTask(void* pvParameters)
                         log_e("Failed to queue movement command");
                     }
                 }
-                else if (c.getArgument("c").isSet())
+            }
+            else if (c == cmdMoveRelative)
+            {
+                if (c.getArgument("p").isSet())
                 {
-                    float position = positionController[currentIndex].getCurrentAngle();
-                    Serial.print(F("*"));
-                    Serial.print(currentIndex);
-                    Serial.print(F("#"));
-                    Serial.print(position, 2);
-                    Serial.println(F("#"));
-                }
-                else if (c.getArgument("d").isSet())
-                {
-                    positionController[currentIndex].stop();
-                    positionController[currentIndex].disable();
-                }
-                else if (c.getArgument("e").isSet())
-                {
-                    positionController[currentIndex].enable();
+                    String degreesStr  = c.getArgument("p").getValue();
+                    float  targetAngle = degreesStr.toFloat();
+                    log_i("Motor %d moving relative to %f degrees", currentIndex + 1, targetAngle);
                 }
             }
-            else if (c == cmdOrgin)
+            else if (c == cmdControlMode)
+            {
+                if (c.getArgument("c").isSet())
+                {
+                    movementControlMode = ControlMode::CLOSED_LOOP;
+                }
+                else if (c.getArgument("o").isSet())
+                {
+                    movementControlMode = ControlMode::OPEN_LOOP;
+                }
+                else if (c.getArgument("h").isSet())
+                {
+                    movementControlMode = ControlMode::HYBRID;
+                }
+            }
+            else if (c == cmdEnable)
+            {
+                positionController[currentIndex].enable();
+            }
+            else if (c == cmdDisable)
+            {
+                positionController[currentIndex].stop();
+                vTaskDelay(pdMS_TO_TICKS(100));
+                positionController[currentIndex].disable();
+            }
+            else if (c == cmdCurrentPosition)
+            {
+                float position = positionController[currentIndex].getCurrentAngle();
+                Serial.print(F("*"));
+                Serial.print(currentIndex);
+                Serial.print(F("#"));
+                Serial.print(position, 2);
+                Serial.println(F("#"));
+            }
+            else if (c == cmdSave)
             {
                 if (c.getArgument("n").isSet())
                 {
@@ -946,16 +967,16 @@ void checkDifference()
     float encoderAngle = positionController[currentIndex].getEncoderAngle();
     float currentAngle = positionController[currentIndex].getCurrentAngle();
     float targetAngle  = positionController[currentIndex].getTargetAngle();
-    Serial.printf("Encoder: %f, Current: %f, Target: %f\n", encoderAngle, currentAngle, targetAngle);
+    //  Serial.printf("Encoder: %f, Current: %f, Target: %f\n", encoderAngle, currentAngle, targetAngle);
 
     float difference = encoderAngle - currentAngle;
-    log_i("Diff Encoder Angle From Current: %f", difference);
+    // log_i("Diff Encoder Angle From Current: %f", difference);
 
-    float difference2 = targetAngle - currentAngle;
-    log_i("Diff Target Angle From Current: %f", difference2);
+    // float difference2 = targetAngle - currentAngle;
+    //  log_i("Diff Target Angle From Current: %f", difference2);
 
-    float difference3 = targetAngle - encoderAngle;
-    log_i("Diff Target Angle From Encoder: %f", difference3);
+    // float difference3 = targetAngle - encoderAngle;
+    //  log_i("Diff Target Angle From Encoder: %f", difference3);
 
     if (movementControlMode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
@@ -975,10 +996,7 @@ void checkDifference()
 
         if (success)
         {
-            const char* modeStr = (movementControlMode == ControlMode::OPEN_LOOP)     ? "open-loop"
-                                  : (movementControlMode == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                                      : "hybrid";
-            log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+            log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, "open-loop");
         }
         else
         {
