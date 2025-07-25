@@ -154,11 +154,11 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200,
+    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200,
                                                 int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200,
+    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200,
                                                int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = DEFAULT_CURRENT_PANCAKE * 200,
+    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200,
                                                int32_t resolution = ENCODER_RESOLUTION) const;
     float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     float                    getEncoderAngle();

@@ -3,6 +3,7 @@
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
+#include "esp_log.h"
 #include <Arduino.h>
 #include <CLIManager.h>
 #include <Preferences.h>
