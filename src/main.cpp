@@ -778,6 +778,48 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("n").isSet())
                 {
                     String motorIdStr = c.getArgument("n").getValue();
+
+                    if (motorIdStr == "1")
+                    {
+                        currentIndex = 0;
+                        positionController[currentIndex].setDirection(true);
+                    }
+                    else if (motorIdStr == "2")
+                    {
+                        currentIndex = 1;
+                        positionController[currentIndex].setDirection(true);
+                    }
+                    else if (motorIdStr == "3")
+                    {
+                        currentIndex = 2;
+                        positionController[currentIndex].setDirection(true);
+                    }
+                    else if (motorIdStr == "4")
+                    {
+                        currentIndex = 3;
+                        positionController[currentIndex].setDirection(true);
+                    }
+                    else if (motorIdStr == "5")
+                    {
+                        currentIndex = 0;
+                        positionController[currentIndex].setDirection(false);
+                    }
+                    else if (motorIdStr == "6")
+                    {
+                        currentIndex = 1;
+                        positionController[currentIndex].setDirection(false);
+                    }
+                    else if (motorIdStr == "7")
+                    {
+                        currentIndex = 2;
+                        positionController[currentIndex].setDirection(false);
+                    }
+                    else if (motorIdStr == "8")
+                    {
+                        currentIndex = 3;
+                        positionController[currentIndex].setDirection(false);
+                    }
+
                     setMotorId(motorIdStr);
                 }
             }
