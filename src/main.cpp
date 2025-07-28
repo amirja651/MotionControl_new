@@ -31,16 +31,29 @@ enum class CommandKey
 
 struct Data
 {
-    struct OrginData
+    struct Orgin
     {
         float value = 0.0f;
         bool  save  = false;
     } orgin;
+
     struct ControlModeData
     {
         ControlMode value = ControlMode::OPEN_LOOP;
         bool        save  = false;
     } controlMode;
+
+    struct VoltageDrop
+    {
+        float positionBeforeMovement = 0.0f;
+        bool  save                   = false;
+    } voltageDrop;
+
+    struct TargetReached
+    {
+        float value = 0.0f;
+        bool  save  = false;
+    } targetReached;
 } data;
 
 VoltageMonitor quickMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::MonitorMode::DIGITAL_, 0, 10);
@@ -275,6 +288,31 @@ void storeToMemory()
         }
     }
 
+    if (data.voltageDrop.save)
+    {
+        data.voltageDrop.save = false;
+        String key            = "motor" + String(currentIndex) + "_voltageDrop";
+        log_i("Key: %s, Value: %f", key.c_str(), data.voltageDrop.positionBeforeMovement);
+        bool success = prefs.putFloat(key.c_str(), data.voltageDrop.positionBeforeMovement);
+
+        if (!success)
+        {
+            log_e("Failed to store voltage drop for motor %d", currentIndex + 1);
+        }
+    }
+
+    if (data.targetReached.save)
+    {
+        data.targetReached.save = false;
+        String key              = "motor" + String(currentIndex) + "_targetReached";
+        log_i("Key: %s, Value: %f", key.c_str(), data.targetReached.value);
+        bool success = prefs.putFloat(key.c_str(), data.targetReached.value);
+
+        if (!success)
+        {
+            log_e("Failed to store target reached for motor %d", currentIndex + 1);
+        }
+    }
     interrupts();
     encoder[currentIndex].setStorageCompleteFlag(false);
 }
@@ -856,7 +894,7 @@ void serialReadTask(void* pvParameters)
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
-                    setCurrentPositionFromEncoder();  // amir
+                    data.voltageDrop.positionBeforeMovement = setCurrentPositionFromEncoder();
                     loadControlMode();
 
                     encoder[currentIndex].attachOnComplete(storeToMemory);
@@ -1049,6 +1087,9 @@ void checkDifferenceCorrection()
     }
     else
     {
+        data.targetReached.value = currentAngle;
+        data.targetReached.save  = true;
+        storeToMemory();
         log_i("No movement needed, difference: %f, ControlMode: %s", difference,
               (data.controlMode.value == ControlMode::OPEN_LOOP)     ? "open-loop"
               : (data.controlMode.value == ControlMode::CLOSED_LOOP) ? "closed-loop"
@@ -1062,4 +1103,7 @@ void onQuickDrop()
     // Implement quick response procedures
     // - Log the event
     // - Check system status
+    positionController[currentIndex].stop();
+    data.voltageDrop.save = true;
+    storeToMemory();
 }

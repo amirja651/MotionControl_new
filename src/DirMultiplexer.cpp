@@ -53,7 +53,7 @@ bool DirMultiplexer::selectMotor(uint8_t motorId)
     setSelectPins(motorId);
     _currentMotor = motorId;
 
-    log_d("Selected motor %d (S0:%d, S1:%d)", motorId, digitalRead(_s0Pin), digitalRead(_s1Pin));
+    //log_d("Selected motor %d (S0:%d, S1:%d)", motorId, digitalRead(_s0Pin), digitalRead(_s1Pin));
     return true;
 }
 
@@ -68,7 +68,7 @@ void DirMultiplexer::setDirection(bool direction)
     digitalWrite(_dirPin, direction ? HIGH : LOW);
     _currentDirection = direction;
 
-    log_d("Set direction %s for motor %d", direction ? "FORWARD" : "REVERSE", _currentMotor);
+    // log_d("Set direction %s for motor %d", direction ? "FORWARD" : "REVERSE", _currentMotor);
 }
 
 bool DirMultiplexer::setMotorDirection(uint8_t motorId, bool direction)
@@ -101,7 +101,7 @@ void DirMultiplexer::disable()
     digitalWrite(_s1Pin, HIGH);
     digitalWrite(_dirPin, LOW);
 
-    log_d("Multiplexer disabled");
+    //log_d("Multiplexer disabled");
 }
 
 bool DirMultiplexer::test(bool printResults)
