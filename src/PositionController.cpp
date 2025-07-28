@@ -9,12 +9,12 @@ SemaphoreHandle_t   PositionController::_statusMutex               = nullptr;
 PositionController* PositionController::_instances[4]              = {nullptr};
 
 // Constructor with encoder
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin,
-                                       uint16_t enPin, MAE3Encoder& encoder)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer,
+                                       uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
     : _driver(driver),
-      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
+      _stepper(AccelStepper::DRIVER, stepPin, 0),  // dirPin will be handled by multiplexer
       _encoder(&encoder),
-      _dirPin(dirPin),
+      _dirMultiplexer(dirMultiplexer),
       _stepPin(stepPin),
       _enPin(enPin),
       _motorId(motorId),
@@ -69,12 +69,12 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 }
 
 // Constructor without encoder (for demo)
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin,
-                                       uint16_t enPin)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer,
+                                       uint16_t stepPin, uint16_t enPin)
     : _driver(driver),
-      _stepper(AccelStepper::DRIVER, stepPin, dirPin),
+      _stepper(AccelStepper::DRIVER, stepPin, 0),  // dirPin will be handled by multiplexer
       _encoder(nullptr),
-      _dirPin(dirPin),
+      _dirMultiplexer(dirMultiplexer),
       _stepPin(stepPin),
       _enPin(enPin),
       _motorId(motorId),
@@ -144,6 +144,19 @@ bool PositionController::begin()
     _stepper.setPinsInverted(false, false, true);  // Invert enable pin
     _stepper.disableOutputs();                     // Start disabled
 
+    // Initialize and select this motor in the direction multiplexer
+    if (!_dirMultiplexer.begin())
+    {
+        log_e("Failed to initialize direction multiplexer for motor %d", _motorId + 1);
+        return false;
+    }
+
+    if (!_dirMultiplexer.selectMotor(_motorId))
+    {
+        log_e("Failed to select motor %d in direction multiplexer", _motorId + 1);
+        return false;
+    }
+
     // Set default speed and acceleration
     _stepper.setMaxSpeed(_speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)].maxSpeed);
     _stepper.setAcceleration(_speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)].acceleration);
@@ -152,7 +165,7 @@ bool PositionController::begin()
     setCurrentPosition(0);
 
     _initialized = true;
-    log_i("Motor %d initialized", _motorId + 1);
+    log_i("Motor %d initialized with direction multiplexer", _motorId + 1);
     return true;
 }
 
@@ -500,6 +513,15 @@ void PositionController::setSpeedForMovement(MovementType type)
     _status.lastMovementType = type;
 }
 
+void PositionController::setDirection(bool direction)
+{
+    if (!_initialized)
+        return;
+
+    // Select this motor in the multiplexer and set direction
+    _dirMultiplexer.setMotorDirection(_motorId, direction);
+}
+
 bool PositionController::executeMovement(const MovementCommand& command)  // amir
 {
     if (!_enabled || !_initialized)
@@ -624,6 +646,15 @@ void PositionController::runPositionControl()
 {
     if (!_enabled || !_initialized)
         return;
+
+    // Handle direction control through multiplexer
+    // Since AccelStepper is initialized with dirPin=0, we need to manually control direction
+    if (_stepper.distanceToGo() != 0)
+    {
+        // Determine direction based on whether we need to move forward or backward
+        bool direction = (_stepper.distanceToGo() > 0);
+        setDirection(direction);
+    }
 
     // Run the stepper motor
     _stepper.run();

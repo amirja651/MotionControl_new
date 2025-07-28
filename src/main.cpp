@@ -1,4 +1,5 @@
 #include "CommandHistory.h"
+#include "DirMultiplexer.h"
 #include "MAE3Encoder.h"
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
@@ -46,16 +47,19 @@ static bool    driverEnabled[4] = {false, false, false, false};
 TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]),
                                    TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
+// Direction multiplexer for stepper motor direction control
+DirMultiplexer dirMultiplexer(MultiplexerPins::S0, MultiplexerPins::S1, MultiplexerPins::DIR);
+
 // MAE3 Encoders for position feedback (read-only, not used for control)
 MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1),
                           MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Position controllers for precise angle control
 PositionController positionController[4] = {
-    PositionController(0, driver[0], DriverPins::DIR[0], DriverPins::STEP[0], DriverPins::EN[0], encoder[0]),
-    PositionController(1, driver[1], DriverPins::DIR[1], DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
-    PositionController(2, driver[2], DriverPins::DIR[2], DriverPins::STEP[2], DriverPins::EN[2], encoder[2]),
-    PositionController(3, driver[3], DriverPins::DIR[3], DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
+    PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0], DriverPins::EN[0], encoder[0]),
+    PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
+    PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoder[2]),
+    PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
 static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
 TaskHandle_t              serialReadTaskHandle = NULL;

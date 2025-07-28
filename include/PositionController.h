@@ -1,6 +1,7 @@
 #ifndef POSITION_CONTROLLER_H
 #define POSITION_CONTROLLER_H
 
+#include "DirMultiplexer.h"
 #include "MAE3Encoder.h"
 #include "Pins.h"
 #include "TMC5160Manager.h"
@@ -103,9 +104,9 @@ class PositionController
 {
 public:
     // Constructor
-    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin, uint16_t enPin,
-                       MAE3Encoder& encoder);
-    PositionController(uint8_t motorId, TMC5160Manager& driver, uint16_t dirPin, uint16_t stepPin,
+    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin,
+                       uint16_t enPin, MAE3Encoder& encoder);
+    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin,
                        uint16_t enPin);  // Constructor without encoder (for demo)
     ~PositionController();
 
@@ -136,6 +137,7 @@ public:
     void setMaxSpeed(float speedStepsPerSec);
     void setAcceleration(float accelerationStepsPerSec2);
     void setSpeedProfile(MovementType type, float maxSpeed, float acceleration);
+    void setDirection(bool direction);
 
     // Distance-based control methods
     DistanceType calculateDistanceType(float distance);
@@ -170,9 +172,9 @@ public:
 private:
     // Hardware components
     TMC5160Manager&      _driver;
-    mutable AccelStepper _stepper;  // Mutable to allow const member functions to call AccelStepper methods
-    MAE3Encoder*         _encoder;  // Pointer to encoder for position feedback (can be nullptr)
-    uint16_t             _dirPin;
+    mutable AccelStepper _stepper;         // Mutable to allow const member functions to call AccelStepper methods
+    MAE3Encoder*         _encoder;         // Pointer to encoder for position feedback (can be nullptr)
+    DirMultiplexer&      _dirMultiplexer;  // Direction signal multiplexer
     uint16_t             _stepPin;
     uint16_t             _enPin;
     uint8_t              _motorId;

@@ -23,4 +23,11 @@ struct EncoderPins
     static const uint16_t SIGNAL[4];
 };
 
+struct MultiplexerPins
+{                                    //{22, 4, 32, 27}
+    static const uint16_t S0  = 22;  // Select line 0
+    static const uint16_t S1  = 4;   // Select line 1
+    static const uint16_t DIR = 32;  // Direction signal (connected to common Z)
+};
+
 #endif  // DRIVER_PINS_H
