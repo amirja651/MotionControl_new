@@ -30,4 +30,9 @@ struct MultiplexerPins
     static const uint16_t DIR = 32;  // Direction signal (connected to common Z)
 };
 
+struct VoltageMonitorPins
+{
+    static const uint16_t POWER_3_3 = 27;
+};
+
 #endif  // DRIVER_PINS_H

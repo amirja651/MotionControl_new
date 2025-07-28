@@ -4,6 +4,7 @@
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
+#include "VoltageMonitor.h"
 #include "esp_log.h"
 #include <Arduino.h>
 #include <CLIManager.h>
@@ -41,6 +42,8 @@ struct Data
         bool        save  = false;
     } controlMode;
 } data;
+
+VoltageMonitor quickMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::MonitorMode::DIGITAL_, 0, 10);
 
 // Driver status tracking
 static bool    driverEnabled[4] = {false, false, false, false};
@@ -98,6 +101,7 @@ void     setMotorId(String motorId);
 void     serialReadTask(void* pvParameters);
 float    setCurrentPositionFromEncoder();
 void     checkDifferenceCorrection();
+void     onQuickDrop();
 
 void setup()
 {
@@ -202,6 +206,13 @@ void setup()
     esp_task_wdt_add(NULL);       // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
+    // Initialize quick monitor
+    if (quickMonitor.begin())
+    {
+        quickMonitor.onDrop(onQuickDrop);
+        log_i("Quick monitor initialized on pin 4");
+    }
+
     // Create serial read task with larger stack
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 8192, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
@@ -215,6 +226,15 @@ void loop()
     // Handle movement complete outside ISR
     encoder[currentIndex].handleMovementComplete();
     positionController[currentIndex].handleMovementComplete();
+    quickMonitor.update();
+
+    // Example: Check for drop detection manually
+    if (quickMonitor.wasDropDetected())
+    {
+        log_e("Power drop was detected!");
+        quickMonitor.resetDropDetection();
+    }
+
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(1));
 }
@@ -779,47 +799,49 @@ void serialReadTask(void* pvParameters)
                 {
                     String motorIdStr = c.getArgument("n").getValue();
 
-                    if (motorIdStr == "1")
+                    if (0)
                     {
-                        currentIndex = 0;
-                        positionController[currentIndex].setDirection(true);
+                        if (motorIdStr == "1")
+                        {
+                            currentIndex = 0;
+                            positionController[currentIndex].setDirection(true);
+                        }
+                        else if (motorIdStr == "2")
+                        {
+                            currentIndex = 1;
+                            positionController[currentIndex].setDirection(true);
+                        }
+                        else if (motorIdStr == "3")
+                        {
+                            currentIndex = 2;
+                            positionController[currentIndex].setDirection(true);
+                        }
+                        else if (motorIdStr == "4")
+                        {
+                            currentIndex = 3;
+                            positionController[currentIndex].setDirection(true);
+                        }
+                        else if (motorIdStr == "5")
+                        {
+                            currentIndex = 0;
+                            positionController[currentIndex].setDirection(false);
+                        }
+                        else if (motorIdStr == "6")
+                        {
+                            currentIndex = 1;
+                            positionController[currentIndex].setDirection(false);
+                        }
+                        else if (motorIdStr == "7")
+                        {
+                            currentIndex = 2;
+                            positionController[currentIndex].setDirection(false);
+                        }
+                        else if (motorIdStr == "8")
+                        {
+                            currentIndex = 3;
+                            positionController[currentIndex].setDirection(false);
+                        }
                     }
-                    else if (motorIdStr == "2")
-                    {
-                        currentIndex = 1;
-                        positionController[currentIndex].setDirection(true);
-                    }
-                    else if (motorIdStr == "3")
-                    {
-                        currentIndex = 2;
-                        positionController[currentIndex].setDirection(true);
-                    }
-                    else if (motorIdStr == "4")
-                    {
-                        currentIndex = 3;
-                        positionController[currentIndex].setDirection(true);
-                    }
-                    else if (motorIdStr == "5")
-                    {
-                        currentIndex = 0;
-                        positionController[currentIndex].setDirection(false);
-                    }
-                    else if (motorIdStr == "6")
-                    {
-                        currentIndex = 1;
-                        positionController[currentIndex].setDirection(false);
-                    }
-                    else if (motorIdStr == "7")
-                    {
-                        currentIndex = 2;
-                        positionController[currentIndex].setDirection(false);
-                    }
-                    else if (motorIdStr == "8")
-                    {
-                        currentIndex = 3;
-                        positionController[currentIndex].setDirection(false);
-                    }
-
                     setMotorId(motorIdStr);
                 }
             }
@@ -1032,4 +1054,12 @@ void checkDifferenceCorrection()
               : (data.controlMode.value == ControlMode::CLOSED_LOOP) ? "closed-loop"
                                                                      : "hybrid");
     }
+}
+
+void onQuickDrop()
+{
+    log_w("Quick voltage drop detected - possible glitch");
+    // Implement quick response procedures
+    // - Log the event
+    // - Check system status
 }

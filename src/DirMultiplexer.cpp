@@ -1,8 +1,6 @@
 #include "DirMultiplexer.h"
 #include <esp_log.h>
 
-static const char* TAG = "DirMultiplexer";
-
 // Truth table for 2-to-4 decoder (S1, S0 -> Y0, Y1, Y2, Y3)
 // S1 S0 | Y0 Y1 Y2 Y3
 //  0  0 |  1  0  0  0  (Motor 0)
