@@ -56,7 +56,7 @@ struct Data
     } targetReached;
 } data;
 
-VoltageMonitor quickMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::MonitorMode::DIGITAL_, 0, 10);
+VoltageMonitor voltageMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::MonitorMode::DIGITAL_, 0, 10);
 
 // Driver status tracking
 static bool    driverEnabled[4] = {false, false, false, false};
@@ -99,6 +99,8 @@ static constexpr uint16_t CURRENT_INCREMENT = 10;  // Current change increment
 static constexpr uint8_t  IRUN_INCREMENT    = 1;   // IRUN change increment
 static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
 
+bool voltageMonitorFirstTime = false;
+
 Preferences prefs;
 
 // Function declarations
@@ -106,6 +108,7 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
 void     storeToMemory();
 float    loadOriginPosition();
 void     loadControlMode();
+void     loadPositionMovement();
 void     clearAllOriginPositions();
 void     printAllOriginPositions();
 void     printCurrentSettingsAndKeyboardControls();
@@ -114,7 +117,7 @@ void     setMotorId(String motorId);
 void     serialReadTask(void* pvParameters);
 float    setCurrentPositionFromEncoder();
 void     checkDifferenceCorrection();
-void     onQuickDrop();
+void     onVoltageDrop();
 
 void setup()
 {
@@ -157,16 +160,8 @@ void setup()
     // Initialize CS pins and turn them off with safety checks
     for (uint8_t index = 0; index < 4; index++)
     {
-        // Validate pin number before using
-        if (DriverPins::CS[index] < 40)  // ESP32 has max 40 GPIO pins
-        {
-            pinMode(DriverPins::CS[index], OUTPUT);
-            digitalWrite(DriverPins::CS[index], HIGH);
-        }
-        else
-        {
-            log_e("Invalid CS pin number: %d", DriverPins::CS[index]);
-        }
+        pinMode(DriverPins::CS[index], OUTPUT);
+        digitalWrite(DriverPins::CS[index], HIGH);
     }
 
     // Initialize TMC5160 drivers
@@ -179,15 +174,10 @@ void setup()
         if (driver[index].testConnection(true))
         {
             driverEnabled[index] = true;
-
-            // Configure motor parameters
             driver[index].configureDriver_All_Motors(true);
         }
-    }
 
-    // Initialize position controllers and encoders
-    for (uint8_t index = 0; index < 4; index++)
-    {
+        // Initialize position controllers and encoders
         if (driverEnabled[index])
         {
             positionController[index].begin();
@@ -202,28 +192,21 @@ void setup()
     setMotorId("2");
 
     // Add longer delay before accessing preferences to ensure stability
-    delay(500);
-
-    try
-    {
-        printAllOriginPositions();
-    }
-    catch (...)
-    {
-        log_e("Failed to print origin positions, continuing...");
-    }
-
-    delay(1000);
+    delay(100);
+    printAllOriginPositions();
+    loadPositionMovement();
+    delay(100);
 
     esp_task_wdt_init(15, true);  // Increased timeout to 15 seconds
     esp_task_wdt_add(NULL);       // Add the current task (setup)
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Initialize quick monitor
-    if (quickMonitor.begin())
+    if (voltageMonitor.begin())
     {
-        quickMonitor.onDrop(onQuickDrop);
-        log_i("Quick monitor initialized on pin 4");
+        voltageMonitorFirstTime = true;
+        voltageMonitor.onDrop(onVoltageDrop);
+        log_i("Voltage monitor initialized!");
     }
 
     // Create serial read task with larger stack
@@ -239,14 +222,16 @@ void loop()
     // Handle movement complete outside ISR
     encoder[currentIndex].handleMovementComplete();
     positionController[currentIndex].handleMovementComplete();
-    quickMonitor.update();
+    voltageMonitor.update();
 
     // Example: Check for drop detection manually
-    if (quickMonitor.wasDropDetected())
+    if (voltageMonitor.wasDropDetected())
     {
         log_e("Power drop was detected!");
-        quickMonitor.resetDropDetection();
+        voltageMonitor.resetDropDetection();
     }
+
+    voltageMonitorFirstTime = !voltageMonitor.isVoltageOK();
 
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(1));
@@ -263,7 +248,7 @@ void storeToMemory()
     if (data.orgin.save)
     {
         data.orgin.save = false;
-        String key      = "motor" + String(currentIndex) + "_origin";
+        String key      = "m" + String(currentIndex) + "_or";
         log_i("Key: %s, Value: %f", key.c_str(), data.orgin.value);
         bool success = prefs.putFloat(key.c_str(), data.orgin.value);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -277,7 +262,7 @@ void storeToMemory()
     if (data.controlMode.save)
     {
         data.controlMode.save = false;
-        String key            = "motor" + String(currentIndex) + "_controlMode";
+        String key            = "m" + String(currentIndex) + "_cm";
         log_i("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.controlMode.value));
         bool success = prefs.putInt(key.c_str(), static_cast<int>(data.controlMode.value));
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -291,7 +276,7 @@ void storeToMemory()
     if (data.voltageDrop.save)
     {
         data.voltageDrop.save = false;
-        String key            = "motor" + String(currentIndex) + "_voltageDrop";
+        String key            = "m" + String(currentIndex) + "_po";
         log_i("Key: %s, Value: %f", key.c_str(), data.voltageDrop.positionBeforeMovement);
         bool success = prefs.putFloat(key.c_str(), data.voltageDrop.positionBeforeMovement);
 
@@ -304,7 +289,7 @@ void storeToMemory()
     if (data.targetReached.save)
     {
         data.targetReached.save = false;
-        String key              = "motor" + String(currentIndex) + "_targetReached";
+        String key              = "m" + String(currentIndex) + "_po";
         log_i("Key: %s, Value: %f", key.c_str(), data.targetReached.value);
         bool success = prefs.putFloat(key.c_str(), data.targetReached.value);
 
@@ -321,11 +306,11 @@ float loadOriginPosition()
 {
     if (currentIndex >= 4)
     {
-        log_e("Invalid motor index, using 0.0");
+        log_e("Invalid motor index!");
         return 0.0f;
     }
 
-    String key            = "motor" + String(currentIndex) + "_origin";
+    String key            = "m" + String(currentIndex) + "_or";
     float  originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
     log_i("Motor %d origin position loaded: %f°", currentIndex + 1, originPosition);
     return originPosition;
@@ -333,10 +318,23 @@ float loadOriginPosition()
 
 void loadControlMode()
 {
-    String key = "motor" + String(currentIndex) + "_controlMode";
+    String key = "m" + String(currentIndex) + "_cm";
     data.controlMode.value =
         static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
     log_i("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.controlMode.value));
+}
+
+void loadPositionMovement()
+{
+    if (currentIndex >= 4)
+    {
+        log_e("Invalid motor index!");
+        return;
+    }
+
+    String key                              = "m" + String(currentIndex) + "_po";
+    data.voltageDrop.positionBeforeMovement = prefs.getFloat(key.c_str(), 0.0f);
+    log_i("Motor %d voltage drop loaded: %f", currentIndex + 1, data.voltageDrop.positionBeforeMovement);
 }
 
 void clearAllOriginPositions()
@@ -344,7 +342,7 @@ void clearAllOriginPositions()
     // Clear origin positions for all motors
     for (uint8_t i = 0; i < 4; i++)
     {
-        String key = "motor" + String(i) + "_origin";
+        String key = "m" + String(i) + "_or";
         prefs.remove(key.c_str());
     }
 
@@ -362,7 +360,7 @@ void printAllOriginPositions()
     {
         float originPosition = 0.0f;
 
-        String key = "motor" + String(i) + "_origin";
+        String key = "m" + String(i) + "_or";
 
         try
         {
@@ -1097,13 +1095,19 @@ void checkDifferenceCorrection()
     }
 }
 
-void onQuickDrop()
+void onVoltageDrop()
 {
-    log_w("Quick voltage drop detected - possible glitch");
-    // Implement quick response procedures
-    // - Log the event
-    // - Check system status
-    positionController[currentIndex].stop();
-    data.voltageDrop.save = true;
-    storeToMemory();
+    log_w("Voltage drop detected - possible glitch");
+    if (voltageMonitorFirstTime)
+    {
+        log_i("Voltage monitor first time, skipping voltage drop");
+        return;
+    }
+
+    if (positionController[currentIndex].isMoving())
+    {
+        positionController[currentIndex].stop();
+        data.voltageDrop.save = true;
+        storeToMemory();
+    }
 }
