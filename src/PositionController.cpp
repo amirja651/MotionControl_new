@@ -697,12 +697,12 @@ void PositionController::runPositionControl()
         if (_controlMode == ControlMode::CLOSED_LOOP)
         {
             float finalError = calculatePositionError();
-            log_i("Motor %d reached target (%s). Final error: %.2f°", _motorId + 1, modeStr, finalError);
+            log_i("🎯 Motor %d reached target (%s). Final error: %.2f°", _motorId + 1, modeStr, finalError);
         }
         else
         {
             _movementCompleteFlag = true;
-            log_i("Motor %d reached target (%s).", _motorId + 1, modeStr);
+            log_i("🎯 Motor %d reached target (%s).", _motorId + 1, modeStr);
         }
     }
 }

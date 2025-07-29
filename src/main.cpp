@@ -127,6 +127,8 @@ void setup()
     SPI.setDataMode(SPI_MODE3);
     Serial.begin(115200);
 
+    esp_log_level_set("*", ESP_LOG_INFO);
+
     // Initialize Preferences for storing motor origin positions
     if (!prefs.begin("motion_control", false))  // false = read/write mode
     {
@@ -199,7 +201,6 @@ void setup()
 
     esp_task_wdt_init(15, true);  // Increased timeout to 15 seconds
     esp_task_wdt_add(NULL);       // Add the current task (setup)
-    esp_log_level_set("*", ESP_LOG_INFO);
 
     // Initialize quick monitor
     if (voltageMonitor.begin())
@@ -631,7 +632,7 @@ void serialReadTask(void* pvParameters)
                     status.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
                 float diff = status.currentAngle - encoderState.position_degrees;
-                Serial.print(F("[Position Status] Motor "));
+                Serial.print(F("💡[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Diff="));
                 Serial.print(diff);
