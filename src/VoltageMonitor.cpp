@@ -43,7 +43,7 @@ bool VoltageMonitor::begin()
     _initialized = true;
     _enabled     = true;
 
-    log_i("VoltageMonitor initialized - Pin: %d, Mode: %s, Threshold: %d", _pin,
+    log_d("VoltageMonitor initialized - Pin: %d, Mode: %s, Threshold: %d", _pin,
           (_mode == MonitorMode::DIGITAL_) ? "DIGITAL" : "ANALOG", _threshold);
 
     return true;
@@ -98,7 +98,7 @@ void VoltageMonitor::update()
             {
                 // Voltage recovered
                 _lastVoltageOK = true;
-                log_i("Voltage recovered on pin %d (level: %d)", _pin, _currentLevel);
+                log_d("Voltage recovered on pin %d (level: %d)", _pin, _currentLevel);
             }
         }
     }

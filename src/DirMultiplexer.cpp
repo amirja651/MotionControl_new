@@ -32,7 +32,7 @@ bool DirMultiplexer::begin()
     _currentDirection = false;
     _initialized      = true;
 
-    log_i("DIR Multiplexer initialized - S0:%d, S1:%d, DIR:%d", _s0Pin, _s1Pin, _dirPin);
+    log_d("DIR Multiplexer initialized - S0:%d, S1:%d, DIR:%d", _s0Pin, _s1Pin, _dirPin);
     return true;
 }
 
@@ -117,7 +117,7 @@ bool DirMultiplexer::test(bool printResults)
     const char* testName   = "DIR Multiplexer Test";
 
     if (printResults)
-        log_i("Starting %s", testName);
+        log_d("Starting %s", testName);
 
     // Test each motor channel
     for (uint8_t motorId = 0; motorId < 4; motorId++)
@@ -150,7 +150,7 @@ bool DirMultiplexer::test(bool printResults)
         }
 
         if (printResults)
-            log_i("Motor %d: PASS", motorId);
+            log_d("Motor %d: PASS", motorId);
     }
 
     // Test invalid motor ID
@@ -173,7 +173,7 @@ bool DirMultiplexer::test(bool printResults)
     if (printResults)
     {
         if (testPassed)
-            log_i("%s: PASSED", testName);
+            log_d("%s: PASSED", testName);
         else
             log_e("%s: FAILED", testName);
     }

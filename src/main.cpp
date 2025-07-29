@@ -134,7 +134,7 @@ void setup()
     }
     else
     {
-        log_i("Preferences successfully initialized");
+        log_d("Preferences successfully initialized");
     }
 
     delay(1000);
@@ -144,9 +144,9 @@ void setup()
     }
 
 #ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
-    log_i("Stack overflow checking enabled");
+    log_d("Stack overflow checking enabled");
 #else
-    log_i("Stack overflow checking **NOT** enabled");
+    log_d("Stack overflow checking **NOT** enabled");
 #endif
 
     // Initialize CLI
@@ -199,21 +199,21 @@ void setup()
 
     esp_task_wdt_init(15, true);  // Increased timeout to 15 seconds
     esp_task_wdt_add(NULL);       // Add the current task (setup)
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
+    esp_log_level_set("*", ESP_LOG_INFO);
 
     // Initialize quick monitor
     if (voltageMonitor.begin())
     {
         voltageMonitorFirstTime = true;
         voltageMonitor.onDrop(onVoltageDrop);
-        log_i("Voltage monitor initialized!");
+        log_d("Voltage monitor initialized!");
     }
 
     // Create serial read task with larger stack
     xTaskCreatePinnedToCore(serialReadTask, "SerialReadTask", 8192, NULL, 2, &serialReadTaskHandle, 0);
     esp_task_wdt_add(serialReadTaskHandle);  // Register with WDT
 
-    log_i("Position control system initialized");
+    log_d("Position control system initialized");
     log_i("Use 'L' to show position status");
 }
 
@@ -227,7 +227,7 @@ void loop()
     // Example: Check for drop detection manually
     if (voltageMonitor.wasDropDetected())
     {
-        log_e("Power drop was detected!");
+        log_d("Power drop was detected!");
         voltageMonitor.resetDropDetection();
     }
 
@@ -249,7 +249,7 @@ void storeToMemory()
     {
         data.orgin.save = false;
         String key      = "m" + String(currentIndex) + "_or";
-        log_i("Key: %s, Value: %f", key.c_str(), data.orgin.value);
+        log_d("Key: %s, Value: %f", key.c_str(), data.orgin.value);
         bool success = prefs.putFloat(key.c_str(), data.orgin.value);
         vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -263,7 +263,7 @@ void storeToMemory()
     {
         data.controlMode.save = false;
         String key            = "m" + String(currentIndex) + "_cm";
-        log_i("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.controlMode.value));
+        log_d("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.controlMode.value));
         bool success = prefs.putInt(key.c_str(), static_cast<int>(data.controlMode.value));
         vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -277,7 +277,7 @@ void storeToMemory()
     {
         data.voltageDrop.save = false;
         String key            = "m" + String(currentIndex) + "_po";
-        log_i("Key: %s, Value: %f", key.c_str(), data.voltageDrop.positionBeforeMovement);
+        log_d("Key: %s, Value: %f", key.c_str(), data.voltageDrop.positionBeforeMovement);
         bool success = prefs.putFloat(key.c_str(), data.voltageDrop.positionBeforeMovement);
 
         if (!success)
@@ -290,7 +290,7 @@ void storeToMemory()
     {
         data.targetReached.save = false;
         String key              = "m" + String(currentIndex) + "_po";
-        log_i("Key: %s, Value: %f", key.c_str(), data.targetReached.value);
+        log_d("Key: %s, Value: %f", key.c_str(), data.targetReached.value);
         bool success = prefs.putFloat(key.c_str(), data.targetReached.value);
 
         if (!success)
@@ -312,7 +312,7 @@ float loadOriginPosition()
 
     String key            = "m" + String(currentIndex) + "_or";
     float  originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
-    log_i("Motor %d origin position loaded: %f°", currentIndex + 1, originPosition);
+    log_d("Motor %d origin position loaded: %f°", currentIndex + 1, originPosition);
     return originPosition;
 }
 
@@ -321,7 +321,7 @@ void loadControlMode()
     String key = "m" + String(currentIndex) + "_cm";
     data.controlMode.value =
         static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
-    log_i("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.controlMode.value));
+    log_d("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.controlMode.value));
 }
 
 void loadPositionMovement()
@@ -334,7 +334,7 @@ void loadPositionMovement()
 
     String key                              = "m" + String(currentIndex) + "_po";
     data.voltageDrop.positionBeforeMovement = prefs.getFloat(key.c_str(), 0.0f);
-    log_i("Motor %d voltage drop loaded: %f", currentIndex + 1, data.voltageDrop.positionBeforeMovement);
+    log_d("Motor %d voltage drop loaded: %f", currentIndex + 1, data.voltageDrop.positionBeforeMovement);
 }
 
 void clearAllOriginPositions()
@@ -346,12 +346,12 @@ void clearAllOriginPositions()
         prefs.remove(key.c_str());
     }
 
-    log_i("All motor origin positions cleared");
+    log_d("All motor origin positions cleared");
 }
 
 void printAllOriginPositions()
 {
-    log_i("Current origin positions:");
+    log_d("Current origin positions:");
 
     // Add delay to ensure system stability
     delay(10);
@@ -365,7 +365,7 @@ void printAllOriginPositions()
         try
         {
             originPosition = prefs.getFloat(key.c_str(), 0.0f);
-            log_i("Motor %d: %f°", i + 1, originPosition);
+            log_d("Motor %d: %f°", i + 1, originPosition);
         }
         catch (...)
         {
@@ -381,7 +381,7 @@ void printAllOriginPositions()
     try
     {
         size_t totalKeys = prefs.freeEntries();
-        log_i("Total free entries: %d", totalKeys);
+        log_d("Total free entries: %d", totalKeys);
     }
     catch (...)
     {
@@ -969,7 +969,7 @@ void serialReadTask(void* pvParameters)
 
                     if (!encoder[currentIndex].isEnabled())
                     {
-                        log_e("Encoder not enabled");
+                        log_w("Encoder not enabled");
                     }
                     else
                     {
@@ -1034,7 +1034,7 @@ float setCurrentPositionFromEncoder()  // amir
     float   encoderAngle = positionController[currentIndex].getEncoderAngle();
     int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
     positionController[currentIndex].setCurrentPosition(steps);
-    log_i("Motor %d current position set to Angle: %f", currentIndex + 1, encoderAngle);
+    log_d("Motor %d current position set to Angle: %f", currentIndex + 1, encoderAngle);
     return encoderAngle;
 }
 
@@ -1050,13 +1050,6 @@ void checkDifferenceCorrection()
     //  Serial.printf("Encoder: %f, Current: %f, Target: %f\n", encoderAngle, currentAngle, targetAngle);
 
     float difference = encoderAngle - currentAngle;
-    // log_i("Diff Encoder Angle From Current: %f", difference);
-
-    // float difference2 = targetAngle - currentAngle;
-    //  log_i("Diff Target Angle From Current: %f", difference2);
-
-    // float difference3 = targetAngle - encoderAngle;
-    //  log_i("Diff Target Angle From Encoder: %f", difference3);
 
     if (data.controlMode.value == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
@@ -1076,7 +1069,7 @@ void checkDifferenceCorrection()
 
         if (success)
         {
-            log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, "open-loop");
+            log_d("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, "open-loop");
         }
         else
         {
@@ -1100,7 +1093,7 @@ void onVoltageDrop()
     log_w("Voltage drop detected - possible glitch");
     if (voltageMonitorFirstTime)
     {
-        log_i("Voltage monitor first time, skipping voltage drop");
+        log_d("Voltage monitor first time, skipping voltage drop");
         return;
     }
 

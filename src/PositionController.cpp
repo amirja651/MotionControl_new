@@ -165,7 +165,7 @@ bool PositionController::begin()
     setCurrentPosition(0);
 
     _initialized = true;
-    log_i("Motor %d initialized with direction multiplexer", _motorId + 1);
+    log_d("Motor %d initialized with direction multiplexer", _motorId + 1);
     return true;
 }
 
@@ -442,7 +442,7 @@ void PositionController::startPositionControlTask()
 
     if (result == pdPASS)
     {
-        log_i("Position control task started");
+        log_d("Position control task started");
         esp_task_wdt_add(_positionControlTaskHandle);
     }
     else
@@ -471,7 +471,7 @@ void PositionController::stopPositionControlTask()
         _statusMutex = nullptr;
     }
 
-    log_i("Position control task stopped");
+    log_d("Position control task stopped");
 }
 
 bool PositionController::queueMovementCommand(const MovementCommand& command)
@@ -585,7 +585,7 @@ bool PositionController::executeMovement(const MovementCommand& command)  // ami
             break;
     }
 
-    log_i("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle,
+    log_d("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle,
           command.movementDistance, distanceStr, modeStr);
 
     return true;
@@ -612,7 +612,7 @@ void PositionController::positionControlTask(void* parameter)
     TickType_t       lastWakeTime = xTaskGetTickCount();
     const TickType_t frequency    = pdMS_TO_TICKS(10);  // 10ms task period
 
-    log_i("Position control task running");
+    log_d("Position control task running");
 
     while (true)
     {
@@ -886,7 +886,7 @@ void PositionController::setControlMode(ControlMode mode)
                 // Read current encoder position and use it as starting position
                 float encoderAngle   = getEncoderAngle();
                 _status.encoderAngle = encoderAngle;
-                log_i("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1,
+                log_d("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1,
                       encoderAngle);
             }
             else
@@ -1039,7 +1039,7 @@ void PositionController::configureSpeedForDistance(float distance)
     _stepper.setMaxSpeed(optimalSpeed);
     _stepper.setAcceleration(optimalAcceleration);
 
-    log_i("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed,
+    log_d("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed,
           optimalAcceleration);
 }
 
