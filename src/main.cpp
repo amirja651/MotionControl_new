@@ -13,47 +13,24 @@
 #include <esp_task_wdt.h>
 
 CommandHistory<16> history;
-const char*        commands[] = {"A", "Z", "S", "X", "D", "C", "!", "?", "L", "K", "T"};
+const char*        commands[] = {"Q", "L", "K"};
 enum class CommandKey
 {
-    A = 0,
-    Z = 1,
-    S = 2,
-    X = 3,
-    D = 4,
-    C = 5,
-    Q = 6,
-    J = 7,
-    L = 8,
-    K = 9,
-    T = 10,
+    Q = 0,
+    L = 1,
+    K = 2,
 };
 
 struct Data
 {
-    struct Orgin
+    struct Position
     {
-        float value = 0.0f;
-        bool  save  = false;
-    } orgin;
-
-    struct ControlModeData
-    {
-        ControlMode value = ControlMode::OPEN_LOOP;
-        bool        save  = false;
-    } controlMode;
-
-    struct VoltageDrop
-    {
-        float positionBeforeMovement = 0.0f;
-        bool  save                   = false;
-    } voltageDrop;
-
-    struct TargetReached
-    {
-        float value = 0.0f;
-        bool  save  = false;
-    } targetReached;
+        ControlMode mode           = ControlMode::OPEN_LOOP;
+        float       reached        = 0.0f;
+        float       beforeMovement = 0.0f;
+        float       value          = 0.0f;
+        bool        save           = false;
+    } position, voltageDropPosition, orgin, control;
 } data;
 
 VoltageMonitor voltageMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::MonitorMode::DIGITAL_, 0, 10);
@@ -108,10 +85,9 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
 void     storeToMemory();
 float    loadOriginPosition();
 void     loadControlMode();
-void     loadPositionMovement();
+void     loadPosition();
 void     clearAllOriginPositions();
 void     printAllOriginPositions();
-void     printCurrentSettingsAndKeyboardControls();
 void     clearLine();
 void     setMotorId(String motorId);
 void     serialReadTask(void* pvParameters);
@@ -196,7 +172,7 @@ void setup()
     // Add longer delay before accessing preferences to ensure stability
     delay(100);
     printAllOriginPositions();
-    loadPositionMovement();
+    loadPosition();
     delay(100);
 
     esp_task_wdt_init(15, true);  // Increased timeout to 15 seconds
@@ -260,12 +236,12 @@ void storeToMemory()
         }
     }
 
-    if (data.controlMode.save)
+    if (data.control.save)
     {
-        data.controlMode.save = false;
-        String key            = "m" + String(currentIndex) + "_cm";
-        log_d("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.controlMode.value));
-        bool success = prefs.putInt(key.c_str(), static_cast<int>(data.controlMode.value));
+        data.control.save = false;
+        String key        = "m" + String(currentIndex) + "_cm";
+        log_d("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.control.mode));
+        bool success = prefs.putInt(key.c_str(), static_cast<int>(data.control.mode));
         vTaskDelay(pdMS_TO_TICKS(100));
 
         if (!success)
@@ -274,12 +250,12 @@ void storeToMemory()
         }
     }
 
-    if (data.voltageDrop.save)
+    if (data.voltageDropPosition.save)
     {
-        data.voltageDrop.save = false;
-        String key            = "m" + String(currentIndex) + "_po";
-        log_d("Key: %s, Value: %f", key.c_str(), data.voltageDrop.positionBeforeMovement);
-        bool success = prefs.putFloat(key.c_str(), data.voltageDrop.positionBeforeMovement);
+        data.voltageDropPosition.save = false;
+        String key                    = "m" + String(currentIndex) + "_po";
+        log_d("Key: %s, Value: %f", key.c_str(), data.voltageDropPosition.beforeMovement);
+        bool success = prefs.putFloat(key.c_str(), data.voltageDropPosition.beforeMovement);
 
         if (!success)
         {
@@ -287,12 +263,12 @@ void storeToMemory()
         }
     }
 
-    if (data.targetReached.save)
+    if (data.position.save)
     {
-        data.targetReached.save = false;
-        String key              = "m" + String(currentIndex) + "_po";
-        log_d("Key: %s, Value: %f", key.c_str(), data.targetReached.value);
-        bool success = prefs.putFloat(key.c_str(), data.targetReached.value);
+        data.position.save = false;
+        String key         = "m" + String(currentIndex) + "_po";
+        log_d("Key: %s, Value: %f", key.c_str(), data.position.reached);
+        bool success = prefs.putFloat(key.c_str(), data.position.reached);
 
         if (!success)
         {
@@ -319,13 +295,12 @@ float loadOriginPosition()
 
 void loadControlMode()
 {
-    String key = "m" + String(currentIndex) + "_cm";
-    data.controlMode.value =
-        static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
-    log_d("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.controlMode.value));
+    String key        = "m" + String(currentIndex) + "_cm";
+    data.control.mode = static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
+    log_d("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.control.mode));
 }
 
-void loadPositionMovement()
+void loadPosition()
 {
     if (currentIndex >= 4)
     {
@@ -333,9 +308,9 @@ void loadPositionMovement()
         return;
     }
 
-    String key                              = "m" + String(currentIndex) + "_po";
-    data.voltageDrop.positionBeforeMovement = prefs.getFloat(key.c_str(), 0.0f);
-    log_d("Motor %d voltage drop loaded: %f", currentIndex + 1, data.voltageDrop.positionBeforeMovement);
+    String key          = "m" + String(currentIndex) + "_po";
+    data.position.value = prefs.getFloat(key.c_str(), 0.0f);
+    log_d("Motor %d voltage drop loaded: %f", currentIndex + 1, data.position.value);
 }
 
 void clearAllOriginPositions()
@@ -388,48 +363,6 @@ void printAllOriginPositions()
     {
         log_e("Failed to get preferences free entries");
     }
-}
-
-void printCurrentSettingsAndKeyboardControls()
-{
-    Serial.println(F("========================= Keyboard Controls ============================"));
-
-    Serial.print(F("  RMS Current:      'A' (+) | 'Z' (-)    "));
-    Serial.print(driver[currentIndex].getRmsCurrent());
-    Serial.println(F(" mA"));
-
-    Serial.print(F("  IRUN Current:     'S' (+) | 'X' (-)    "));
-    Serial.print(driver[currentIndex].getIrun());
-    Serial.print(F("/32 of RMS current"));
-    Serial.print(F(" ("));
-    Serial.print(calculateByNumber(driver[currentIndex].getRmsCurrent(), driver[currentIndex].getIrun()));
-    Serial.println(F(" mA)"));
-
-    Serial.print(F("  IHOLD Current:    'D' (+) | 'C' (-)    "));
-    Serial.print(driver[currentIndex].getIhold());
-    Serial.print(F("/32 of RMS current"));
-    Serial.print(F(" ("));
-    Serial.print(calculateByNumber(driver[currentIndex].getRmsCurrent(), driver[currentIndex].getIhold()));
-    Serial.println(F(" mA)"));
-
-    Serial.print(F("  Microsteps: "));
-    Serial.println(driver[currentIndex].getMicrosteps());
-
-    Serial.println(F("  Position Control: 'Q' Move to origin (open-loop)"));
-    Serial.println(F("  Position Control: 'J' Move to origin (closed-loop)"));
-    Serial.println(F("  Position Status:  'L' Show position status"));
-    Serial.println(F("  Encoder Counters: 'K' Show & reset interrupt counters"));
-    Serial.println(F("  Distance Test:    'T' Test distance-based speed control"));
-    Serial.println(F("  Test Movements:   '1'-'7' Test specific distances (0.2°-50°)"));
-    Serial.println(F(""));
-    Serial.println(F("Distance-Based Speed Control:"));
-    Serial.println(F("  < 0.1°: Ignored (negligible)"));
-    Serial.println(F("  0.1°-0.5°: Very slow & precise"));
-    Serial.println(F("  0.5°-1°: Slow & precise"));
-    Serial.println(F("  1°-5°: Balanced speed/precision"));
-    Serial.println(F("  5°-10°: Moderate speed"));
-    Serial.println(F("  > 10°: Higher speed"));
-    Serial.println(F("========================================================================"));
 }
 
 void clearLine()
@@ -568,7 +501,7 @@ void serialReadTask(void* pvParameters)
                     uint16_t newRms = currentRms + CURRENT_INCREMENT;
                     driver[currentIndex].setRmsCurrent(newRms);
                 }
-                printCurrentSettingsAndKeyboardControls();
+
             }
             else if (c == commands[static_cast<int>(CommandKey::Z)][0])  // 'Z' Decrease RMS current
             {
@@ -578,7 +511,7 @@ void serialReadTask(void* pvParameters)
                     uint16_t newRms = currentRms - CURRENT_INCREMENT;
                     driver[currentIndex].setRmsCurrent(newRms);
                 }
-                printCurrentSettingsAndKeyboardControls();
+
             }
             else if (c == commands[static_cast<int>(CommandKey::S)][0])  // 'S' Increase IRUN
             {
@@ -588,7 +521,7 @@ void serialReadTask(void* pvParameters)
                     uint8_t newIrun = currentIrun + IRUN_INCREMENT;
                     driver[currentIndex].setIrun(newIrun);
                 }
-                printCurrentSettingsAndKeyboardControls();
+
             }
             else if (c == commands[static_cast<int>(CommandKey::X)][0])  // 'X' Decrease IRUN
             {
@@ -598,7 +531,7 @@ void serialReadTask(void* pvParameters)
                     uint8_t newIrun = currentIrun - IRUN_INCREMENT;
                     driver[currentIndex].setIrun(newIrun);
                 }
-                printCurrentSettingsAndKeyboardControls();
+
             }
             else if (c == commands[static_cast<int>(CommandKey::D)][0])  // 'D' Increase IHOLD
             {
@@ -608,7 +541,7 @@ void serialReadTask(void* pvParameters)
                     uint8_t newIhold = currentIhold + IHOLD_INCREMENT;
                     driver[currentIndex].setIhold(newIhold);
                 }
-                printCurrentSettingsAndKeyboardControls();
+
             }
             else if (c == commands[static_cast<int>(CommandKey::C)][0])  // 'C' Decrease IHOLD
             {
@@ -618,9 +551,32 @@ void serialReadTask(void* pvParameters)
                     uint8_t newIhold = currentIhold - IHOLD_INCREMENT;
                     driver[currentIndex].setIhold(newIhold);
                 }
-                printCurrentSettingsAndKeyboardControls();
+
             }
             */
+            else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' Show position status
+            {
+                float targetAngle = data.position.value;
+                loadControlMode();
+
+                encoder[currentIndex].attachOnComplete(storeToMemory);
+                positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
+                                                                            data.control.mode);
+
+                if (success)
+                {
+                    const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP)     ? "open-loop"
+                                          : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                                            : "hybrid";
+                    log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+                }
+                else
+                {
+                    log_e("Failed to queue movement command");
+                }
+            }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
                 encoder[currentIndex].processPWM();
@@ -632,13 +588,13 @@ void serialReadTask(void* pvParameters)
                     status.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
                 float diff = status.currentAngle - encoderState.position_degrees;
-                Serial.print(F("💡[Position Status] Motor "));
+                Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Diff="));
                 Serial.print(diff);
                 Serial.print(F("°, Current="));
                 Serial.print(status.currentAngle);
-                Serial.print(F("°, Target="));
+                Serial.print(F("° 💡, Target="));
                 Serial.print(status.targetAngle);
                 Serial.print(F("°, Moving="));
                 Serial.print(status.isMoving ? F("YES") : F("NO"));
@@ -893,20 +849,20 @@ void serialReadTask(void* pvParameters)
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
-                    data.voltageDrop.positionBeforeMovement = setCurrentPositionFromEncoder();
+                    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
                     loadControlMode();
 
                     encoder[currentIndex].attachOnComplete(storeToMemory);
                     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
                     bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
-                                                                                data.controlMode.value);
+                                                                                data.control.mode);
 
                     if (success)
                     {
-                        const char* modeStr = (data.controlMode.value == ControlMode::OPEN_LOOP)     ? "open-loop"
-                                              : (data.controlMode.value == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                                                     : "hybrid";
+                        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP)     ? "open-loop"
+                                              : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                                                : "hybrid";
                         log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
                     }
                     else
@@ -928,18 +884,18 @@ void serialReadTask(void* pvParameters)
             {
                 if (c.getArgument("c").isSet())
                 {
-                    data.controlMode.value = ControlMode::CLOSED_LOOP;
+                    data.control.mode = ControlMode::CLOSED_LOOP;
                 }
                 else if (c.getArgument("o").isSet())
                 {
-                    data.controlMode.value = ControlMode::OPEN_LOOP;
+                    data.control.mode = ControlMode::OPEN_LOOP;
                 }
                 else if (c.getArgument("h").isSet())
                 {
-                    data.controlMode.value = ControlMode::HYBRID;
+                    data.control.mode = ControlMode::HYBRID;
                 }
 
-                data.controlMode.save = true;
+                data.control.save = true;
                 storeToMemory();
             }
             else if (c == cmdEnable)
@@ -1009,7 +965,6 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdShow)
             {
-                printCurrentSettingsAndKeyboardControls();
             }
             else if (c == cmdHelp)
             {
@@ -1052,7 +1007,7 @@ void checkDifferenceCorrection()
 
     float difference = encoderAngle - currentAngle;
 
-    if (data.controlMode.value == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
+    if (data.control.mode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
         int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
         positionController[currentIndex].setCurrentPosition(steps);
@@ -1065,8 +1020,8 @@ void checkDifferenceCorrection()
         // encoder[currentIndex].attachOnComplete(storeOriginPosition);
         positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
-        bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE,
-                                                                    data.controlMode.value);
+        bool success =
+            positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, data.control.mode);
 
         if (success)
         {
@@ -1079,13 +1034,13 @@ void checkDifferenceCorrection()
     }
     else
     {
-        data.targetReached.value = currentAngle;
-        data.targetReached.save  = true;
+        data.position.reached = currentAngle;
+        data.position.save    = true;
         storeToMemory();
         log_i("No movement needed, difference: %f, ControlMode: %s", difference,
-              (data.controlMode.value == ControlMode::OPEN_LOOP)     ? "open-loop"
-              : (data.controlMode.value == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                     : "hybrid");
+              (data.control.mode == ControlMode::OPEN_LOOP)     ? "open-loop"
+              : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop"
+                                                                : "hybrid");
     }
 }
 
@@ -1101,7 +1056,7 @@ void onVoltageDrop()
     if (positionController[currentIndex].isMoving())
     {
         positionController[currentIndex].stop();
-        data.voltageDrop.save = true;
+        data.voltageDropPosition.save = true;
         storeToMemory();
     }
 }
