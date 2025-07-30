@@ -37,22 +37,17 @@ VoltageMonitor voltageMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::Mon
 
 // Driver status tracking
 static bool    driverEnabled[4] = {false, false, false, false};
-TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]),
-                                   TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
 // Direction multiplexer for stepper motor direction control
 DirMultiplexer dirMultiplexer(MultiplexerPins::S0, MultiplexerPins::S1, MultiplexerPins::DIR);
 
 // MAE3 Encoders for position feedback (read-only, not used for control)
-MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1),
-                          MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Position controllers for precise angle control
-PositionController positionController[4] = {
-    PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0], DriverPins::EN[0], encoder[0]),
-    PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
-    PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoder[2]),
-    PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
+PositionController positionController[4] = {PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0], DriverPins::EN[0], encoder[0]), PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
+                                            PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoder[2]), PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
 static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
 TaskHandle_t              serialReadTaskHandle = NULL;
@@ -367,9 +362,8 @@ void printAllOriginPositions()
 
 void clearLine()
 {
-    Serial.print(F("\r"));  // Go to the beginning of the line
-    Serial.print(
-        F("                                                                                "));  // About 80 characters
+    Serial.print(F("\r"));                                                                                // Go to the beginning of the line
+    Serial.print(F("                                                                                "));  // About 80 characters
     Serial.print(F("\r"));
 }
 
@@ -567,14 +561,11 @@ void serialReadTask(void* pvParameters)
                 encoder[currentIndex].attachOnComplete(storeToMemory);
                 positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
-                                                                            data.control.mode);
+                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
 
                 if (success)
                 {
-                    const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP)     ? "open-loop"
-                                          : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                                            : "hybrid";
+                    const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
                     log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
                 }
                 else
@@ -606,9 +597,7 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(", Enabled="));
                 Serial.print(status.isEnabled ? F("YES") : F("NO"));
                 Serial.print(F(", Mode="));
-                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP)     ? "OPEN L"
-                                      : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L"
-                                                                                         : "HYBRID";
+                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L" : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L" : "HYBRID";
                 Serial.print(modeStr);
                 if (status.controlMode == ControlMode::CLOSED_LOOP)
                 {
@@ -860,14 +849,11 @@ void serialReadTask(void* pvParameters)
                     encoder[currentIndex].attachOnComplete(storeToMemory);
                     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
-                    bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
-                                                                                data.control.mode);
+                    bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
 
                     if (success)
                     {
-                        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP)     ? "open-loop"
-                                              : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                                                : "hybrid";
+                        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
                         log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
                     }
                     else
@@ -941,21 +927,21 @@ void serialReadTask(void* pvParameters)
 
                         if (1)
                         {
-                            ConvertValuesFromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
-                            ConvertValuesFromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
-                            ConvertValuesFromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
+                            ConvertValues::FromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
+                            ConvertValues::FromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
+                            ConvertValues::FromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
                             Serial.print(F("From Degrees: "));
-                            Serial.print(cvfd.PULSES_FROM_DEGREES);
+                            Serial.print(cvfd.TO_PULSES);
                             Serial.print(F(", "));
-                            Serial.println(cvfd.STEPS_FROM_DEGREES);
+                            Serial.println(cvfd.TO_STEPS);
                             Serial.print(F("From Pulses: "));
-                            Serial.print(cvfp.DEGREES_FROM_PULSES);
+                            Serial.print(cvfp.TO_DEGREES);
                             Serial.print(F(", "));
-                            Serial.println(cvfp.STEPS_FROM_PULSES);
+                            Serial.println(cvfp.TO_STEPS);
                             Serial.print(F("From Steps: "));
-                            Serial.print(cvfs.DEGREES_FROM_STEPS);
+                            Serial.print(cvfs.TO_DEGREES);
                             Serial.print(F(", "));
-                            Serial.println(cvfs.PULSES_FROM_STEPS);
+                            Serial.println(cvfs.TO_PULSES);
                         }
                     }
                 }
@@ -977,6 +963,55 @@ void serialReadTask(void* pvParameters)
                 Serial.print(cli.toString());
                 Serial.println();
             }
+            else if (c == cmdTest)
+            {
+                if (c.getArgument("p").isSet())
+                {
+                    String                         valueStr = c.getArgument("p").getValue();
+                    float                          value    = valueStr.toFloat();
+                    ConvertValues::FromDegrees     cvfd     = positionController[currentIndex].convertFromDegrees(value);
+                    ConvertValues::FromPulses      cvfp     = positionController[currentIndex].convertFromPulses(value);
+                    ConvertValues::FromSteps       cvfs     = positionController[currentIndex].convertFromMSteps(value);
+                    ConvertValues::FromMicrometers cvfm     = positionController[currentIndex].convertFromMicrometers(value);
+
+                    Serial.print(F("From Degrees: Pulses:"));
+                    Serial.print(cvfd.TO_PULSES);
+                    Serial.print(F(", Steps:"));
+                    Serial.print(cvfd.TO_STEPS);
+                    Serial.print(F(", Turns:"));
+                    Serial.print(cvfd.TO_TURNS);
+                    Serial.print(F(", Micrometers:"));
+                    Serial.println(cvfd.TO_MICROMETERS);
+
+                    Serial.print(F("From Pulses: Degrees:"));
+                    Serial.print(cvfp.TO_DEGREES);
+                    Serial.print(F(", Steps:"));
+                    Serial.print(cvfp.TO_STEPS);
+                    Serial.print(F(", Turns:"));
+                    Serial.print(cvfp.TO_TURNS);
+                    Serial.print(F(", Micrometers:"));
+                    Serial.println(cvfp.TO_MICROMETERS);
+
+                    Serial.print(F("From Steps: Degrees:"));
+                    Serial.print(cvfs.TO_DEGREES);
+                    Serial.print(F(", Pulses:"));
+                    Serial.print(cvfs.TO_PULSES);
+                    Serial.print(F(", Turns:"));
+                    Serial.print(cvfs.TO_TURNS);
+                    Serial.print(F(", Micrometers:"));
+                    Serial.println(cvfs.TO_MICROMETERS);
+
+                    Serial.print(F("From Micrometers: Degrees:"));
+                    Serial.print(cvfm.TO_DEGREES);
+                    Serial.print(F(", Steps:"));
+                    Serial.print(cvfm.TO_STEPS);
+                    Serial.print(F(", Pulses:"));
+                    Serial.print(cvfm.TO_PULSES);
+                    Serial.print(F(", Turns:"));
+                    Serial.println(cvfm.TO_TURNS);
+                    Serial.println();
+                }
+            }
         }
 
         if (cli.errored())
@@ -993,7 +1028,7 @@ void serialReadTask(void* pvParameters)
 float setCurrentPositionFromEncoder()  // amir
 {
     float   encoderAngle = positionController[currentIndex].getEncoderAngle();
-    int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
+    int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).TO_STEPS;
     positionController[currentIndex].setCurrentPosition(steps);
     log_d("Motor %d current position set to Angle: %f", currentIndex + 1, encoderAngle);
     return encoderAngle;
@@ -1014,7 +1049,7 @@ void checkDifferenceCorrection()
 
     if (data.control.mode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
-        int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).STEPS_FROM_DEGREES;
+        int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).TO_STEPS;
         positionController[currentIndex].setCurrentPosition(steps);
 
         if (targetAngle == 0)
@@ -1025,8 +1060,7 @@ void checkDifferenceCorrection()
         // encoder[currentIndex].attachOnComplete(storeOriginPosition);
         positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
-        bool success =
-            positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, data.control.mode);
+        bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, data.control.mode);
 
         if (success)
         {
@@ -1042,10 +1076,7 @@ void checkDifferenceCorrection()
         data.position.reached = currentAngle;
         data.position.save    = true;
         storeToMemory();
-        log_i("No movement needed, difference: %f, ControlMode: %s", difference,
-              (data.control.mode == ControlMode::OPEN_LOOP)     ? "open-loop"
-              : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop"
-                                                                : "hybrid");
+        log_i("No movement needed, difference: %f, ControlMode: %s", difference, (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid");
     }
 }
 

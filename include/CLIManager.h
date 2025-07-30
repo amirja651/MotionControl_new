@@ -17,6 +17,7 @@ Command cmdSave;
 Command cmdRestart;
 Command cmdShow;
 Command cmdHelp;
+Command cmdTest;
 
 void initializeCLI()
 {
@@ -62,6 +63,10 @@ void initializeCLI()
 
     cmdHelp = cli.addCmd("help");
     cmdHelp.setDescription("Show help information");
+
+    cmdTest = cli.addCmd("test");
+    cmdTest.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdTest.setDescription("Test the conversion functions");
 }
 
 #endif

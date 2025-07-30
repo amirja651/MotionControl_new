@@ -9,8 +9,7 @@ SemaphoreHandle_t   PositionController::_statusMutex               = nullptr;
 PositionController* PositionController::_instances[4]              = {nullptr};
 
 // Constructor with encoder
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer,
-                                       uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, 0),  // dirPin will be handled by multiplexer
       _encoder(&encoder),
@@ -69,8 +68,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 }
 
 // Constructor without encoder (for demo)
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer,
-                                       uint16_t stepPin, uint16_t enPin)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, 0),  // dirPin will be handled by multiplexer
       _encoder(nullptr),
@@ -173,7 +171,7 @@ void PositionController::setCurrentPosition(int32_t position)
 {
     _stepper.setCurrentPosition(position);
     _status.currentSteps = position;
-    _status.currentAngle = convertFromMSteps(position).DEGREES_FROM_STEPS;
+    _status.currentAngle = convertFromMSteps(position).TO_DEGREES;
 }
 // Enable/Disable
 void PositionController::enable()
@@ -308,8 +306,8 @@ bool PositionController::isAtTarget() const
     int32_t targetPos  = static_cast<int32_t>(_stepper.targetPosition());
 
     // Check if within accuracy threshold
-    ConvertValuesFromDegrees cvfd = convertFromDegrees(POSITION_ACCURACY_DEGREES);
-    return abs(static_cast<int32_t>(currentPos - targetPos)) <= cvfd.STEPS_FROM_DEGREES;
+    ConvertValues::FromDegrees cvfd = convertFromDegrees(POSITION_ACCURACY_DEGREES);
+    return abs(static_cast<int32_t>(currentPos - targetPos)) <= cvfd.TO_STEPS;
 }
 
 // Status and information
@@ -319,7 +317,7 @@ float PositionController::getCurrentAngle() const
         return 0.0f;
 
     int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return convertFromMSteps(currentSteps).DEGREES_FROM_STEPS;
+    return convertFromMSteps(currentSteps).TO_DEGREES;
 }
 
 float PositionController::getTargetAngle() const
@@ -347,7 +345,7 @@ MotorStatus PositionController::getStatus()
     // Update with current values
     status.targetAngle  = wrapAngle(getTargetAngle());
     status.currentAngle = wrapAngle(getCurrentAngle());
-    int32_t steps       = convertFromDegrees(status.currentAngle).STEPS_FROM_DEGREES;
+    int32_t steps       = convertFromDegrees(status.currentAngle).TO_STEPS;
     setCurrentPosition(steps);
     // status.currentSteps = getCurrentSteps();
     status.isMoving  = isMoving();
@@ -491,7 +489,7 @@ void PositionController::updateStatus()
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
         _status.currentSteps = static_cast<int32_t>(_stepper.currentPosition());
-        _status.currentAngle = convertFromMSteps(_status.currentSteps).DEGREES_FROM_STEPS;
+        _status.currentAngle = convertFromMSteps(_status.currentSteps).TO_DEGREES;
         _status.isMoving     = _stepper.distanceToGo() != 0;
         xSemaphoreGive(_statusMutex);
     }
@@ -534,11 +532,11 @@ bool PositionController::executeMovement(const MovementCommand& command)  // ami
     int32_t targetSteps;
     if (command.relative)
     {
-        targetSteps = _status.currentSteps + convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
+        targetSteps = _status.currentSteps + convertFromDegrees(command.targetAngle).TO_STEPS;
     }
     else
     {
-        targetSteps = convertFromDegrees(command.targetAngle).STEPS_FROM_DEGREES;
+        targetSteps = convertFromDegrees(command.targetAngle).TO_STEPS;
     }
 
     // Update status
@@ -559,9 +557,7 @@ bool PositionController::executeMovement(const MovementCommand& command)  // ami
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetSteps));
 
-    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP)     ? "OPEN-LOOP"
-                              : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP"
-                                                                                  : "HYBRID";
+    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
     const char* distanceStr = "";
     switch (command.distanceType)
     {
@@ -585,8 +581,7 @@ bool PositionController::executeMovement(const MovementCommand& command)  // ami
             break;
     }
 
-    log_d("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle,
-          command.movementDistance, distanceStr, modeStr);
+    log_d("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle, command.movementDistance, distanceStr, modeStr);
 
     return true;
 }
@@ -690,9 +685,7 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
 
-        const char* modeStr = (_controlMode == ControlMode::OPEN_LOOP)     ? "OPEN-LOOP"
-                              : (_controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP"
-                                                                           : "HYBRID";
+        const char* modeStr = (_controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (_controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
 
         if (_controlMode == ControlMode::CLOSED_LOOP)
         {
@@ -762,7 +755,7 @@ void PositionController::applyClosedLoopCorrection()
     if (abs(error) > 0.1f)
     {
         // Simple proportional correction
-        float   correctionSteps = convertFromDegrees(error).STEPS_FROM_DEGREES;
+        float   correctionSteps = convertFromDegrees(error).TO_STEPS;
         int32_t currentPos      = _stepper.currentPosition();
         int32_t newTarget       = currentPos + static_cast<int32_t>(correctionSteps);
 
@@ -771,30 +764,44 @@ void PositionController::applyClosedLoopCorrection()
     }
 }
 
-ConvertValuesFromDegrees PositionController::convertFromDegrees(float degrees, int32_t microsteps,
-                                                                int32_t resolution) const
+ConvertValues::FromDegrees PositionController::convertFromDegrees(float degrees, int32_t turns, int32_t microsteps, int32_t resolution, float micrometers) const
 {
-    ConvertValuesFromDegrees convert;
-    convert.PULSES_FROM_DEGREES = static_cast<int32_t>(std::round(degrees * (resolution / 360.0f)));
-    convert.STEPS_FROM_DEGREES  = static_cast<int32_t>(std::round(degrees * (microsteps / 360.0f)));
+    ConvertValues::FromDegrees convert;
+    convert.TO_PULSES      = static_cast<int32_t>(std::round(degrees * (resolution / 360.0f)));
+    convert.TO_STEPS       = static_cast<int32_t>(std::round(degrees * (microsteps / 360.0f)));
+    convert.TO_MICROMETERS = static_cast<float>(degrees * (micrometers / 360.0f));
+    convert.TO_TURNS       = turns;
     return convert;
 }
 
-ConvertValuesFromPulses PositionController::convertFromPulses(int32_t pulses, int32_t microsteps,
-                                                              int32_t resolution) const
+ConvertValues::FromPulses PositionController::convertFromPulses(int32_t pulses, int32_t turns, int32_t microsteps, int32_t resolution, float micrometers) const
 {
-    ConvertValuesFromPulses convert;
-    convert.DEGREES_FROM_PULSES = static_cast<float>(pulses * (360.0f / resolution));
-    convert.STEPS_FROM_PULSES   = static_cast<int32_t>(std::round(pulses * (microsteps / resolution)));
+    ConvertValues::FromPulses convert;
+    convert.TO_DEGREES     = static_cast<float>(pulses * (360.0f / resolution));
+    convert.TO_STEPS       = static_cast<int32_t>(std::round(pulses * (microsteps / resolution)));
+    convert.TO_MICROMETERS = static_cast<float>(pulses * (micrometers / resolution));
+    convert.TO_TURNS       = turns;
     return convert;
 }
 
-ConvertValuesFromSteps PositionController::convertFromMSteps(int32_t steps, int32_t microsteps,
-                                                             int32_t resolution) const
+ConvertValues::FromSteps PositionController::convertFromMSteps(int32_t steps, int32_t turns, int32_t microsteps, int32_t resolution, float micrometers) const
 {
-    ConvertValuesFromSteps convert;
-    convert.PULSES_FROM_STEPS  = static_cast<int32_t>(std::round(steps * (resolution / microsteps)));
-    convert.DEGREES_FROM_STEPS = static_cast<float>(steps * (360.0f / microsteps));
+    ConvertValues::FromSteps convert;
+    convert.TO_PULSES      = static_cast<int32_t>(std::round(steps * (resolution / microsteps)));
+    convert.TO_DEGREES     = static_cast<float>(steps * (360.0f / microsteps));
+    convert.TO_MICROMETERS = static_cast<float>(steps * (micrometers / microsteps));
+    convert.TO_TURNS       = turns;
+    return convert;
+}
+
+ConvertValues::FromMicrometers PositionController::convertFromMicrometers(float umeters, int32_t microsteps, int32_t resolution, float micrometers) const
+{
+    ConvertValues::FromMicrometers convert;
+    convert.TO_TURNS   = static_cast<int32_t>(std::floor(umeters / micrometers));
+    float remain       = umeters - (convert.TO_TURNS * micrometers);
+    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / micrometers));
+    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (microsteps / micrometers)));
+    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / micrometers)));
     return convert;
 }
 
@@ -886,8 +893,7 @@ void PositionController::setControlMode(ControlMode mode)
                 // Read current encoder position and use it as starting position
                 float encoderAngle   = getEncoderAngle();
                 _status.encoderAngle = encoderAngle;
-                log_d("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1,
-                      encoderAngle);
+                log_d("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1, encoderAngle);
             }
             else
             {
@@ -1039,8 +1045,7 @@ void PositionController::configureSpeedForDistance(float distance)
     _stepper.setMaxSpeed(optimalSpeed);
     _stepper.setAcceleration(optimalAcceleration);
 
-    log_d("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed,
-          optimalAcceleration);
+    log_d("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed, optimalAcceleration);
 }
 
 void PositionController::attachOnComplete(void (*callback)())

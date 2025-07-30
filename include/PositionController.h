@@ -13,15 +13,15 @@
 #include <freertos/task.h>
 
 // Motor configuration constants
-static constexpr int16_t STEPS_PER_REVOLUTION      = 200;  // Standard stepper motor
+static constexpr int16_t STEPS_PER_REVOLUTION      = 200;                                            // Standard stepper motor
 static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(DEFAULT_CURRENT_PANCAKE);  // 32 microsteps
 static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;     // 6400 microsteps
 static constexpr float   POSITION_ACCURACY_DEGREES = 0.05f;                                          // Target accuracy
 
-static constexpr float PIXEL_SIZE_UM = 5.2f;  // Size of each pixel in the camera (micrometers)
-static constexpr float PIXEL_SIZE_MM = (PIXEL_SIZE_UM * 1e-3f);
-static constexpr float CAMERA_TO_MIRROR_LENGTH_MM =
-    195.0f;  // Distance from mirror to camera in millimeters (can be measured accurately)
+static constexpr float PIXEL_SIZE_UM              = 5.2f;  // Size of each pixel in the camera (micrometers)
+static constexpr float PIXEL_SIZE_MM              = (PIXEL_SIZE_UM * 1e-3f);
+static constexpr float CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from mirror to camera in millimeters (can be measured accurately)
+static constexpr float LEAD_SCREW_PITCH_UM        = 200.0f;  // Lead screw pitch in micrometers
 
 // Movement types
 enum class MovementType
@@ -63,22 +63,39 @@ struct MovementCommand
     float        movementDistance;  // Calculated movement distance in degrees
 };
 
-struct ConvertValuesFromDegrees
+struct ConvertValues
 {
-    int32_t PULSES_FROM_DEGREES;
-    int32_t STEPS_FROM_DEGREES;
-};
+    struct FromDegrees
+    {
+        int32_t TO_PULSES;
+        int32_t TO_STEPS;
+        float   TO_MICROMETERS;
+        int32_t TO_TURNS;
+    };
 
-struct ConvertValuesFromPulses
-{
-    float   DEGREES_FROM_PULSES;
-    int32_t STEPS_FROM_PULSES;
-};
+    struct FromPulses
+    {
+        float   TO_DEGREES;
+        int32_t TO_STEPS;
+        float   TO_MICROMETERS;
+        int32_t TO_TURNS;
+    };
 
-struct ConvertValuesFromSteps
-{
-    int32_t PULSES_FROM_STEPS;
-    float   DEGREES_FROM_STEPS;
+    struct FromSteps
+    {
+        int32_t TO_PULSES;
+        float   TO_DEGREES;
+        float   TO_MICROMETERS;
+        int32_t TO_TURNS;
+    };
+
+    struct FromMicrometers
+    {
+        int32_t TO_PULSES;
+        int32_t TO_STEPS;
+        float   TO_DEGREES;
+        int32_t TO_TURNS;
+    };
 };
 
 // Motor status structure
@@ -104,8 +121,7 @@ class PositionController
 {
 public:
     // Constructor
-    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin,
-                       uint16_t enPin, MAE3Encoder& encoder);
+    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin, MAE3Encoder& encoder);
     PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin,
                        uint16_t enPin);  // Constructor without encoder (for demo)
     ~PositionController();
@@ -118,10 +134,8 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE,
-                     ControlMode controlMode = ControlMode::OPEN_LOOP);
-    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE,
-                      ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -156,14 +170,13 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValuesFromDegrees convertFromDegrees(float degrees, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200,
-                                                int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200,
-                                               int32_t resolution = ENCODER_RESOLUTION) const;
-    ConvertValuesFromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200,
-                                               int32_t resolution = ENCODER_RESOLUTION) const;
-    float                    calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
-    float                    getEncoderAngle();
+    ConvertValues::FromDegrees     convertFromDegrees(float degrees, int32_t turns = 0, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromPulses      convertFromPulses(int32_t pulses, int32_t turns = 0, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromSteps       convertFromMSteps(int32_t steps, int32_t turns = 0, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromMicrometers convertFromMicrometers(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+
+    float calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
+    float getEncoderAngle();
 
     void attachOnComplete(void (*callback)());
     void handleMovementComplete();
