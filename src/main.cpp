@@ -557,6 +557,11 @@ void serialReadTask(void* pvParameters)
             else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' Show position status
             {
                 float targetAngle = data.position.value;
+                if (targetAngle == 0)
+                    targetAngle = 0.09f;
+                else if (targetAngle == 360)
+                    targetAngle = 359.9955f;
+
                 loadControlMode();
 
                 encoder[currentIndex].attachOnComplete(storeToMemory);
@@ -845,7 +850,7 @@ void serialReadTask(void* pvParameters)
                     String degreesStr  = c.getArgument("p").getValue();
                     float  targetAngle = degreesStr.toFloat();
                     if (targetAngle == 0)
-                        targetAngle = 0.01;
+                        targetAngle = 0.09f;
                     else if (targetAngle == 360)
                         targetAngle = 359.9955f;
 
