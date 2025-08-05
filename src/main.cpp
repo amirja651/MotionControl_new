@@ -92,6 +92,8 @@ void     serialReadTask(void* pvParameters);
 float    setCurrentPositionFromEncoder();
 void     checkDifferenceCorrection();
 void     onVoltageDrop();
+void     linearProcess(float targetUMeters);
+void     rotationalProcess(float targetAngle);
 
 void setup()
 {
@@ -309,7 +311,7 @@ void storeToMemory()
     }
 
     interrupts();
-    encoder[currentIndex].setStorageCompleteFlag(false);
+    encoder[currentIndex].setInAbsenceOfInterruptFlag(false);
 }
 
 float loadOriginPosition()
@@ -908,38 +910,13 @@ void serialReadTask(void* pvParameters)
 
                     if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
                     {
-                        float targetUMeters                     = targetStr.toFloat();
-                        data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
-                        loadControlMode();
-                        encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
-                        positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+                        float targetUMeters = targetStr.toFloat();
+                        linearProcess(targetUMeters);
                     }
                     else
                     {
                         float targetAngle = targetStr.toFloat();
-
-                        if (targetAngle == 0)
-                            targetAngle = 0.09f;
-                        else if (targetAngle == 360)
-                            targetAngle = 359.9955f;
-
-                        data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
-                        loadControlMode();
-
-                        encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
-                        positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
-
-                        bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
-
-                        if (success)
-                        {
-                            const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
-                            log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
-                        }
-                        else
-                        {
-                            log_e("Failed to queue movement command");
-                        }
+                        rotationalProcess(targetAngle);
                     }
                 }
             }
@@ -1227,5 +1204,40 @@ void onVoltageDrop()
         positionController[currentIndex].stop();
         data.voltageDropPosition.save = true;
         storeToMemory();
+    }
+}
+
+void linearProcess(float targetUMeters)
+{
+    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
+    data.voltageDropPosition.turns          = 0;
+    loadControlMode();
+    encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
+    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+}
+
+void rotationalProcess(float targetAngle)
+{
+    if (targetAngle == 0)
+        targetAngle = 0.09f;
+    else if (targetAngle == 360)
+        targetAngle = 359.9955f;
+
+    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
+    loadControlMode();
+
+    encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
+    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+
+    bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
+
+    if (success)
+    {
+        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
+        log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+    }
+    else
+    {
+        log_e("Failed to queue movement command");
     }
 }

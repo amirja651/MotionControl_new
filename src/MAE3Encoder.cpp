@@ -199,23 +199,6 @@ void MAE3Encoder::processPWM(bool print)
     }
 }
 
-uint32_t MAE3Encoder::umToPulses(float um)
-{
-    float mm            = um / 1000.0f;
-    float pulses_per_mm = 4096 / LEAD_SCREW_PITCH_MM;
-    return static_cast<uint32_t>(mm * pulses_per_mm);
-}
-uint32_t MAE3Encoder::degreesToPulses(float degrees)
-{
-    float pulses_per_degree = 4096 / 360.0f;
-    return static_cast<uint32_t>(degrees * pulses_per_degree);
-}
-float MAE3Encoder::pulsesToUm(float pulses)
-{
-    float mm = pulses * (LEAD_SCREW_PITCH_MM / 4096);
-    return mm * 1000.0f;
-}
-
 bool MAE3Encoder::isStopped(uint32_t threshold_us) const
 {
     return (esp_timer_get_time() - _lastPulseTime) > threshold_us;
@@ -502,7 +485,7 @@ void MAE3Encoder::handleInAbsenceOfInterrupt()
             _inAbsenceOfInterrupt();
     }
 }
-void MAE3Encoder::setStorageCompleteFlag(bool flag)
+void MAE3Encoder::setInAbsenceOfInterruptFlag(bool flag)
 {
     _inAbsenceOfInterruptFlag = flag;
 }

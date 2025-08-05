@@ -72,10 +72,6 @@ public:
     void reset();
     void processPWM(bool print = false);
 
-    uint32_t umToPulses(float um);
-    uint32_t degreesToPulses(float degrees);
-    float    pulsesToUm(float pulses);
-
     bool isStopped(uint32_t threshold_us = 500000 /* 500ms */) const;
     void setOnPulseUpdatedCallback(std::function<void(const EncoderState&)> cb);
     void diagnoseEncoderSignals();
@@ -93,7 +89,7 @@ public:
     // Optional: attach a callback to be called when movement completes
     void attachInAbsenceOfInterrupt(void (*callback)());
     void handleInAbsenceOfInterrupt();
-    void setStorageCompleteFlag(bool flag);
+    void setInAbsenceOfInterruptFlag(bool flag);
 
 private:
     // Pin assignments
