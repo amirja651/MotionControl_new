@@ -91,8 +91,8 @@ public:
     void     resetInterruptCounters();
 
     // Optional: attach a callback to be called when movement completes
-    void attachOnComplete(void (*callback)());
-    void handleStoreToMemory();
+    void attachInAbsenceOfInterrupt(void (*callback)());
+    void handleInAbsenceOfInterrupt();
     void setStorageCompleteFlag(bool flag);
 
 private:
@@ -152,8 +152,8 @@ private:
     static void interruptHandler3(void* arg);
 
     // Optional movement complete callback
-    volatile bool _storageCompleteFlag;
-    void          (*_onComplete)();
+    volatile bool _inAbsenceOfInterruptFlag;
+    void          (*_inAbsenceOfInterrupt)();
 };
 
 #endif  // MAE3_ENCODER2_H

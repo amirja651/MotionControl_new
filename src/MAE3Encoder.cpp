@@ -26,8 +26,8 @@ MAE3Encoder::MAE3Encoder(uint8_t signalPin, uint8_t encoderId)
       _width_l_buffer{},
       _width_h_buffer{},
       _pulseBufferIndex(0),
-      _storageCompleteFlag(false),
-      _onComplete(nullptr)
+      _inAbsenceOfInterruptFlag(false),
+      _inAbsenceOfInterrupt(nullptr)
 {
 }
 
@@ -131,9 +131,9 @@ void MAE3Encoder::processPWM(bool print)
         return;
 
     noInterrupts();
-    _storageCompleteFlag   = true;
-    votePair voted_reading = getMostFrequentValue();
-    _dataReady             = false;
+    _inAbsenceOfInterruptFlag = true;
+    votePair voted_reading    = getMostFrequentValue();
+    _dataReady                = false;
     interrupts();
 
     // Debug output if requested
@@ -489,20 +489,20 @@ void MAE3Encoder::resetInterruptCounters()
     _lowEdgeCount   = 0;
 }
 
-void MAE3Encoder::attachOnComplete(void (*callback)())
+void MAE3Encoder::attachInAbsenceOfInterrupt(void (*callback)())
 {
-    _onComplete = callback;
+    _inAbsenceOfInterrupt = callback;
 }
-void MAE3Encoder::handleStoreToMemory()
+void MAE3Encoder::handleInAbsenceOfInterrupt()
 {
-    if (_storageCompleteFlag)
+    if (_inAbsenceOfInterruptFlag)
     {
-        _storageCompleteFlag = false;
-        if (_onComplete)
-            _onComplete();
+        _inAbsenceOfInterruptFlag = false;
+        if (_inAbsenceOfInterrupt)
+            _inAbsenceOfInterrupt();
     }
 }
 void MAE3Encoder::setStorageCompleteFlag(bool flag)
 {
-    _storageCompleteFlag = flag;
+    _inAbsenceOfInterruptFlag = flag;
 }

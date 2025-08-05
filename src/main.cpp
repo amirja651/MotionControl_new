@@ -195,7 +195,7 @@ void setup()
 void loop()
 {
     // Handle movement complete outside ISR
-    encoder[currentIndex].handleStoreToMemory();
+    encoder[currentIndex].handleInAbsenceOfInterrupt();
     positionController[currentIndex].handleMovementComplete();
     voltageMonitor.update();
 
@@ -621,7 +621,7 @@ void serialReadTask(void* pvParameters)
 
                 loadControlMode();
 
-                encoder[currentIndex].attachOnComplete(storeToMemory);
+                encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
                 positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
                 bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
@@ -911,7 +911,7 @@ void serialReadTask(void* pvParameters)
                         float targetUMeters                     = targetStr.toFloat();
                         data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
                         loadControlMode();
-                        encoder[currentIndex].attachOnComplete(storeToMemory);
+                        encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
                         positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
                     }
                     else
@@ -926,7 +926,7 @@ void serialReadTask(void* pvParameters)
                         data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
                         loadControlMode();
 
-                        encoder[currentIndex].attachOnComplete(storeToMemory);
+                        encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
                         positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
                         bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
