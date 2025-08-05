@@ -356,7 +356,7 @@ MotorContext2 getMotorContext2()
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #if MAIN_ENCODER_TASK_DEBUG
 // Motor Update Task (M104)
-void encoderUpdateTask(void* pvParameters)  // amir
+void encoderUpdateTask(void* pvParameters) 
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(1000);
     TickType_t       xLastWakeTime = xTaskGetTickCount();

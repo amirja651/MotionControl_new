@@ -520,7 +520,7 @@ void PositionController::setDirection(bool direction)
     _dirMultiplexer.setMotorDirection(_motorId, direction);
 }
 
-bool PositionController::executeMovement(const MovementCommand& command)  // amir
+bool PositionController::executeMovement(const MovementCommand& command)
 {
     if (!_enabled || !_initialized)
         return false;

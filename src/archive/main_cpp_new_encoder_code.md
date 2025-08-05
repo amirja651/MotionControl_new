@@ -310,7 +310,7 @@ validatePwmResult validatePWMValues(unsigned long highPulse, unsigned long lowPu
 
     // Check each condition separately
     result.highOK   = (highPulse >= 1 && highPulse <= 4302);  // 4097
-    result.lowOK    = (lowPulse >= 1 && lowPulse <= 4302);    // 4097//amir
+    result.lowOK    = (lowPulse >= 1 && lowPulse <= 4302);    // 4097
     result.totalOK  = ((result.totalPeriod) > 0);
     result.periodOK = ((result.totalPeriod) >= 3731 && (result.totalPeriod) <= 4545);
     result.overall  = result.highOK && result.lowOK && result.totalOK && result.periodOK;

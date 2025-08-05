@@ -24,7 +24,7 @@ void IRAM_ATTR MotorSpeedController::onTimerISR3()
     if (_motorInstances[3] && _motorInstances[3]->_enabled)
         _motorInstances[3]->onTimerISR();
 }
-void IRAM_ATTR MotorSpeedController::onTimerISR()  // amir 1402/04/21
+void IRAM_ATTR MotorSpeedController::onTimerISR() 
 {
     if (!_moving && _stepsRemaining <= 0)
         return;
@@ -229,7 +229,7 @@ void MotorSpeedController::setDirection(bool forward)
 {
     gpio_set_level((gpio_num_t)_DIR_PIN, forward ? HIGH : LOW);
 }
-void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, float lastSpeed)  // amir 1402/04/21
+void MotorSpeedController::move(int32_t deltaPulsPosition, float targetSpeed, float lastSpeed)  
 {
     if (_timer == nullptr || targetSpeed <= 0 || deltaPulsPosition == 0)
         return;

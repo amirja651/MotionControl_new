@@ -1082,7 +1082,7 @@ void serialReadTask(void* pvParameters)
     }
 }
 
-float setCurrentPositionFromEncoder()  // amir
+float setCurrentPositionFromEncoder()
 {
     float   encoderAngle = positionController[currentIndex].getEncoderAngle();
     int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).TO_STEPS;
