@@ -28,6 +28,8 @@ struct Data
         ControlMode mode           = ControlMode::OPEN_LOOP;
         float       reached        = 0.0f;
         float       beforeMovement = 0.0f;
+        int32_t     turns          = 0;
+        int32_t     turnsValue     = 0;
         float       value          = 0.0f;
         bool        save           = false;
     } position, voltageDropPosition, orgin, control;
@@ -79,6 +81,7 @@ Preferences prefs;
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
 void     storeToMemory();
 float    loadOriginPosition();
+int32_t  loadTurns();
 void     loadControlMode();
 void     loadPosition();
 void     clearAllOriginPositions();
@@ -100,16 +103,6 @@ void setup()
 
     esp_log_level_set("*", ESP_LOG_INFO);
 
-    // Initialize Preferences for storing motor origin positions
-    if (!prefs.begin("motion_control", false))  // false = read/write mode
-    {
-        log_e("Failed to initialize Preferences");
-    }
-    else
-    {
-        log_d("Preferences successfully initialized");
-    }
-
     delay(1000);
     while (!Serial)
     {
@@ -121,6 +114,16 @@ void setup()
 #else
     log_d("Stack overflow checking **NOT** enabled");
 #endif
+
+    // Initialize Preferences for storing motor origin positions
+    if (!prefs.begin("motion_control", false))  // false = read/write mode
+    {
+        log_e("Failed to initialize Preferences");
+    }
+    else
+    {
+        log_d("Preferences successfully initialized");
+    }
 
     // Initialize CLI
     initializeCLI();
@@ -166,7 +169,7 @@ void setup()
 
     // Add longer delay before accessing preferences to ensure stability
     delay(100);
-    printAllOriginPositions();
+    printAllOriginPositions();  // amir
     loadPosition();
     delay(100);
 
@@ -192,7 +195,7 @@ void setup()
 void loop()
 {
     // Handle movement complete outside ISR
-    encoder[currentIndex].handleMovementComplete();
+    encoder[currentIndex].handleStoreToMemory();
     positionController[currentIndex].handleMovementComplete();
     voltageMonitor.update();
 
@@ -217,6 +220,7 @@ uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
 void storeToMemory()
 {
     noInterrupts();
+
     if (data.orgin.save)
     {
         data.orgin.save = false;
@@ -229,8 +233,19 @@ void storeToMemory()
         {
             log_e("Failed to store origin position for motor %d", currentIndex + 1);
         }
-    }
 
+        if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
+        {
+            String key2 = "m" + String(currentIndex) + "_tu";
+            log_d("Key: %s, Value: %d", key2.c_str(), data.orgin.turns);
+            bool success = prefs.putInt(key2.c_str(), data.orgin.turns);
+
+            if (!success)
+            {
+                log_e("Failed to store turns for motor %d", currentIndex + 1);
+            }
+        }
+    }
     if (data.control.save)
     {
         data.control.save = false;
@@ -244,32 +259,55 @@ void storeToMemory()
             log_e("Failed to store control mode for motor %d", currentIndex + 1);
         }
     }
-
     if (data.voltageDropPosition.save)
     {
         data.voltageDropPosition.save = false;
-        String key                    = "m" + String(currentIndex) + "_po";
-        log_d("Key: %s, Value: %f", key.c_str(), data.voltageDropPosition.beforeMovement);
-        bool success = prefs.putFloat(key.c_str(), data.voltageDropPosition.beforeMovement);
+        String key1                   = "m" + String(currentIndex) + "_po";
+        log_d("Key: %s, Value: %f", key1.c_str(), data.voltageDropPosition.beforeMovement);
+        bool success = prefs.putFloat(key1.c_str(), data.voltageDropPosition.beforeMovement);
 
         if (!success)
         {
             log_e("Failed to store voltage drop for motor %d", currentIndex + 1);
         }
-    }
 
+        if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
+        {
+            String key2 = "m" + String(currentIndex) + "_tu";
+            log_d("Key: %s, Value: %d", key2.c_str(), data.voltageDropPosition.turns);
+            bool success = prefs.putInt(key2.c_str(), data.voltageDropPosition.turns);
+
+            if (!success)
+            {
+                log_e("Failed to store turns for motor %d", currentIndex + 1);
+            }
+        }
+    }
     if (data.position.save)
     {
         data.position.save = false;
-        String key         = "m" + String(currentIndex) + "_po";
-        log_d("Key: %s, Value: %f", key.c_str(), data.position.reached);
-        bool success = prefs.putFloat(key.c_str(), data.position.reached);
+        String key1        = "m" + String(currentIndex) + "_po";
+        log_d("Key: %s, Value: %f", key1.c_str(), data.position.reached);
+        bool success = prefs.putFloat(key1.c_str(), data.position.reached);
 
         if (!success)
         {
             log_e("Failed to store target reached for motor %d", currentIndex + 1);
         }
+
+        if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
+        {
+            String key2 = "m" + String(currentIndex) + "_tu";
+            log_d("Key: %s, Value: %d", key2.c_str(), data.position.turns);
+            bool success = prefs.putInt(key2.c_str(), data.position.turns);
+
+            if (!success)
+            {
+                log_e("Failed to store turns for motor %d", currentIndex + 1);
+            }
+        }
     }
+
     interrupts();
     encoder[currentIndex].setStorageCompleteFlag(false);
 }
@@ -288,8 +326,28 @@ float loadOriginPosition()
     return originPosition;
 }
 
+int32_t loadTurns()
+{
+    if (currentIndex >= 4)
+    {
+        log_e("Invalid motor index!");
+        return 0;
+    }
+
+    String  key   = "m" + String(currentIndex) + "_tu";
+    int32_t turns = prefs.getInt(key.c_str(), 0);
+    log_d("Motor %d turns loaded: %d", currentIndex + 1, turns);
+    return turns;
+}
+
 void loadControlMode()
 {
+    if (currentIndex >= 4)
+    {
+        log_e("Invalid motor index!");
+        return;
+    }
+
     String key        = "m" + String(currentIndex) + "_cm";
     data.control.mode = static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
     log_d("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.control.mode));
@@ -303,9 +361,19 @@ void loadPosition()
         return;
     }
 
-    String key          = "m" + String(currentIndex) + "_po";
-    data.position.value = prefs.getFloat(key.c_str(), 0.0f);
-    log_d("Motor %d voltage drop loaded: %f", currentIndex + 1, data.position.value);
+    String key1         = "m" + String(currentIndex) + "_po";
+    data.position.value = prefs.getFloat(key1.c_str(), 0.0f);
+
+    if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
+    {
+        String key2         = "m" + String(currentIndex) + "_tu";
+        data.position.turns = prefs.getInt(key2.c_str(), 0);
+        log_d("Motor %d position loaded: Position %f, Turns %d", currentIndex + 1, data.position.value, data.position.turns);
+    }
+    else
+    {
+        log_d("Motor %d position loaded: Position %f", currentIndex + 1, data.position.value);
+    }
 }
 
 void clearAllOriginPositions()
@@ -329,35 +397,30 @@ void printAllOriginPositions()
 
     for (uint8_t i = 0; i < 4; i++)
     {
-        float originPosition = 0.0f;
-
-        String key = "m" + String(i) + "_or";
-
-        try
-        {
-            originPosition = prefs.getFloat(key.c_str(), 0.0f);
-            log_d("Motor %d: %f°", i + 1, originPosition);
-        }
-        catch (...)
-        {
-            log_e("Failed to read origin position for motor %d", i + 1);
-            originPosition = 0.0f;
-        }
+        String key            = "m" + String(i) + "_or";
+        float  originPosition = prefs.getFloat(key.c_str(), 0.0f);
+        log_d("Motor %d: %f°", i + 1, originPosition);
 
         // Small delay between each motor to prevent overload
         delay(5);
+
+        if (positionController[i].getMotorType() == MotorType::LINEAR)
+        {
+            String  key2  = "m" + String(i) + "_tu";
+            int32_t turns = prefs.getInt(key2.c_str(), 0);
+            log_d("Motor %d: %d turns", i + 1, turns);
+
+            if (turns != 0)
+            {
+                originPosition = turns * PIXEL_SIZE_MM;
+                log_d("Motor %d: Origin Position %f°", i + 1, originPosition);
+            }
+        }
     }
 
     // Print total number of keys for debugging
-    try
-    {
-        size_t totalKeys = prefs.freeEntries();
-        log_d("Total free entries: %d", totalKeys);
-    }
-    catch (...)
-    {
-        log_e("Failed to get preferences free entries");
-    }
+    size_t totalKeys = prefs.freeEntries();
+    log_d("Total free entries: %d", totalKeys);
 }
 
 void clearLine()
@@ -841,29 +904,42 @@ void serialReadTask(void* pvParameters)
                 }
                 if (c.getArgument("p").isSet())
                 {
-                    String degreesStr  = c.getArgument("p").getValue();
-                    float  targetAngle = degreesStr.toFloat();
-                    if (targetAngle == 0)
-                        targetAngle = 0.09f;
-                    else if (targetAngle == 360)
-                        targetAngle = 359.9955f;
+                    String targetStr = c.getArgument("p").getValue();
 
-                    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
-                    loadControlMode();
-
-                    encoder[currentIndex].attachOnComplete(storeToMemory);
-                    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
-
-                    bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
-
-                    if (success)
+                    if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
                     {
-                        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
-                        log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+                        float targetUMeters                     = targetStr.toFloat();
+                        data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
+                        loadControlMode();
+                        encoder[currentIndex].attachOnComplete(storeToMemory);
+                        positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
                     }
                     else
                     {
-                        log_e("Failed to queue movement command");
+                        float targetAngle = targetStr.toFloat();
+
+                        if (targetAngle == 0)
+                            targetAngle = 0.09f;
+                        else if (targetAngle == 360)
+                            targetAngle = 359.9955f;
+
+                        data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
+                        loadControlMode();
+
+                        encoder[currentIndex].attachOnComplete(storeToMemory);
+                        positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+
+                        bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
+
+                        if (success)
+                        {
+                            const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
+                            log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+                        }
+                        else
+                        {
+                            log_e("Failed to queue movement command");
+                        }
                     }
                 }
             }

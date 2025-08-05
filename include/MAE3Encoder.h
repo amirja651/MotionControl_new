@@ -92,7 +92,7 @@ public:
 
     // Optional: attach a callback to be called when movement completes
     void attachOnComplete(void (*callback)());
-    void handleMovementComplete();
+    void handleStoreToMemory();
     void setStorageCompleteFlag(bool flag);
 
 private:

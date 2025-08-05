@@ -1065,3 +1065,11 @@ void PositionController::setMovementCompleteFlag(bool flag)
 {
     _movementCompleteFlag = flag;
 }
+
+MotorType PositionController::getMotorType() const
+{
+    if (_motorId == 0)
+        return MotorType::LINEAR;
+    else
+        return MotorType::ROTATIONAL;
+}

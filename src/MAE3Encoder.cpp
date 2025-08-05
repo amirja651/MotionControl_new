@@ -493,7 +493,7 @@ void MAE3Encoder::attachOnComplete(void (*callback)())
 {
     _onComplete = callback;
 }
-void MAE3Encoder::handleMovementComplete()
+void MAE3Encoder::handleStoreToMemory()
 {
     if (_storageCompleteFlag)
     {

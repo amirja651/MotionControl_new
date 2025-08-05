@@ -50,6 +50,12 @@ enum class ControlMode
     HYBRID        // Read encoder once at start, then open-loop
 };
 
+enum class MotorType
+{
+    LINEAR     = 0,
+    ROTATIONAL = 1,
+};
+
 // Movement command structure
 struct MovementCommand
 {
@@ -181,6 +187,8 @@ public:
     void attachOnComplete(void (*callback)());
     void handleMovementComplete();
     void setMovementCompleteFlag(bool flag);
+
+    MotorType getMotorType() const;
 
 private:
     // Hardware components
