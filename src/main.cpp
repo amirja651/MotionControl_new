@@ -834,6 +834,11 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdMove)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
                 if (c.getArgument("p").isSet())
                 {
                     String degreesStr  = c.getArgument("p").getValue();
@@ -864,6 +869,11 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdMoveRelative)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
                 if (c.getArgument("p").isSet())
                 {
                     String degreesStr  = c.getArgument("p").getValue();
@@ -873,6 +883,11 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdControlMode)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
                 if (c.getArgument("c").isSet())
                 {
                     data.control.mode = ControlMode::CLOSED_LOOP;
@@ -889,24 +904,56 @@ void serialReadTask(void* pvParameters)
                 data.control.save = true;
                 storeToMemory();
             }
+            else if (c == cmdStop)
+            {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
+                positionController[currentIndex].stop();
+            }
             else if (c == cmdEnable)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
                 positionController[currentIndex].enable();
             }
             else if (c == cmdDisable)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
                 positionController[currentIndex].stop();
                 vTaskDelay(pdMS_TO_TICKS(100));
                 positionController[currentIndex].disable();
             }
             else if (c == cmdCurrentPosition)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
                 float position = positionController[currentIndex].getCurrentAngle();
-                Serial.print(F("*"));
-                Serial.print(currentIndex);
-                Serial.print(F("#"));
-                Serial.print(position, 2);
-                Serial.println(F("#"));
+                Serial.print(F("CURRENT"));
+                Serial.print(position);
+            }
+            else if (c == cmdLastPosition)
+            {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
+                float targetAngle = data.position.value;
+                Serial.print(F("LAST"));
+                Serial.print(targetAngle);
             }
             else if (c == cmdSave)
             {
@@ -950,12 +997,22 @@ void serialReadTask(void* pvParameters)
             {
                 ESP.restart();
             }
-            else if (c == cmdStop)
-            {
-                positionController[currentIndex].stop();
-            }
             else if (c == cmdShow)
             {
+                if (c.getArgument("n").isSet())
+                {
+                    String motorIdStr = c.getArgument("n").getValue();
+                    setMotorId(motorIdStr);
+                }
+                if (c.getArgument("c").isSet())
+                {
+                    float position = positionController[currentIndex].getCurrentAngle();
+                    Serial.print(F("*"));
+                    Serial.print(currentIndex);
+                    Serial.print(F("#"));
+                    Serial.print(position, 2);
+                    Serial.print(F("#\r\n"));
+                }
             }
             else if (c == cmdHelp)
             {
