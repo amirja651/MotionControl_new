@@ -716,15 +716,20 @@ bool PositionController::isHybridModeEnabled() const
     return _controlMode == ControlMode::HYBRID && _encoder != nullptr && _encoder->isEnabled();
 }
 
-float PositionController::getEncoderAngle()
+uint32_t PositionController::getEncoderPulse() const
 {
     if (_encoder != nullptr && _encoder->isEnabled())
     {
         _encoder->processPWM();
-        EncoderState encoderState = _encoder->getState();
-        return wrapAngle(encoderState.position_degrees);
+        return _encoder->getState().position_pulse;
     }
-    return 0.0f;
+    return 0;
+}
+
+float PositionController::getEncoderAngle()
+{
+    uint32_t pulse = getEncoderPulse();
+    return convertFromPulses(pulse).TO_DEGREES;
 }
 
 float PositionController::calculatePositionError()

@@ -182,6 +182,7 @@ public:
     ConvertValues::FromMicrometers convertFromMicrometers(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
 
     float calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
+    uint32_t getEncoderPulse() const;
     float getEncoderAngle();
 
     void attachOnComplete(void (*callback)());
