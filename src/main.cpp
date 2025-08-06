@@ -640,15 +640,16 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
-                encoder[currentIndex].processPWM();
-                EncoderState encoderState = encoder[currentIndex].getState();
+                //encoder[currentIndex].processPWM();
+                EncoderState encoderState = positionController[currentIndex].getEncoderState();
+                float encoderAngle = positionController[currentIndex].convertFromPulses(encoderState.position_pulse).TO_DEGREES;
                 MotorStatus  status       = positionController[currentIndex].getStatus();
                 if (status.currentAngle == 0)
                 {
                     setCurrentPositionFromEncoder();
                     status.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
-                float diff = status.currentAngle - encoderState.position_degrees;
+                float diff = status.currentAngle - encoderAngle;
                 Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Diff="));
@@ -671,7 +672,7 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("°"));
                 }
                 Serial.print(F(", (Encoder: "));
-                Serial.print(encoderState.position_degrees);
+                Serial.print(encoderAngle);
                 Serial.print(F("°,"));
                 Serial.print(encoderState.direction == Direction::CLOCKWISE ? F(" CW") : F(" CCW"));
                 Serial.print(F(", "));
@@ -715,10 +716,10 @@ void serialReadTask(void* pvParameters)
                     Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
                     if (encoder[currentIndex].isEnabled())
                     {
-                        encoder[currentIndex].processPWM();
-                        EncoderState encoderState = encoder[currentIndex].getState();
+                        EncoderState encoderState = positionController[currentIndex].getEncoderState();
+                        float encoderAngle = positionController[currentIndex].getEncoderAngle();
                         Serial.print(F("  Encoder Position: "));
-                        Serial.print(encoderState.position_degrees, 2);
+                        Serial.print(encoderAngle);
                         Serial.print(F("° ("));
                         Serial.print(encoderState.position_pulse);
                         Serial.println(F(" pulses)"));

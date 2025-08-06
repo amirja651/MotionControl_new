@@ -88,9 +88,6 @@ void MAE3Encoder::reset()
     _state.width_interval   = 0;
     _state.lap_id           = 0;
     _state.position_pulse   = 0;
-    _state.position_mm      = 0;
-    _state.position_degrees = 0;
-    _state.total_mm         = 0;
     _state.direction        = Direction::UNKNOWN;
 
     _r_pulse.low               = 0;
@@ -159,7 +156,7 @@ void MAE3Encoder::processPWM(bool print)
         return;
     }
 
-    _state.position_degrees = _state.position_pulse * (360.0f / 4096);
+    //_state.position_degrees = _state.position_pulse * (360.0f / 4096);
 
     if (!_initialized)
     {

@@ -34,14 +34,8 @@ struct EncoderState
     volatile uint32_t width_high;
     volatile uint32_t width_low;
     volatile uint32_t width_interval;
-
-    uint32_t lap_id;
     uint32_t position_pulse;
-
-    float position_degrees;
-    float position_mm;
-    float total_mm;
-
+    uint32_t lap_id;
     Direction direction;
 };
 
