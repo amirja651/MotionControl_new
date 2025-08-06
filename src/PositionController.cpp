@@ -791,11 +791,23 @@ ConvertValues::FromPulses PositionController::convertFromPulses(int32_t pulses, 
 
 ConvertValues::FromSteps PositionController::convertFromMSteps(int32_t steps, int32_t turns, int32_t microsteps, int32_t resolution, float micrometers) const
 {
+    int32_t remaining_steps = 0;
+
     ConvertValues::FromSteps convert;
-    convert.TO_PULSES      = static_cast<int32_t>(std::round(steps * (resolution / microsteps)));
-    convert.TO_DEGREES     = static_cast<float>(steps * (360.0f / microsteps));
-    convert.TO_MICROMETERS = static_cast<float>(steps * (micrometers / microsteps));
-    convert.TO_TURNS       = turns;
+
+    if (getMotorType() == MotorType::LINEAR)
+    {
+        convert.TO_TURNS = steps / microsteps;
+        remaining_steps  = steps % microsteps;
+    }
+    else
+    {
+        convert.TO_TURNS       = 0;
+        remaining_steps        = steps;
+        convert.TO_PULSES      = static_cast<int32_t>(std::round(remaining_steps * (resolution / microsteps)));
+        convert.TO_DEGREES     = static_cast<float>(remaining_steps * (360.0f / microsteps));
+        convert.TO_MICROMETERS = static_cast<float>(remaining_steps * (micrometers / microsteps));
+    }
     return convert;
 }
 
