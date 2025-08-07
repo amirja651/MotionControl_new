@@ -59,8 +59,9 @@ enum class MotorType
 // Movement command structure
 struct MovementCommand
 {
-    uint8_t      motorId;           // Motor ID (0-3)
-    float        targetAngle;       // Target angle in degrees (0-360)
+    uint8_t      motorId;      // Motor ID (0-3)
+    float        targetAngle;  // Target angle in degrees (0-360)
+    float        targetUMeter;
     MovementType movementType;      // Type of movement
     DistanceType distanceType;      // Distance-based type
     bool         relative;          // True for relative movement, false for absolute
@@ -108,12 +109,14 @@ struct ConvertValues
 struct MotorStatus
 {
     uint8_t      motorId;
-    float        currentAngle;  // Current angle in degrees
-    float        targetAngle;   // Target angle in degrees
-    bool         isMoving;      // True if motor is currently moving
-    bool         isEnabled;     // True if motor is enabled
-    int32_t      currentSteps;  // Current position in steps
-    int32_t      targetSteps;   // Target position in steps
+    float        currentAngle;   // Current angle in degrees
+    float        targetAngle;    // Target angle in degrees
+    float        currentUMeter;  // Current  in µm
+    float        targetUMeter;   // Target  in µm
+    bool         isMoving;       // True if motor is currently moving
+    bool         isEnabled;      // True if motor is enabled
+    int32_t      currentSteps;   // Current position in steps
+    int32_t      targetSteps;    // Target position in steps
     MovementType lastMovementType;
     uint32_t     movementStartTime;  // Time when movement started
     uint32_t     totalMovementTime;  // Total time for movement
@@ -133,14 +136,16 @@ public:
     ~PositionController();
 
     // Initialization
-    bool begin();
-    void setCurrentPosition(int32_t position);
-    void enable();
-    void disable();
-    bool isEnabled() const;
+    bool    begin();
+    void    setCurrentPosition(int32_t position);
+    int32_t getCurrentTurnFromStepper();
+    void    enable();
+    void    disable();
+    bool    isEnabled() const;
 
     // Position control methods
     bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveToUMeter(float targetUMeter, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
     bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
@@ -149,6 +154,8 @@ public:
     // Status and information
     float       getCurrentAngle() const;
     float       getTargetAngle() const;
+    float       getCurrentUMeter() const;
+    float       getTargetUMeter() const;
     int32_t     getCurrentSteps() const;
     int32_t     getTargetSteps() const;
     MotorStatus getStatus();
@@ -179,7 +186,7 @@ public:
     ConvertValues::FromDegrees convertFromDegrees(float degrees, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
     ConvertValues::FromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
     ConvertValues::FromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromUMeters convertFromMicrometers(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromUMeters convertFromUMeters(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
 
     float        calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     EncoderState getEncoderState() const;

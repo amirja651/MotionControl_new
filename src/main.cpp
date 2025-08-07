@@ -908,16 +908,15 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("p").isSet())
                 {
                     String targetStr = c.getArgument("p").getValue();
+                    float  target    = targetStr.toFloat();
 
                     if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
                     {
-                        float targetUMeters = targetStr.toFloat();
-                        linearProcess(targetUMeters);
+                        linearProcess(target);
                     }
                     else
                     {
-                        float targetAngle = targetStr.toFloat();
-                        rotationalProcess(targetAngle);
+                        rotationalProcess(target);
                     }
                 }
             }
@@ -1083,7 +1082,7 @@ void serialReadTask(void* pvParameters)
                     ConvertValues::FromDegrees cvfd     = positionController[currentIndex].convertFromDegrees(value);
                     ConvertValues::FromPulses  cvfp     = positionController[currentIndex].convertFromPulses(value);
                     ConvertValues::FromSteps   cvfs     = positionController[currentIndex].convertFromMSteps(value);
-                    ConvertValues::FromUMeters cvfm     = positionController[currentIndex].convertFromMicrometers(value);
+                    ConvertValues::FromUMeters cvfm     = positionController[currentIndex].convertFromUMeters(value);
 
                     Serial.print(F("From Degrees: Pulses:"));
                     Serial.print(cvfd.TO_PULSES);
@@ -1211,7 +1210,7 @@ void onVoltageDrop()
 void linearProcess(float targetUMeters)
 {
     data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
-    data.voltageDropPosition.turns          = 0;
+    data.voltageDropPosition.turns          = positionController[currentIndex].getCurrentTurnFromStepper();
     loadControlMode();
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
@@ -1226,7 +1225,6 @@ void rotationalProcess(float targetAngle)
 
     data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
     loadControlMode();
-
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 

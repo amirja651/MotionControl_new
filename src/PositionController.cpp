@@ -28,6 +28,8 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.motorId           = motorId;
     _status.currentAngle      = 0.0f;
     _status.targetAngle       = 0.0f;
+    _status.currentUMeter     = 0.0f;
+    _status.targetUMeter      = 0.0f;
     _status.isMoving          = false;
     _status.isEnabled         = false;
     _status.currentSteps      = 0;
@@ -87,6 +89,8 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.motorId           = motorId;
     _status.currentAngle      = 0.0f;
     _status.targetAngle       = 0.0f;
+    _status.currentUMeter     = 0.0f;
+    _status.targetUMeter      = 0.0f;
     _status.isMoving          = false;
     _status.isEnabled         = false;
     _status.currentSteps      = 0;
@@ -171,8 +175,21 @@ void PositionController::setCurrentPosition(int32_t position)
 {
     _stepper.setCurrentPosition(position);
     _status.currentSteps = position;
-    _status.currentAngle = convertFromMSteps(position).TO_DEGREES;
+    if (getMotorType() == MotorType::LINEAR)
+    {
+        _status.currentUMeter = convertFromMSteps(position).TO_UMETERS;
+    }
+    else
+    {
+        _status.currentAngle = convertFromMSteps(position).TO_DEGREES;
+    }
 }
+
+int32_t PositionController::getCurrentTurnFromStepper()
+{
+    return convertFromMSteps(_status.currentSteps).TO_TURNS;
+}
+
 // Enable/Disable
 void PositionController::enable()
 {
@@ -229,6 +246,41 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
     MovementCommand command;
     command.motorId          = _motorId;
     command.targetAngle      = targetAngle;
+    command.movementType     = movementType;
+    command.distanceType     = distanceType;
+    command.relative         = false;
+    command.priority         = 1;
+    command.controlMode      = controlMode;
+    command.movementDistance = movementDistance;
+
+    // Queue the command
+    return queueMovementCommand(command);
+}
+
+bool PositionController::moveToUMeter(float targetUMeter, MovementType movementType, ControlMode controlMode)
+{
+    if (!_enabled || !_initialized)
+        return false;
+
+    // Calculate current angle and movement distance
+    float currentUMeter    = getCurrentUMeter();
+    float delta            = targetUMeter - currentUMeter;
+    float movementDistance = abs(delta);
+
+    // Validate movement distance
+    if (!isValidMovementDistance(movementDistance))
+    {
+        log_w("Motor %d: Movement distance %.3f µm is negligible (< 0.01 µm), ignoring", _motorId + 1, movementDistance);
+        return false;
+    }
+
+    // Calculate distance type for speed profile selection
+    DistanceType distanceType = calculateDistanceType(movementDistance);
+
+    // Create movement command
+    MovementCommand command;
+    command.motorId          = _motorId;
+    command.targetUMeter     = targetUMeter;
     command.movementType     = movementType;
     command.distanceType     = distanceType;
     command.relative         = false;
@@ -325,6 +377,21 @@ float PositionController::getTargetAngle() const
     return _status.targetAngle;
 }
 
+// Status and information
+float PositionController::getCurrentUMeter() const
+{
+    if (!_initialized)
+        return 0.0f;
+
+    int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
+    return convertFromMSteps(currentSteps).TO_UMETERS;
+}
+
+float PositionController::getTargetUMeter() const
+{
+    return _status.targetUMeter;
+}
+
 int32_t PositionController::getCurrentSteps() const
 {
     if (!_initialized)
@@ -341,13 +408,24 @@ int32_t PositionController::getTargetSteps() const
 MotorStatus PositionController::getStatus()
 {
     MotorStatus status = _status;
+    int32_t     steps;
 
-    // Update with current values
-    status.targetAngle  = wrapAngle(getTargetAngle());
-    status.currentAngle = wrapAngle(getCurrentAngle());
-    int32_t steps       = convertFromDegrees(status.currentAngle).TO_STEPS;
+    if (getMotorType() == MotorType::LINEAR)
+    {
+        // Update with current values
+        status.targetUMeter  = getTargetUMeter();
+        status.currentUMeter = getCurrentUMeter();
+        steps                = convertFromUMeters(status.currentUMeter).TO_STEPS;
+    }
+    else
+    {
+        // Update with current values
+        status.targetAngle  = wrapAngle(getTargetAngle());
+        status.currentAngle = wrapAngle(getCurrentAngle());
+        steps               = convertFromDegrees(status.currentAngle).TO_STEPS;
+    }
+
     setCurrentPosition(steps);
-    // status.currentSteps = getCurrentSteps();
     status.isMoving  = isMoving();
     status.isEnabled = isEnabled();
 
@@ -489,8 +567,15 @@ void PositionController::updateStatus()
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
         _status.currentSteps = static_cast<int32_t>(_stepper.currentPosition());
-        _status.currentAngle = convertFromMSteps(_status.currentSteps).TO_DEGREES;
-        _status.isMoving     = _stepper.distanceToGo() != 0;
+        if (getMotorType() == MotorType::LINEAR)
+        {
+            _status.currentUMeter = convertFromMSteps(_status.currentSteps).TO_UMETERS;
+        }
+        else
+        {
+            _status.currentAngle = convertFromMSteps(_status.currentSteps).TO_DEGREES;
+        }
+        _status.isMoving = _stepper.distanceToGo() != 0;
         xSemaphoreGive(_statusMutex);
     }
 }
@@ -530,19 +615,41 @@ bool PositionController::executeMovement(const MovementCommand& command)
 
     // Calculate target steps
     int32_t targetSteps;
-    if (command.relative)
+
+    if (getMotorType() == MotorType::LINEAR)
     {
-        targetSteps = _status.currentSteps + convertFromDegrees(command.targetAngle).TO_STEPS;
+        if (command.relative)
+        {
+            targetSteps = _status.currentSteps + convertFromUMeters(command.targetUMeter).TO_STEPS;
+        }
+        else
+        {
+            targetSteps = convertFromUMeters(command.targetUMeter).TO_STEPS;
+        }
     }
     else
     {
-        targetSteps = convertFromDegrees(command.targetAngle).TO_STEPS;
+        if (command.relative)
+        {
+            targetSteps = _status.currentSteps + convertFromDegrees(command.targetAngle).TO_STEPS;
+        }
+        else
+        {
+            targetSteps = convertFromDegrees(command.targetAngle).TO_STEPS;
+        }
     }
 
-    // Update status
+    // Update status amiramir
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(100)) == pdTRUE)
     {
-        _status.targetAngle       = command.targetAngle;
+        if (getMotorType() == MotorType::LINEAR)
+        {
+            _status.targetUMeter = command.targetUMeter;
+        }
+        else
+        {
+            _status.targetAngle = command.targetAngle;
+        }
         _status.targetSteps       = targetSteps;
         _status.isMoving          = true;
         _status.movementStartTime = millis();
@@ -835,7 +942,7 @@ ConvertValues::FromSteps PositionController::convertFromMSteps(int32_t steps, in
     return convert;
 }
 
-ConvertValues::FromUMeters PositionController::convertFromMicrometers(float umeters, int32_t microsteps, int32_t resolution, float micrometers) const
+ConvertValues::FromUMeters PositionController::convertFromUMeters(float umeters, int32_t microsteps, int32_t resolution, float micrometers) const
 {
     float                      remain = 0;
     ConvertValues::FromUMeters convert;
