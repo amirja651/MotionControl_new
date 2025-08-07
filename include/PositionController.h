@@ -75,7 +75,7 @@ struct ConvertValues
     {
         int32_t TO_PULSES;
         int32_t TO_STEPS;
-        float   TO_MICROMETERS;
+        float   TO_UMETERS;
         int32_t TO_TURNS;
     };
 
@@ -83,7 +83,7 @@ struct ConvertValues
     {
         float   TO_DEGREES;
         int32_t TO_STEPS;
-        float   TO_MICROMETERS;
+        float   TO_UMETERS;
         int32_t TO_TURNS;
     };
 
@@ -91,11 +91,11 @@ struct ConvertValues
     {
         int32_t TO_PULSES;
         float   TO_DEGREES;
-        float   TO_MICROMETERS;
+        float   TO_UMETERS;
         int32_t TO_TURNS;
     };
 
-    struct FromMicrometers
+    struct FromUMeters
     {
         int32_t TO_PULSES;
         int32_t TO_STEPS;
@@ -176,14 +176,14 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    ConvertValues::FromDegrees     convertFromDegrees(float degrees, int32_t turns = 0, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromPulses      convertFromPulses(int32_t pulses, int32_t turns = 0, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromSteps       convertFromMSteps(int32_t steps, int32_t turns = 0, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromMicrometers convertFromMicrometers(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromDegrees convertFromDegrees(float degrees, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
+    ConvertValues::FromUMeters convertFromMicrometers(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
 
-    float calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
+    float        calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     EncoderState getEncoderState() const;
-    float getEncoderAngle();
+    float        getEncoderAngle();
 
     void attachOnComplete(void (*callback)());
     void handleMovementComplete();
@@ -255,7 +255,7 @@ private:
 
     // Optional movement complete callback
     volatile bool _movementCompleteFlag;
-    void          (*_onComplete)();
+    void (*_onComplete)();
 };
 
 // Global functions for RTOS integration

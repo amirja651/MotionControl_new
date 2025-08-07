@@ -640,9 +640,9 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
-                //encoder[currentIndex].processPWM();
+                // encoder[currentIndex].processPWM();
                 EncoderState encoderState = positionController[currentIndex].getEncoderState();
-                float encoderAngle = positionController[currentIndex].convertFromPulses(encoderState.position_pulse).TO_DEGREES;
+                float        encoderAngle = positionController[currentIndex].convertFromPulses(encoderState.position_pulse).TO_DEGREES;
                 MotorStatus  status       = positionController[currentIndex].getStatus();
                 if (status.currentAngle == 0)
                 {
@@ -717,7 +717,7 @@ void serialReadTask(void* pvParameters)
                     if (encoder[currentIndex].isEnabled())
                     {
                         EncoderState encoderState = positionController[currentIndex].getEncoderState();
-                        float encoderAngle = positionController[currentIndex].getEncoderAngle();
+                        float        encoderAngle = positionController[currentIndex].getEncoderAngle();
                         Serial.print(F("  Encoder Position: "));
                         Serial.print(encoderAngle);
                         Serial.print(F("° ("));
@@ -1078,12 +1078,12 @@ void serialReadTask(void* pvParameters)
             {
                 if (c.getArgument("p").isSet())
                 {
-                    String                         valueStr = c.getArgument("p").getValue();
-                    float                          value    = valueStr.toFloat();
-                    ConvertValues::FromDegrees     cvfd     = positionController[currentIndex].convertFromDegrees(value);
-                    ConvertValues::FromPulses      cvfp     = positionController[currentIndex].convertFromPulses(value);
-                    ConvertValues::FromSteps       cvfs     = positionController[currentIndex].convertFromMSteps(value);
-                    ConvertValues::FromMicrometers cvfm     = positionController[currentIndex].convertFromMicrometers(value);
+                    String                     valueStr = c.getArgument("p").getValue();
+                    float                      value    = valueStr.toFloat();
+                    ConvertValues::FromDegrees cvfd     = positionController[currentIndex].convertFromDegrees(value);
+                    ConvertValues::FromPulses  cvfp     = positionController[currentIndex].convertFromPulses(value);
+                    ConvertValues::FromSteps   cvfs     = positionController[currentIndex].convertFromMSteps(value);
+                    ConvertValues::FromUMeters cvfm     = positionController[currentIndex].convertFromMicrometers(value);
 
                     Serial.print(F("From Degrees: Pulses:"));
                     Serial.print(cvfd.TO_PULSES);
@@ -1092,7 +1092,7 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F(", Turns:"));
                     Serial.print(cvfd.TO_TURNS);
                     Serial.print(F(", Micrometers:"));
-                    Serial.println(cvfd.TO_MICROMETERS);
+                    Serial.println(cvfd.TO_UMETERS);
 
                     Serial.print(F("From Pulses: Degrees:"));
                     Serial.print(cvfp.TO_DEGREES);
@@ -1101,7 +1101,7 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F(", Turns:"));
                     Serial.print(cvfp.TO_TURNS);
                     Serial.print(F(", Micrometers:"));
-                    Serial.println(cvfp.TO_MICROMETERS);
+                    Serial.println(cvfp.TO_UMETERS);
 
                     Serial.print(F("From Steps: Degrees:"));
                     Serial.print(cvfs.TO_DEGREES);
@@ -1110,7 +1110,7 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F(", Turns:"));
                     Serial.print(cvfs.TO_TURNS);
                     Serial.print(F(", Micrometers:"));
-                    Serial.println(cvfs.TO_MICROMETERS);
+                    Serial.println(cvfs.TO_UMETERS);
 
                     Serial.print(F("From Micrometers: Degrees:"));
                     Serial.print(cvfm.TO_DEGREES);
