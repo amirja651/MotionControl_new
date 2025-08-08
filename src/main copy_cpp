@@ -558,6 +558,68 @@ void serialReadTask(void* pvParameters)
                     Serial.print(F("\b \b"));
                 }
             }
+            /*
+            else if (c == commands[static_cast<int>(CommandKey::A)][0])  // 'A' Increase RMS current
+            {
+                uint16_t currentRms = driver[currentIndex].getRmsCurrent();
+                if (currentRms < MAX_RMS_CURRENT)
+                {
+                    uint16_t newRms = currentRms + CURRENT_INCREMENT;
+                    driver[currentIndex].setRmsCurrent(newRms);
+                }
+
+            }
+            else if (c == commands[static_cast<int>(CommandKey::Z)][0])  // 'Z' Decrease RMS current
+            {
+                uint16_t currentRms = driver[currentIndex].getRmsCurrent();
+                if (currentRms > MIN_RMS_CURRENT)
+                {
+                    uint16_t newRms = currentRms - CURRENT_INCREMENT;
+                    driver[currentIndex].setRmsCurrent(newRms);
+                }
+
+            }
+            else if (c == commands[static_cast<int>(CommandKey::S)][0])  // 'S' Increase IRUN
+            {
+                uint8_t currentIrun = driver[currentIndex].getIrun();
+                if (currentIrun < MAX_IRUN)
+                {
+                    uint8_t newIrun = currentIrun + IRUN_INCREMENT;
+                    driver[currentIndex].setIrun(newIrun);
+                }
+
+            }
+            else if (c == commands[static_cast<int>(CommandKey::X)][0])  // 'X' Decrease IRUN
+            {
+                uint8_t currentIrun = driver[currentIndex].getIrun();
+                if (currentIrun > MIN_IRUN)
+                {
+                    uint8_t newIrun = currentIrun - IRUN_INCREMENT;
+                    driver[currentIndex].setIrun(newIrun);
+                }
+
+            }
+            else if (c == commands[static_cast<int>(CommandKey::D)][0])  // 'D' Increase IHOLD
+            {
+                uint8_t currentIhold = driver[currentIndex].getIhold();
+                if (currentIhold < MAX_IHOLD)
+                {
+                    uint8_t newIhold = currentIhold + IHOLD_INCREMENT;
+                    driver[currentIndex].setIhold(newIhold);
+                }
+
+            }
+            else if (c == commands[static_cast<int>(CommandKey::C)][0])  // 'C' Decrease IHOLD
+            {
+                uint8_t currentIhold = driver[currentIndex].getIhold();
+                if (currentIhold > MIN_IHOLD)
+                {
+                    uint8_t newIhold = currentIhold - IHOLD_INCREMENT;
+                    driver[currentIndex].setIhold(newIhold);
+                }
+
+            }
+            */
             else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' go to position from memory
             {
                 float target = data.position.value;
@@ -678,6 +740,80 @@ void serialReadTask(void* pvParameters)
                     lastKPressTime = currentTime;
                 }
             }
+            /*
+            else if (c == commands[static_cast<int>(CommandKey::T)][0])  // 'T' Test distance-based speed control
+            {
+                Serial.println();
+                Serial.println(F("[Distance-Based Speed Control Test]"));
+                Serial.println(F("Testing different movement distances:"));
+
+                // Test distances: 0.2°, 0.4°, 0.5°, 1°, 5°, 10°, 50°
+                float       testDistances[] = {0.2f, 0.4f, 0.5f, 1.0f, 5.0f, 10.0f, 50.0f};
+                const char* distanceNames[] = {"0.2°", "0.4°", "0.5°", "1°  ", "5°  ", "10° ", "50° "};
+
+                for (int i = 0; i < 7; i++)
+                {
+                    float        distance     = testDistances[i];
+                    DistanceType distanceType = positionController[currentIndex].calculateDistanceType(distance);
+                    float        optimalSpeed =
+            positionController[currentIndex].calculateOptimalSpeedForDistance(distance); float        optimalAccel =
+            positionController[currentIndex].calculateOptimalAccelerationForDistance(distance);
+
+                    const char* typeStr = "";
+                    switch (distanceType)
+                    {
+                        case DistanceType::VERY_SHORT:
+                            typeStr = "VERY_SHORT";
+                            break;
+                        case DistanceType::SHORT:
+                            typeStr = "SHORT";
+                            break;
+                        case DistanceType::MEDIUM:
+                            typeStr = "MEDIUM";
+                            break;
+                        case DistanceType::LONG:
+                            typeStr = "LONG";
+                            break;
+                        case DistanceType::VERY_LONG:
+                            typeStr = "VERY_LONG";
+                            break;
+                        default:
+                            typeStr = "NEGLIGIBLE";
+                            break;
+                    }
+
+                    Serial.printf("  %s: Type=%s, Speed=%.0f steps/s, Accel=%.0f steps/s²\n", distanceNames[i], typeStr,
+            optimalSpeed, optimalAccel);
+                }
+
+                Serial.println(F("Press '1'-'7' to test these movements, or any other key to continue"));
+            }
+            else if (c >= '1' && c <= '7')  // Test specific distance movements
+            {
+                float testDistances[] = {0.2f, 0.4f, 0.5f, 1.0f, 5.0f, 10.0f, 50.0f};
+                int   index           = c - '1';
+                float distance        = testDistances[index];
+
+                int32_t currentSteps = positionController[currentIndex].getCurrentSteps();
+                float currentAngle = stepsToDegrees(currentSteps);
+                float targetAngle  = UnitConverter::wrapAngle(currentAngle + distance);
+                int32_t targetSteps = degreesToSteps(targetAngle);
+
+                log_i("Testing %f° movement (current: %.2f° -> target: %.2f°)\n", distance, currentAngle, targetAngle);
+
+                bool success = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE,
+            ControlMode::OPEN_LOOP);
+
+                if (success)
+                {
+                    log_i("Motor %d testing %f° movement", currentIndex + 1, distance);
+                }
+                else
+                {
+                    log_e("Failed to queue test movement");
+                }
+            }
+            */
             else  // Only add to buffer if not a direct command
             {
                 bool isCommand = false;
