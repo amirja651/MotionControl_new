@@ -17,7 +17,7 @@
 static constexpr int16_t STEPS_PER_REVOLUTION      = 200;                                         // Standard stepper motor
 static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(MICROSTEPS_64);         // 64 microsteps
 static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;  // 6400 microsteps
-static constexpr float   POSITION_ACCURACY_DEGREES = 0.05f;                                       // Target accuracy
+static constexpr int32_t POSITION_ACCURACY_STEPS   = 3;                                           // Target accuracy in steps (0.05° ≈ 3 steps)
 
 // Movement types
 enum class MovementType
@@ -30,12 +30,12 @@ enum class MovementType
 // Distance-based movement types for precise control
 enum class DistanceType
 {
-    NEGLIGIBLE,  // < 0.1° - ignored
-    VERY_SHORT,  // 0.1° - 0.5°
-    SHORT,       // 0.5° - 1°
-    MEDIUM,      // 1° - 5°
-    LONG,        // 5° - 10°
-    VERY_LONG    // > 10°
+    NEGLIGIBLE,  // < 6 steps - ignored
+    VERY_SHORT,  // 6 - 32 steps
+    SHORT,       // 32 - 64 steps
+    MEDIUM,      // 64 - 320 steps
+    LONG,        // 320 - 640 steps
+    VERY_LONG    // > 640 steps
 };
 
 // Control modes
@@ -48,35 +48,30 @@ enum class ControlMode
 // Movement command structure
 struct MovementCommand
 {
-    uint8_t      motorId;      // Motor ID (0-3)
-    float        targetAngle;  // Target angle in degrees (0-360)
-    float        targetUMeter;
-    MovementType movementType;      // Type of movement
-    DistanceType distanceType;      // Distance-based type
-    bool         relative;          // True for relative movement, false for absolute
-    uint32_t     priority;          // Command priority (higher = more important)
-    ControlMode  controlMode;       // Control mode (open-loop, hybrid)
-    float        movementDistance;  // Calculated movement distance in degrees
+    uint8_t      motorId;                // Motor ID (0-3)
+    int32_t      targetSteps;            // Target position in steps
+    MovementType movementType;           // Type of movement
+    DistanceType distanceType;           // Distance-based type
+    bool         relative;               // True for relative movement, false for absolute
+    uint32_t     priority;               // Command priority (higher = more important)
+    ControlMode  controlMode;            // Control mode (open-loop, hybrid)
+    int32_t      movementDistanceSteps;  // Calculated movement distance in steps
 };
 
 // Motor status structure
 struct MotorStatus
 {
     uint8_t      motorId;
-    float        currentAngle;   // Current angle in degrees
-    float        targetAngle;    // Target angle in degrees
-    float        currentUMeter;  // Current  in µm
-    float        targetUMeter;   // Target  in µm
-    bool         isMoving;       // True if motor is currently moving
-    bool         isEnabled;      // True if motor is enabled
-    int32_t      currentSteps;   // Current position in steps
-    int32_t      targetSteps;    // Target position in steps
+    int32_t      currentSteps;  // Current position in steps
+    int32_t      targetSteps;   // Target position in steps
+    bool         isMoving;      // True if motor is currently moving
+    bool         isEnabled;     // True if motor is enabled
     MovementType lastMovementType;
-    uint32_t     movementStartTime;  // Time when movement started
-    uint32_t     totalMovementTime;  // Total time for movement
-    ControlMode  controlMode;        // Current control mode
-    float        positionError;      // Position error in degrees
-    float        encoderAngle;       // Encoder reading in degrees
+    uint32_t     movementStartTime;   // Time when movement started
+    uint32_t     totalMovementTime;   // Total time for movement
+    ControlMode  controlMode;         // Current control mode
+    int32_t      positionErrorSteps;  // Position error in steps
+    int32_t      encoderSteps;        // Encoder reading in steps
 };
 
 // Position controller class
@@ -98,18 +93,13 @@ public:
     bool    isEnabled() const;
 
     // Position control methods
-    bool moveToAngle(float targetAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
-    bool moveToUMeter(float targetUMeter, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
-    bool moveRelative(float deltaAngle, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveToSteps(int32_t targetSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveRelativeSteps(int32_t deltaSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
 
     // Status and information
-    float       getCurrentAngle() const;
-    float       getTargetAngle() const;
-    float       getCurrentUMeter() const;
-    float       getTargetUMeter() const;
     int32_t     getCurrentSteps() const;
     int32_t     getTargetSteps() const;
     MotorStatus getMotorStatus();
@@ -121,21 +111,20 @@ public:
     void setDirection(bool direction);
 
     // Distance-based control methods
-    DistanceType calculateDistanceType(float distance);
-    bool         isValidMovementDistance(float distance);
+    DistanceType calculateDistanceTypeSteps(int32_t distanceSteps);
+    bool         isValidMovementDistanceSteps(int32_t distanceSteps);
     void         setDistanceBasedSpeedProfile(DistanceType distanceType);
-    float        calculateOptimalSpeedForDistance(float distance);
-    float        calculateOptimalAccelerationForDistance(float distance);
-    void         configureSpeedForDistance(float distance);
+    float        calculateOptimalSpeedForDistanceSteps(int32_t distanceSteps);
+    float        calculateOptimalAccelerationForDistanceSteps(int32_t distanceSteps);
+    void         configureSpeedForDistanceSteps(int32_t distanceSteps);
 
     // RTOS task management
     static void startPositionControlTask();
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    float        calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
+    int32_t      getEncoderSteps();
     EncoderState getEncoderState() const;
-    float        getEncoderAngle();
 
     void attachOnComplete(void (*callback)());
     void handleMovementComplete();
@@ -170,9 +159,9 @@ private:
     // Distance-based speed profiles for precise control
     struct DistanceSpeedProfile
     {
-        float maxSpeed;              // Steps per second
-        float acceleration;          // Steps per second squared
-        float decelerationDistance;  // Distance to start deceleration (degrees)
+        float   maxSpeed;                   // Steps per second
+        float   acceleration;               // Steps per second squared
+        int32_t decelerationDistanceSteps;  // Distance to start deceleration (steps)
     };
     DistanceSpeedProfile _distanceSpeedProfiles[6];  // Indexed by DistanceType
 
@@ -189,15 +178,15 @@ private:
     void  configureSpeedProfile(MovementType type);
     void  setSpeedForMovement(MovementType type);
     bool  executeMovement(const MovementCommand& command);
-    float calculateOptimalSpeed(float distance, MovementType type);
+    float calculateOptimalSpeedSteps(int32_t distanceSteps, MovementType type);
 
     // Control mode methods
     void        setControlMode(ControlMode mode);
     ControlMode getControlMode() const;
     bool        isHybridModeEnabled() const;
 
-    float calculatePositionError();
-    void  applyHybridModeCorrection();
+    int32_t calculatePositionErrorSteps();
+    void    applyHybridModeCorrection();
 
     // RTOS task function
     static void positionControlTask(void* parameter);

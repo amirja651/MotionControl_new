@@ -96,6 +96,12 @@ void     onVoltageDrop();
 void     linearProcess(float targetUMeters);
 void     rotationalProcess(float targetAngle);
 
+// Helper functions for unit conversion
+int32_t degreesToSteps(float degrees);
+float   stepsToDegrees(int32_t steps);
+int32_t micrometersToSteps(float micrometers);
+float   stepsToMicrometers(int32_t steps);
+
 void setup()
 {
     // Initialize SPI
@@ -633,20 +639,21 @@ void serialReadTask(void* pvParameters)
                 EncoderState encoderState = positionController[currentIndex].getEncoderState();
                 float        encoderAngle = UnitConverter::convertFromPulses(encoderState.position_pulse).TO_DEGREES;
                 MotorStatus  motorStatus  = positionController[currentIndex].getMotorStatus();
-                if (motorStatus.currentAngle == 0)
+                if (motorStatus.currentSteps == 0)
                 {
                     setCurrentPositionFromEncoder();
-                    motorStatus.currentAngle = positionController[currentIndex].getCurrentAngle();
+                    motorStatus.currentSteps = positionController[currentIndex].getCurrentSteps();
                 }
-                float diff = motorStatus.currentAngle - encoderAngle;
+                float currentAngle = stepsToDegrees(motorStatus.currentSteps);
+                float diff         = currentAngle - encoderAngle;
                 Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Diff="));
                 Serial.print(diff);
                 Serial.print(F("°, Current="));
-                Serial.print(motorStatus.currentAngle);
+                Serial.print(currentAngle);
                 Serial.print(F("° 💡, Target="));
-                Serial.print(motorStatus.targetAngle);
+                Serial.print(stepsToDegrees(motorStatus.targetSteps));
                 Serial.print(F("°, Moving="));
                 Serial.print(motorStatus.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
@@ -700,7 +707,8 @@ void serialReadTask(void* pvParameters)
                     if (encoder[currentIndex].isEnabled())
                     {
                         EncoderState encoderState = positionController[currentIndex].getEncoderState();
-                        float        encoderAngle = positionController[currentIndex].getEncoderAngle();
+                        int32_t      encoderSteps = positionController[currentIndex].getEncoderSteps();
+                        float        encoderAngle = stepsToDegrees(encoderSteps);
                         Serial.print(F("  Encoder Position: "));
                         Serial.print(encoderAngle);
                         Serial.print(F("° ("));
@@ -786,12 +794,14 @@ void serialReadTask(void* pvParameters)
                 int   index           = c - '1';
                 float distance        = testDistances[index];
 
-                float currentAngle = positionController[currentIndex].getCurrentAngle();
-                float targetAngle  = PositionController::wrapAngle(currentAngle + distance);
+                int32_t currentSteps = positionController[currentIndex].getCurrentSteps();
+                float currentAngle = stepsToDegrees(currentSteps);
+                float targetAngle  = UnitConverter::wrapAngle(currentAngle + distance);
+                int32_t targetSteps = degreesToSteps(targetAngle);
 
                 log_i("Testing %f° movement (current: %.2f° -> target: %.2f°)\n", distance, currentAngle, targetAngle);
 
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE,
+                bool success = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE,
             ControlMode::OPEN_LOOP);
 
                 if (success)
@@ -972,7 +982,8 @@ void serialReadTask(void* pvParameters)
                     String motorIdStr = c.getArgument("n").getValue();
                     setMotorId(motorIdStr);
                 }
-                float position = positionController[currentIndex].getCurrentAngle();
+                int32_t currentSteps = positionController[currentIndex].getCurrentSteps();
+                float   position     = stepsToDegrees(currentSteps);
                 Serial.print(F("CURRENT"));
                 Serial.print(position);
             }
@@ -1038,7 +1049,8 @@ void serialReadTask(void* pvParameters)
                 }
                 if (c.getArgument("c").isSet())
                 {
-                    float position = positionController[currentIndex].getCurrentAngle();
+                    int32_t currentSteps = positionController[currentIndex].getCurrentSteps();
+                    float   position     = stepsToDegrees(currentSteps);
                     Serial.print(F("*"));
                     Serial.print(currentIndex);
                     Serial.print(F("#"));
@@ -1116,9 +1128,9 @@ void serialReadTask(void* pvParameters)
 
 float setCurrentPositionFromEncoder()
 {
-    float   encoderAngle = positionController[currentIndex].getEncoderAngle();
-    int32_t steps        = UnitConverter::convertFromDegrees(encoderAngle).TO_STEPS;
-    positionController[currentIndex].setCurrentPosition(steps);
+    int32_t encoderSteps = positionController[currentIndex].getEncoderSteps();
+    positionController[currentIndex].setCurrentPosition(encoderSteps);
+    float encoderAngle = stepsToDegrees(encoderSteps);
     log_d("Motor %d current position set to Angle: %f", currentIndex + 1, encoderAngle);
     return encoderAngle;
 }
@@ -1129,17 +1141,20 @@ void checkDifferenceCorrection()
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(300));
     esp_task_wdt_reset();
-    float encoderAngle = positionController[currentIndex].getEncoderAngle();
-    float currentAngle = positionController[currentIndex].getCurrentAngle();
-    float targetAngle  = positionController[currentIndex].getTargetAngle();
+    int32_t encoderSteps = positionController[currentIndex].getEncoderSteps();
+    int32_t currentSteps = positionController[currentIndex].getCurrentSteps();
+    int32_t targetSteps  = positionController[currentIndex].getTargetSteps();
+
+    float encoderAngle = stepsToDegrees(encoderSteps);
+    float currentAngle = stepsToDegrees(currentSteps);
+    float targetAngle  = stepsToDegrees(targetSteps);
     //  Serial.printf("Encoder: %f, Current: %f, Target: %f\n", encoderAngle, currentAngle, targetAngle);
 
     float difference = encoderAngle - currentAngle;
 
     if (data.control.mode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
-        int32_t steps = UnitConverter::convertFromDegrees(encoderAngle).TO_STEPS;
-        positionController[currentIndex].setCurrentPosition(steps);
+        positionController[currentIndex].setCurrentPosition(encoderSteps);
 
         if (targetAngle == 0)
             targetAngle = 0.01;
@@ -1149,7 +1164,8 @@ void checkDifferenceCorrection()
         // encoder[currentIndex].attachOnComplete(storeOriginPosition);
         positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
-        bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::SHORT_RANGE, data.control.mode);
+        int32_t targetSteps = degreesToSteps(targetAngle);
+        bool    success     = positionController[currentIndex].moveToSteps(targetSteps, MovementType::SHORT_RANGE, data.control.mode);
 
         if (success)
         {
@@ -1207,7 +1223,8 @@ void rotationalProcess(float targetAngle)
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
-    bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
+    int32_t targetSteps = degreesToSteps(targetAngle);
+    bool    success     = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
 
     if (success)
     {
@@ -1218,4 +1235,25 @@ void rotationalProcess(float targetAngle)
     {
         log_e("Failed to queue movement command");
     }
+}
+
+// Helper functions for unit conversion
+int32_t degreesToSteps(float degrees)
+{
+    return UnitConverter::convertFromDegrees(degrees).TO_STEPS;
+}
+
+float stepsToDegrees(int32_t steps)
+{
+    return UnitConverter::convertFromSteps(steps).TO_DEGREES;
+}
+
+int32_t micrometersToSteps(float micrometers)
+{
+    return UnitConverter::convertFromUMeters(micrometers).TO_STEPS;
+}
+
+float stepsToMicrometers(int32_t steps)
+{
+    return UnitConverter::convertFromSteps(steps).TO_UMETERS;
 }

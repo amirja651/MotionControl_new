@@ -25,21 +25,17 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
       _onComplete(nullptr)
 {
     // Initialize status
-    _status.motorId           = motorId;
-    _status.currentAngle      = 0.0f;
-    _status.targetAngle       = 0.0f;
-    _status.currentUMeter     = 0.0f;
-    _status.targetUMeter      = 0.0f;
-    _status.isMoving          = false;
-    _status.isEnabled         = false;
-    _status.currentSteps      = 0;
-    _status.targetSteps       = 0;
-    _status.lastMovementType  = MovementType::MEDIUM_RANGE;
-    _status.movementStartTime = 0;
-    _status.totalMovementTime = 0;
-    _status.controlMode       = ControlMode::OPEN_LOOP;
-    _status.positionError     = 0.0f;
-    _status.encoderAngle      = 0.0f;
+    _status.motorId            = motorId;
+    _status.currentSteps       = 0;
+    _status.targetSteps        = 0;
+    _status.isMoving           = false;
+    _status.isEnabled          = false;
+    _status.lastMovementType   = MovementType::MEDIUM_RANGE;
+    _status.movementStartTime  = 0;
+    _status.totalMovementTime  = 0;
+    _status.controlMode        = ControlMode::OPEN_LOOP;
+    _status.positionErrorSteps = 0;
+    _status.encoderSteps       = 0;
 
     // Store instance for RTOS access
     _instances[motorId] = this;
@@ -50,23 +46,23 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
 
     // Initialize distance-based speed profiles for precise control
-    // NEGLIGIBLE (< 0.01°) - Not used, but defined for completeness
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0.0f};
+    // NEGLIGIBLE (< 6 steps) - Not used, but defined for completeness
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0};
 
-    // VERY_SHORT (0.01° - 0.5°) - Very slow and precise
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 0.05f};
+    // VERY_SHORT (6 - 32 steps) - Very slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 6};
 
-    // SHORT (0.5° - 1°) - Slow and precise
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)] = {1000.0f, 2000.0f, 0.1f};
+    // SHORT (32 - 64 steps) - Slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)] = {1000.0f, 2000.0f, 32};
 
-    // MEDIUM (1° - 5°) - Balanced speed and precision
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)] = {2000.0f, 4000.0f, 0.2f};
+    // MEDIUM (64 - 320 steps) - Balanced speed and precision
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)] = {2000.0f, 4000.0f, 64};
 
-    // LONG (5° - 10°) - Moderate speed
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)] = {4000.0f, 8000.0f, 0.5f};
+    // LONG (320 - 640 steps) - Moderate speed
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)] = {4000.0f, 8000.0f, 320};
 
-    // VERY_LONG (> 10°) - Higher speed for longer distances
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)] = {8000.0f, 16000.0f, 1.0f};
+    // VERY_LONG (> 640 steps) - Higher speed for longer distances
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)] = {8000.0f, 16000.0f, 640};
 }
 
 // Constructor without encoder (for demo)
@@ -87,14 +83,10 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
 {
     // Initialize status
     _status.motorId           = motorId;
-    _status.currentAngle      = 0.0f;
-    _status.targetAngle       = 0.0f;
-    _status.currentUMeter     = 0.0f;
-    _status.targetUMeter      = 0.0f;
-    _status.isMoving          = false;
-    _status.isEnabled         = false;
     _status.currentSteps      = 0;
     _status.targetSteps       = 0;
+    _status.isMoving          = false;
+    _status.isEnabled         = false;
     _status.lastMovementType  = MovementType::MEDIUM_RANGE;
     _status.movementStartTime = 0;
     _status.totalMovementTime = 0;
@@ -108,23 +100,23 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};  // Increased from 4000
 
     // Initialize distance-based speed profiles for precise control
-    // NEGLIGIBLE (< 0.01°) - Not used, but defined for completeness
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0.0f};
+    // NEGLIGIBLE (< 6 steps) - Not used, but defined for completeness
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0};
 
-    // VERY_SHORT (0.01° - 0.5°) - Very slow and precise
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 0.05f};
+    // VERY_SHORT (6 - 32 steps) - Very slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 6};
 
-    // SHORT (0.5° - 1°) - Slow and precise
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)] = {1000.0f, 2000.0f, 0.1f};
+    // SHORT (32 - 64 steps) - Slow and precise
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)] = {1000.0f, 2000.0f, 32};
 
-    // MEDIUM (1° - 5°) - Balanced speed and precision
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)] = {2000.0f, 4000.0f, 0.2f};
+    // MEDIUM (64 - 320 steps) - Balanced speed and precision
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)] = {2000.0f, 4000.0f, 64};
 
-    // LONG (5° - 10°) - Moderate speed
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)] = {4000.0f, 8000.0f, 0.5f};
+    // LONG (320 - 640 steps) - Moderate speed
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)] = {4000.0f, 8000.0f, 320};
 
-    // VERY_LONG (> 10°) - Higher speed for longer distances
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)] = {8000.0f, 16000.0f, 1.0f};
+    // VERY_LONG (> 640 steps) - Higher speed for longer distances
+    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)] = {8000.0f, 16000.0f, 640};
 }
 
 // Destructor
@@ -175,19 +167,11 @@ void PositionController::setCurrentPosition(int32_t position)
 {
     _stepper.setCurrentPosition(position);
     _status.currentSteps = position;
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        _status.currentUMeter = UnitConverter::convertFromSteps(position).TO_UMETERS;
-    }
-    else
-    {
-        _status.currentAngle = UnitConverter::convertFromSteps(position).TO_DEGREES;
-    }
 }
 
 int32_t PositionController::getCurrentTurnFromStepper()
 {
-    return UnitConverter::convertFromSteps(_status.currentSteps).TO_TURNS;
+    return _status.currentSteps / MICROSTEPS_PER_REVOLUTION;
 }
 
 // Enable/Disable
@@ -219,108 +203,70 @@ bool PositionController::isEnabled() const
 }
 
 // Position control methods
-bool PositionController::moveToAngle(float targetAngle, MovementType movementType, ControlMode controlMode)
+bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode)
 {
     if (!_enabled || !_initialized)
         return false;
 
-    // Wrap target angle to 0-360 range
-    targetAngle = UnitConverter::wrapAngle(targetAngle);
-
-    // Calculate current angle and movement distance
-    float currentAngle     = UnitConverter::wrapAngle(getCurrentAngle());
-    float delta            = UnitConverter::calculateShortestPath(currentAngle, targetAngle);
-    float movementDistance = abs(delta);
+    // Calculate movement distance in steps
+    int32_t currentSteps          = getCurrentSteps();
+    int32_t delta                 = targetSteps - currentSteps;
+    int32_t movementDistanceSteps = abs(delta);
 
     // Validate movement distance
-    if (!isValidMovementDistance(movementDistance))
+    if (!isValidMovementDistanceSteps(movementDistanceSteps))
     {
-        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.01°), ignoring", _motorId + 1, movementDistance);
+        log_w("Motor %d: Movement distance %d steps is negligible (< 6 steps), ignoring", _motorId + 1, movementDistanceSteps);
         return false;
     }
 
     // Calculate distance type for speed profile selection
-    DistanceType distanceType = calculateDistanceType(movementDistance);
+    DistanceType distanceType = calculateDistanceTypeSteps(movementDistanceSteps);
 
     // Create movement command
     MovementCommand command;
-    command.motorId          = _motorId;
-    command.targetAngle      = targetAngle;
-    command.movementType     = movementType;
-    command.distanceType     = distanceType;
-    command.relative         = false;
-    command.priority         = 1;
-    command.controlMode      = controlMode;
-    command.movementDistance = movementDistance;
+    command.motorId               = _motorId;
+    command.targetSteps           = targetSteps;
+    command.movementType          = movementType;
+    command.distanceType          = distanceType;
+    command.relative              = false;
+    command.priority              = 1;
+    command.controlMode           = controlMode;
+    command.movementDistanceSteps = movementDistanceSteps;
 
     // Queue the command
     return queueMovementCommand(command);
 }
 
-bool PositionController::moveToUMeter(float targetUMeter, MovementType movementType, ControlMode controlMode)
-{
-    if (!_enabled || !_initialized)
-        return false;
-
-    // Calculate current angle and movement distance
-    float currentUMeter    = getCurrentUMeter();
-    float delta            = targetUMeter - currentUMeter;
-    float movementDistance = abs(delta);
-
-    // Validate movement distance
-    if (!isValidMovementDistance(movementDistance))
-    {
-        log_w("Motor %d: Movement distance %.3f µm is negligible (< 0.01 µm), ignoring", _motorId + 1, movementDistance);
-        return false;
-    }
-
-    // Calculate distance type for speed profile selection
-    DistanceType distanceType = calculateDistanceType(movementDistance);
-
-    // Create movement command
-    MovementCommand command;
-    command.motorId          = _motorId;
-    command.targetUMeter     = targetUMeter;
-    command.movementType     = movementType;
-    command.distanceType     = distanceType;
-    command.relative         = false;
-    command.priority         = 1;
-    command.controlMode      = controlMode;
-    command.movementDistance = movementDistance;
-
-    // Queue the command
-    return queueMovementCommand(command);
-}
-
-bool PositionController::moveRelative(float deltaAngle, MovementType movementType, ControlMode controlMode)
+bool PositionController::moveRelativeSteps(int32_t deltaSteps, MovementType movementType, ControlMode controlMode)
 {
     if (!_enabled || !_initialized)
         return false;
 
     // Validate movement distance
-    float movementDistance = abs(deltaAngle);
-    if (!isValidMovementDistance(movementDistance))
+    int32_t movementDistanceSteps = abs(deltaSteps);
+    if (!isValidMovementDistanceSteps(movementDistanceSteps))
     {
-        log_w("Motor %d: Movement distance %.3f° is negligible (< 0.01°), ignoring", _motorId + 1, movementDistance);
+        log_w("Motor %d: Movement distance %d steps is negligible (< 6 steps), ignoring", _motorId + 1, movementDistanceSteps);
         return false;
     }
 
-    float currentAngle = getCurrentAngle();
-    float targetAngle  = UnitConverter::wrapAngle(currentAngle + deltaAngle);
+    int32_t currentSteps = getCurrentSteps();
+    int32_t targetSteps  = currentSteps + deltaSteps;
 
     // Calculate distance type for speed profile selection
-    DistanceType distanceType = calculateDistanceType(movementDistance);
+    DistanceType distanceType = calculateDistanceTypeSteps(movementDistanceSteps);
 
     // Create movement command
     MovementCommand command;
-    command.motorId          = _motorId;
-    command.targetAngle      = targetAngle;
-    command.movementType     = movementType;
-    command.distanceType     = distanceType;
-    command.relative         = true;
-    command.priority         = 1;
-    command.controlMode      = controlMode;
-    command.movementDistance = movementDistance;
+    command.motorId               = _motorId;
+    command.targetSteps           = targetSteps;
+    command.movementType          = movementType;
+    command.distanceType          = distanceType;
+    command.relative              = true;
+    command.priority              = 1;
+    command.controlMode           = controlMode;
+    command.movementDistanceSteps = movementDistanceSteps;
 
     // Queue the command
     return queueMovementCommand(command);
@@ -358,38 +304,7 @@ bool PositionController::isAtTarget() const
     int32_t targetPos  = static_cast<int32_t>(_stepper.targetPosition());
 
     // Check if within accuracy threshold
-    ConvertValues::FromDegrees cvfd = UnitConverter::convertFromDegrees(POSITION_ACCURACY_DEGREES);
-    return abs(static_cast<int32_t>(currentPos - targetPos)) <= cvfd.TO_STEPS;
-}
-
-// Status and information
-float PositionController::getCurrentAngle() const
-{
-    if (!_initialized)
-        return 0.0f;
-
-    int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return UnitConverter::convertFromSteps(currentSteps).TO_DEGREES;
-}
-
-float PositionController::getTargetAngle() const
-{
-    return _status.targetAngle;
-}
-
-// Status and information
-float PositionController::getCurrentUMeter() const
-{
-    if (!_initialized)
-        return 0.0f;
-
-    int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return UnitConverter::convertFromSteps(currentSteps).TO_UMETERS;
-}
-
-float PositionController::getTargetUMeter() const
-{
-    return _status.targetUMeter;
+    return abs(static_cast<int32_t>(currentPos - targetPos)) <= POSITION_ACCURACY_STEPS;
 }
 
 int32_t PositionController::getCurrentSteps() const
@@ -408,24 +323,12 @@ int32_t PositionController::getTargetSteps() const
 MotorStatus PositionController::getMotorStatus()
 {
     MotorStatus status = _status;
-    int32_t     steps;
 
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        // Update with current values
-        status.targetUMeter  = getTargetUMeter();
-        status.currentUMeter = getCurrentUMeter();
-        steps                = UnitConverter::convertFromUMeters(status.currentUMeter).TO_STEPS;
-    }
-    else
-    {
-        // Update with current values
-        status.targetAngle  = UnitConverter::wrapAngle(getTargetAngle());
-        status.currentAngle = UnitConverter::wrapAngle(getCurrentAngle());
-        steps               = UnitConverter::convertFromDegrees(status.currentAngle).TO_STEPS;
-    }
+    // Update with current values
+    status.currentSteps = getCurrentSteps();
+    status.targetSteps  = getTargetSteps();
 
-    setCurrentPosition(steps);
+    setCurrentPosition(status.currentSteps);
     status.isMoving  = isMoving();
     status.isEnabled = isEnabled();
 
@@ -539,15 +442,7 @@ void PositionController::updateStatus()
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(10)) == pdTRUE)
     {
         _status.currentSteps = static_cast<int32_t>(_stepper.currentPosition());
-        if (getMotorType() == MotorType::LINEAR)
-        {
-            _status.currentUMeter = UnitConverter::convertFromSteps(_status.currentSteps).TO_UMETERS;
-        }
-        else
-        {
-            _status.currentAngle = UnitConverter::convertFromSteps(_status.currentSteps).TO_DEGREES;
-        }
-        _status.isMoving = _stepper.distanceToGo() != 0;
+        _status.isMoving     = _stepper.distanceToGo() != 0;
         xSemaphoreGive(_statusMutex);
     }
 }
@@ -586,42 +481,11 @@ bool PositionController::executeMovement(const MovementCommand& command)
     setControlMode(command.controlMode);
 
     // Calculate target steps
-    int32_t targetSteps;
+    int32_t targetSteps = command.targetSteps;
 
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        if (command.relative)
-        {
-            targetSteps = _status.currentSteps + UnitConverter::convertFromUMeters(command.targetUMeter).TO_STEPS;
-        }
-        else
-        {
-            targetSteps = UnitConverter::convertFromUMeters(command.targetUMeter).TO_STEPS;
-        }
-    }
-    else
-    {
-        if (command.relative)
-        {
-            targetSteps = _status.currentSteps + UnitConverter::convertFromDegrees(command.targetAngle).TO_STEPS;
-        }
-        else
-        {
-            targetSteps = UnitConverter::convertFromDegrees(command.targetAngle).TO_STEPS;
-        }
-    }
-
-    // Update status amiramir
+    // Update status
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(100)) == pdTRUE)
     {
-        if (getMotorType() == MotorType::LINEAR)
-        {
-            _status.targetUMeter = command.targetUMeter;
-        }
-        else
-        {
-            _status.targetAngle = command.targetAngle;
-        }
         _status.targetSteps       = targetSteps;
         _status.isMoving          = true;
         _status.movementStartTime = millis();
@@ -631,7 +495,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
     }
 
     // Configure speed based on movement distance for precise control
-    configureSpeedForDistance(command.movementDistance);
+    configureSpeedForDistanceSteps(command.movementDistanceSteps);
 
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetSteps));
@@ -660,20 +524,20 @@ bool PositionController::executeMovement(const MovementCommand& command)
             break;
     }
 
-    log_d("Motor %d moving to %.2f degrees (distance: %.3f°, type: %s, mode: %s)", _motorId + 1, command.targetAngle, command.movementDistance, distanceStr, modeStr);
+    log_d("Motor %d moving to %d steps (distance: %d steps, type: %s, mode: %s)", _motorId + 1, targetSteps, command.movementDistanceSteps, distanceStr, modeStr);
 
     return true;
 }
 
-float PositionController::calculateOptimalSpeed(float distance, MovementType type)
+float PositionController::calculateOptimalSpeedSteps(int32_t distanceSteps, MovementType type)
 {
     // Calculate optimal speed based on distance and movement type
     float baseSpeed = _speedProfiles[static_cast<int>(type)].maxSpeed;
 
     // Adjust speed based on distance
-    if (distance < 10.0f)  // Short movements
+    if (distanceSteps < 640)  // Short movements (< 10°)
         return baseSpeed * 0.5f;
-    else if (distance < 90.0f)  // Medium movements
+    else if (distanceSteps < 5760)  // Medium movements (< 90°)
         return baseSpeed * 0.8f;
     else  // Long movements
         return baseSpeed;
@@ -784,33 +648,28 @@ EncoderState PositionController::getEncoderState() const
     return {0, 0, 0, 0, 0, Direction::UNKNOWN};
 }
 
-float PositionController::getEncoderAngle()
+int32_t PositionController::getEncoderSteps()
 {
     uint32_t pulse = getEncoderState().position_pulse;
-    return UnitConverter::convertFromPulses(pulse).TO_DEGREES;
+    return UnitConverter::convertFromPulses(pulse).TO_STEPS;
 }
 
-float PositionController::calculatePositionError()
+int32_t PositionController::calculatePositionErrorSteps()
 {
     // Only calculate error if encoder is available and enabled
     if (_encoder == nullptr || !_encoder->isEnabled())
-        return 0.0f;
+        return 0;
 
-    float targetAngle  = _status.targetAngle;
-    float encoderAngle = getEncoderAngle();
+    int32_t targetSteps  = _status.targetSteps;
+    int32_t encoderSteps = getEncoderSteps();
 
-    // Calculate shortest path error
-    float error = UnitConverter::calculateShortestPath(encoderAngle, targetAngle);
+    // Calculate error in steps
+    int32_t error = targetSteps - encoderSteps;
 
-    _status.encoderAngle  = encoderAngle;
-    _status.positionError = error;
+    _status.encoderSteps       = encoderSteps;
+    _status.positionErrorSteps = error;
 
     return error;
-}
-
-float PositionController::calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg)
-{
-    return UnitConverter::calculateMotorAngleFromReference(newPixel, refPixel, refMotorDeg);
 }
 
 // Global functions for RTOS integration
@@ -876,9 +735,9 @@ void PositionController::setControlMode(ControlMode mode)
             {
                 _status.controlMode = ControlMode::HYBRID;
                 // Read current encoder position and use it as starting position
-                float encoderAngle   = getEncoderAngle();
-                _status.encoderAngle = encoderAngle;
-                log_d("Motor %d: Hybrid mode - starting position from encoder: %.2f degrees", _motorId + 1, encoderAngle);
+                int32_t encoderSteps = getEncoderSteps();
+                _status.encoderSteps = encoderSteps;
+                log_d("Motor %d: Hybrid mode - starting position from encoder: %d steps", _motorId + 1, encoderSteps);
             }
             else
             {
@@ -891,25 +750,25 @@ void PositionController::setControlMode(ControlMode mode)
 }
 
 // Distance-based control methods
-DistanceType PositionController::calculateDistanceType(float distance)
+DistanceType PositionController::calculateDistanceTypeSteps(int32_t distanceSteps)
 {
-    if (distance < 0.05f)
+    if (distanceSteps < 6)
         return DistanceType::NEGLIGIBLE;
-    else if (distance < 0.5f)
+    else if (distanceSteps < 32)
         return DistanceType::VERY_SHORT;
-    else if (distance < 1.0f)
+    else if (distanceSteps < 64)
         return DistanceType::SHORT;
-    else if (distance < 5.0f)
+    else if (distanceSteps < 320)
         return DistanceType::MEDIUM;
-    else if (distance < 10.0f)
+    else if (distanceSteps < 640)
         return DistanceType::LONG;
     else
         return DistanceType::VERY_LONG;
 }
 
-bool PositionController::isValidMovementDistance(float distance)
+bool PositionController::isValidMovementDistanceSteps(int32_t distanceSteps)
 {
-    return distance >= 0.01f;  // Ignore movements smaller than 0.01°
+    return distanceSteps >= 6;  // Ignore movements smaller than 6 steps
 }
 
 void PositionController::setDistanceBasedSpeedProfile(DistanceType distanceType)
@@ -925,9 +784,9 @@ void PositionController::setDistanceBasedSpeedProfile(DistanceType distanceType)
     }
 }
 
-float PositionController::calculateOptimalSpeedForDistance(float distance)
+float PositionController::calculateOptimalSpeedForDistanceSteps(int32_t distanceSteps)
 {
-    DistanceType distanceType = calculateDistanceType(distance);
+    DistanceType distanceType = calculateDistanceTypeSteps(distanceSteps);
     if (distanceType == DistanceType::NEGLIGIBLE)
         return 0.0f;
 
@@ -942,23 +801,23 @@ float PositionController::calculateOptimalSpeedForDistance(float distance)
         switch (distanceType)
         {
             case DistanceType::VERY_SHORT:
-                // 0.01° - 0.5°: Linear interpolation
-                speedMultiplier = 0.5f + (distance - 0.01f) * 0.5f / 0.4f;
+                // 6 - 32 steps: Linear interpolation
+                speedMultiplier = 0.5f + (distanceSteps - 6) * 0.5f / 26.0f;
                 break;
             case DistanceType::SHORT:
-                // 0.5° - 1°: Linear interpolation
-                speedMultiplier = 0.7f + (distance - 0.5f) * 0.3f / 0.5f;
+                // 32 - 64 steps: Linear interpolation
+                speedMultiplier = 0.7f + (distanceSteps - 32) * 0.3f / 32.0f;
                 break;
             case DistanceType::MEDIUM:
-                // 1° - 5°: Linear interpolation
-                speedMultiplier = 0.8f + (distance - 1.0f) * 0.2f / 4.0f;
+                // 64 - 320 steps: Linear interpolation
+                speedMultiplier = 0.8f + (distanceSteps - 64) * 0.2f / 256.0f;
                 break;
             case DistanceType::LONG:
-                // 5° - 10°: Linear interpolation
-                speedMultiplier = 0.9f + (distance - 5.0f) * 0.1f / 5.0f;
+                // 320 - 640 steps: Linear interpolation
+                speedMultiplier = 0.9f + (distanceSteps - 320) * 0.1f / 320.0f;
                 break;
             case DistanceType::VERY_LONG:
-                // > 10°: Full speed for longer distances
+                // > 640 steps: Full speed for longer distances
                 speedMultiplier = 1.0f;
                 break;
             default:
@@ -972,9 +831,9 @@ float PositionController::calculateOptimalSpeedForDistance(float distance)
     return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].maxSpeed;
 }
 
-float PositionController::calculateOptimalAccelerationForDistance(float distance)
+float PositionController::calculateOptimalAccelerationForDistanceSteps(int32_t distanceSteps)
 {
-    DistanceType distanceType = calculateDistanceType(distance);
+    DistanceType distanceType = calculateDistanceTypeSteps(distanceSteps);
     if (distanceType == DistanceType::NEGLIGIBLE)
         return 0.0f;
 
@@ -989,23 +848,23 @@ float PositionController::calculateOptimalAccelerationForDistance(float distance
         switch (distanceType)
         {
             case DistanceType::VERY_SHORT:
-                // 0.01° - 0.5°: Lower acceleration for precision
-                accelerationMultiplier = 0.3f + (distance - 0.01f) * 0.4f / 0.4f;
+                // 6 - 32 steps: Lower acceleration for precision
+                accelerationMultiplier = 0.3f + (distanceSteps - 6) * 0.4f / 26.0f;
                 break;
             case DistanceType::SHORT:
-                // 0.5° - 1°: Moderate acceleration
-                accelerationMultiplier = 0.5f + (distance - 0.5f) * 0.3f / 0.5f;
+                // 32 - 64 steps: Moderate acceleration
+                accelerationMultiplier = 0.5f + (distanceSteps - 32) * 0.3f / 32.0f;
                 break;
             case DistanceType::MEDIUM:
-                // 1° - 5°: Balanced acceleration
-                accelerationMultiplier = 0.7f + (distance - 1.0f) * 0.2f / 4.0f;
+                // 64 - 320 steps: Balanced acceleration
+                accelerationMultiplier = 0.7f + (distanceSteps - 64) * 0.2f / 256.0f;
                 break;
             case DistanceType::LONG:
-                // 5° - 10°: Higher acceleration
-                accelerationMultiplier = 0.8f + (distance - 5.0f) * 0.2f / 5.0f;
+                // 320 - 640 steps: Higher acceleration
+                accelerationMultiplier = 0.8f + (distanceSteps - 320) * 0.2f / 320.0f;
                 break;
             case DistanceType::VERY_LONG:
-                // > 10°: Full acceleration for longer distances
+                // > 640 steps: Full acceleration for longer distances
                 accelerationMultiplier = 1.0f;
                 break;
             default:
@@ -1019,18 +878,18 @@ float PositionController::calculateOptimalAccelerationForDistance(float distance
     return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].acceleration;
 }
 
-void PositionController::configureSpeedForDistance(float distance)
+void PositionController::configureSpeedForDistanceSteps(int32_t distanceSteps)
 {
-    if (!isValidMovementDistance(distance))
+    if (!isValidMovementDistanceSteps(distanceSteps))
         return;
 
-    float optimalSpeed        = calculateOptimalSpeedForDistance(distance);
-    float optimalAcceleration = calculateOptimalAccelerationForDistance(distance);
+    float optimalSpeed        = calculateOptimalSpeedForDistanceSteps(distanceSteps);
+    float optimalAcceleration = calculateOptimalAccelerationForDistanceSteps(distanceSteps);
 
     _stepper.setMaxSpeed(optimalSpeed);
     _stepper.setAcceleration(optimalAcceleration);
 
-    log_d("Motor %d: Distance %.3f° - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distance, optimalSpeed, optimalAcceleration);
+    log_d("Motor %d: Distance %d steps - Speed: %.0f steps/s, Accel: %.0f steps/s²", _motorId + 1, distanceSteps, optimalSpeed, optimalAcceleration);
 }
 
 void PositionController::attachOnComplete(void (*callback)())
