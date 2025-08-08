@@ -177,17 +177,17 @@ void PositionController::setCurrentPosition(int32_t position)
     _status.currentSteps = position;
     if (getMotorType() == MotorType::LINEAR)
     {
-        _status.currentUMeter = convertFromMSteps(position).TO_UMETERS;
+        _status.currentUMeter = UnitConverter::convertFromSteps(position).TO_UMETERS;
     }
     else
     {
-        _status.currentAngle = convertFromMSteps(position).TO_DEGREES;
+        _status.currentAngle = UnitConverter::convertFromSteps(position).TO_DEGREES;
     }
 }
 
 int32_t PositionController::getCurrentTurnFromStepper()
 {
-    return convertFromMSteps(_status.currentSteps).TO_TURNS;
+    return UnitConverter::convertFromSteps(_status.currentSteps).TO_TURNS;
 }
 
 // Enable/Disable
@@ -225,11 +225,11 @@ bool PositionController::moveToAngle(float targetAngle, MovementType movementTyp
         return false;
 
     // Wrap target angle to 0-360 range
-    targetAngle = wrapAngle(targetAngle);
+    targetAngle = UnitConverter::wrapAngle(targetAngle);
 
     // Calculate current angle and movement distance
-    float currentAngle     = wrapAngle(getCurrentAngle());
-    float delta            = calculateShortestPath(currentAngle, targetAngle);
+    float currentAngle     = UnitConverter::wrapAngle(getCurrentAngle());
+    float delta            = UnitConverter::calculateShortestPath(currentAngle, targetAngle);
     float movementDistance = abs(delta);
 
     // Validate movement distance
@@ -306,7 +306,7 @@ bool PositionController::moveRelative(float deltaAngle, MovementType movementTyp
     }
 
     float currentAngle = getCurrentAngle();
-    float targetAngle  = wrapAngle(currentAngle + deltaAngle);
+    float targetAngle  = UnitConverter::wrapAngle(currentAngle + deltaAngle);
 
     // Calculate distance type for speed profile selection
     DistanceType distanceType = calculateDistanceType(movementDistance);
@@ -358,7 +358,7 @@ bool PositionController::isAtTarget() const
     int32_t targetPos  = static_cast<int32_t>(_stepper.targetPosition());
 
     // Check if within accuracy threshold
-    ConvertValues::FromDegrees cvfd = convertFromDegrees(POSITION_ACCURACY_DEGREES);
+    ConvertValues::FromDegrees cvfd = UnitConverter::convertFromDegrees(POSITION_ACCURACY_DEGREES);
     return abs(static_cast<int32_t>(currentPos - targetPos)) <= cvfd.TO_STEPS;
 }
 
@@ -369,7 +369,7 @@ float PositionController::getCurrentAngle() const
         return 0.0f;
 
     int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return convertFromMSteps(currentSteps).TO_DEGREES;
+    return UnitConverter::convertFromSteps(currentSteps).TO_DEGREES;
 }
 
 float PositionController::getTargetAngle() const
@@ -384,7 +384,7 @@ float PositionController::getCurrentUMeter() const
         return 0.0f;
 
     int32_t currentSteps = static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
-    return convertFromMSteps(currentSteps).TO_UMETERS;
+    return UnitConverter::convertFromSteps(currentSteps).TO_UMETERS;
 }
 
 float PositionController::getTargetUMeter() const
@@ -415,14 +415,14 @@ MotorStatus PositionController::getMotorStatus()
         // Update with current values
         status.targetUMeter  = getTargetUMeter();
         status.currentUMeter = getCurrentUMeter();
-        steps                = convertFromUMeters(status.currentUMeter).TO_STEPS;
+        steps                = UnitConverter::convertFromUMeters(status.currentUMeter).TO_STEPS;
     }
     else
     {
         // Update with current values
-        status.targetAngle  = wrapAngle(getTargetAngle());
-        status.currentAngle = wrapAngle(getCurrentAngle());
-        steps               = convertFromDegrees(status.currentAngle).TO_STEPS;
+        status.targetAngle  = UnitConverter::wrapAngle(getTargetAngle());
+        status.currentAngle = UnitConverter::wrapAngle(getCurrentAngle());
+        steps               = UnitConverter::convertFromDegrees(status.currentAngle).TO_STEPS;
     }
 
     setCurrentPosition(steps);
@@ -463,28 +463,6 @@ void PositionController::setSpeedProfile(MovementType type, float maxSpeed, floa
         _speedProfiles[index].maxSpeed     = maxSpeed;
         _speedProfiles[index].acceleration = acceleration;
     }
-}
-
-// Angle utilities
-float PositionController::wrapAngle(float angle)
-{
-    if (0)
-    {
-        angle = fmod(angle, 360.0f);
-        if (angle < 0.0f)
-            angle += 360.0f;
-    }
-    return angle;
-}
-
-float PositionController::calculateShortestPath(float currentAngle, float targetAngle)
-{
-    float delta = targetAngle - currentAngle;
-    if (0)
-    {
-        delta = fmod(delta + 540.0f, 360.0f) - 180.0f;  // نگاشت به [-180, +180]
-    }
-    return delta;
 }
 
 // RTOS task management
@@ -569,11 +547,11 @@ void PositionController::updateStatus()
         _status.currentSteps = static_cast<int32_t>(_stepper.currentPosition());
         if (getMotorType() == MotorType::LINEAR)
         {
-            _status.currentUMeter = convertFromMSteps(_status.currentSteps).TO_UMETERS;
+            _status.currentUMeter = UnitConverter::convertFromSteps(_status.currentSteps).TO_UMETERS;
         }
         else
         {
-            _status.currentAngle = convertFromMSteps(_status.currentSteps).TO_DEGREES;
+            _status.currentAngle = UnitConverter::convertFromSteps(_status.currentSteps).TO_DEGREES;
         }
         _status.isMoving = _stepper.distanceToGo() != 0;
         xSemaphoreGive(_statusMutex);
@@ -620,22 +598,22 @@ bool PositionController::executeMovement(const MovementCommand& command)
     {
         if (command.relative)
         {
-            targetSteps = _status.currentSteps + convertFromUMeters(command.targetUMeter).TO_STEPS;
+            targetSteps = _status.currentSteps + UnitConverter::convertFromUMeters(command.targetUMeter).TO_STEPS;
         }
         else
         {
-            targetSteps = convertFromUMeters(command.targetUMeter).TO_STEPS;
+            targetSteps = UnitConverter::convertFromUMeters(command.targetUMeter).TO_STEPS;
         }
     }
     else
     {
         if (command.relative)
         {
-            targetSteps = _status.currentSteps + convertFromDegrees(command.targetAngle).TO_STEPS;
+            targetSteps = _status.currentSteps + UnitConverter::convertFromDegrees(command.targetAngle).TO_STEPS;
         }
         else
         {
-            targetSteps = convertFromDegrees(command.targetAngle).TO_STEPS;
+            targetSteps = UnitConverter::convertFromDegrees(command.targetAngle).TO_STEPS;
         }
     }
 
@@ -836,7 +814,7 @@ EncoderState PositionController::getEncoderState() const
 float PositionController::getEncoderAngle()
 {
     uint32_t pulse = getEncoderState().position_pulse;
-    return convertFromPulses(pulse).TO_DEGREES;
+    return UnitConverter::convertFromPulses(pulse).TO_DEGREES;
 }
 
 float PositionController::calculatePositionError()
@@ -848,7 +826,7 @@ float PositionController::calculatePositionError()
     float encoderAngle = getEncoderAngle();
 
     // Calculate shortest path error
-    float error = calculateShortestPath(encoderAngle, targetAngle);
+    float error = UnitConverter::calculateShortestPath(encoderAngle, targetAngle);
 
     _status.encoderAngle  = encoderAngle;
     _status.positionError = error;
@@ -867,7 +845,7 @@ void PositionController::applyClosedLoopCorrection()
     if (abs(error) > 0.1f)
     {
         // Simple proportional correction
-        float   correctionSteps = convertFromDegrees(error).TO_STEPS;
+        float   correctionSteps = UnitConverter::convertFromDegrees(error).TO_STEPS;
         int32_t currentPos      = _stepper.currentPosition();
         int32_t newTarget       = currentPos + static_cast<int32_t>(correctionSteps);
 
@@ -876,102 +854,9 @@ void PositionController::applyClosedLoopCorrection()
     }
 }
 
-ConvertValues::FromDegrees PositionController::convertFromDegrees(float degrees, int32_t microsteps, int32_t resolution, float micrometers) const
-{
-    float                      remain = 0;
-    ConvertValues::FromDegrees convert;
-
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        convert.TO_TURNS = static_cast<int32_t>(std::floor(degrees / 360.0f));
-        remain           = degrees - (convert.TO_TURNS * 360.0f);
-    }
-    else
-    {
-        convert.TO_TURNS = 0;
-        remain           = degrees;
-    }
-
-    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / 360.0f)));
-    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (microsteps / 360.0f)));
-    convert.TO_UMETERS = static_cast<float>(remain * (micrometers / 360.0f));
-    return convert;
-}
-
-ConvertValues::FromPulses PositionController::convertFromPulses(int32_t pulses, int32_t microsteps, int32_t resolution, float micrometers) const
-{
-    int32_t                   remain = 0;
-    ConvertValues::FromPulses convert;
-
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        convert.TO_TURNS = pulses / resolution;
-        remain           = pulses % resolution;
-    }
-    else
-    {
-        convert.TO_TURNS = 0;
-        remain           = pulses;
-    }
-
-    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / resolution));
-    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (microsteps / resolution)));
-    convert.TO_UMETERS = static_cast<float>(remain * (micrometers / resolution));
-    return convert;
-}
-
-ConvertValues::FromSteps PositionController::convertFromMSteps(int32_t steps, int32_t microsteps, int32_t resolution, float micrometers) const
-{
-    int32_t                  remain = 0;
-    ConvertValues::FromSteps convert;
-
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        convert.TO_TURNS = steps / microsteps;
-        remain           = steps % microsteps;
-    }
-    else
-    {
-        convert.TO_TURNS = 0;
-        remain           = steps;
-    }
-
-    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / microsteps)));
-    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / microsteps));
-    convert.TO_UMETERS = static_cast<float>(remain * (micrometers / microsteps));
-    return convert;
-}
-
-ConvertValues::FromUMeters PositionController::convertFromUMeters(float umeters, int32_t microsteps, int32_t resolution, float micrometers) const
-{
-    float                      remain = 0;
-    ConvertValues::FromUMeters convert;
-
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        convert.TO_TURNS = static_cast<int32_t>(std::floor(umeters / micrometers));
-        remain           = umeters - (convert.TO_TURNS * micrometers);
-    }
-    else
-    {
-        convert.TO_TURNS = 0;
-        remain           = umeters;
-    }
-
-    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / micrometers));
-    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (microsteps / micrometers)));
-    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / micrometers)));
-    return convert;
-}
-
 float PositionController::calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg)
 {
-    float deltaPixel     = newPixel - refPixel;
-    float delta_mm       = deltaPixel * PIXEL_SIZE_MM;
-    float mirrorAngleRad = atan(delta_mm / CAMERA_TO_MIRROR_LENGTH_MM);
-    float motorAngleDeg  = refMotorDeg + (mirrorAngleRad * 180.0 / M_PI);
-
-    return motorAngleDeg;
+    return UnitConverter::calculateMotorAngleFromReference(newPixel, refPixel, refMotorDeg);
 }
 
 // Global functions for RTOS integration

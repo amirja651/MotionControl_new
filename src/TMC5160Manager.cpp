@@ -1,4 +1,5 @@
 #include "TMC5160Manager.h"
+#include "UnitConverter.h"
 
 TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : _driverIndex(driverIndex), _pinCS(pinCS), _RS(RS)
 {
@@ -14,7 +15,7 @@ TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : 
     else
     {
         _rms_current_mA = 500;
-        _microsteps     = DEFAULT_CURRENT_PANCAKE;
+        _microsteps     = MICROSTEPS_64;
         _irun           = 12;  // 10
         _ihold          = 4;
         _iholddelay     = 1;

@@ -4,6 +4,7 @@
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
+#include "UnitConverter.h"
 #include "VoltageMonitor.h"
 #include "esp_log.h"
 #include <Arduino.h>
@@ -630,7 +631,7 @@ void serialReadTask(void* pvParameters)
             {
                 // encoder[currentIndex].processPWM();
                 EncoderState encoderState = positionController[currentIndex].getEncoderState();
-                float        encoderAngle = positionController[currentIndex].convertFromPulses(encoderState.position_pulse).TO_DEGREES;
+                float        encoderAngle = UnitConverter::convertFromPulses(encoderState.position_pulse).TO_DEGREES;
                 MotorStatus  motorStatus  = positionController[currentIndex].getMotorStatus();
                 if (motorStatus.currentAngle == 0)
                 {
@@ -1015,9 +1016,9 @@ void serialReadTask(void* pvParameters)
 
                         if (1)
                         {
-                            ConvertValues::FromDegrees cvfd = positionController[currentIndex].convertFromDegrees(value);
-                            ConvertValues::FromPulses  cvfp = positionController[currentIndex].convertFromPulses(value);
-                            ConvertValues::FromSteps   cvfs = positionController[currentIndex].convertFromMSteps(value);
+                            ConvertValues::FromDegrees cvfd = UnitConverter::convertFromDegrees(value);
+                            ConvertValues::FromPulses  cvfp = UnitConverter::convertFromPulses(value);
+                            ConvertValues::FromSteps   cvfs = UnitConverter::convertFromSteps(value);
                             Serial.print(F("From Degrees: "));
                             Serial.print(cvfd.TO_PULSES);
                             Serial.print(F(", "));
@@ -1067,10 +1068,10 @@ void serialReadTask(void* pvParameters)
                 {
                     String                     valueStr = c.getArgument("p").getValue();
                     float                      value    = valueStr.toFloat();
-                    ConvertValues::FromDegrees cvfd     = positionController[currentIndex].convertFromDegrees(value);
-                    ConvertValues::FromPulses  cvfp     = positionController[currentIndex].convertFromPulses(value);
-                    ConvertValues::FromSteps   cvfs     = positionController[currentIndex].convertFromMSteps(value);
-                    ConvertValues::FromUMeters cvfm     = positionController[currentIndex].convertFromUMeters(value);
+                    ConvertValues::FromDegrees cvfd     = UnitConverter::convertFromDegrees(value);
+                    ConvertValues::FromPulses  cvfp     = UnitConverter::convertFromPulses(value);
+                    ConvertValues::FromSteps   cvfs     = UnitConverter::convertFromSteps(value);
+                    ConvertValues::FromUMeters cvfm     = UnitConverter::convertFromUMeters(value);
 
                     Serial.print(F("From Degrees: Pulses:"));
                     Serial.print(cvfd.TO_PULSES);
@@ -1126,7 +1127,7 @@ void serialReadTask(void* pvParameters)
 float setCurrentPositionFromEncoder()
 {
     float   encoderAngle = positionController[currentIndex].getEncoderAngle();
-    int32_t steps        = positionController[currentIndex].convertFromDegrees(encoderAngle).TO_STEPS;
+    int32_t steps        = UnitConverter::convertFromDegrees(encoderAngle).TO_STEPS;
     positionController[currentIndex].setCurrentPosition(steps);
     log_d("Motor %d current position set to Angle: %f", currentIndex + 1, encoderAngle);
     return encoderAngle;
@@ -1147,7 +1148,7 @@ void checkDifferenceCorrection()
 
     if (data.control.mode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
-        int32_t steps = positionController[currentIndex].convertFromDegrees(encoderAngle).TO_STEPS;
+        int32_t steps = UnitConverter::convertFromDegrees(encoderAngle).TO_STEPS;
         positionController[currentIndex].setCurrentPosition(steps);
 
         if (targetAngle == 0)

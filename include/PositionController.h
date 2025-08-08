@@ -5,6 +5,7 @@
 #include "MAE3Encoder.h"
 #include "Pins.h"
 #include "TMC5160Manager.h"
+#include "UnitConverter.h"
 #include <AccelStepper.h>
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
@@ -13,15 +14,10 @@
 #include <freertos/task.h>
 
 // Motor configuration constants
-static constexpr int16_t STEPS_PER_REVOLUTION      = 200;                                            // Standard stepper motor
-static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(DEFAULT_CURRENT_PANCAKE);  // 32 microsteps
-static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;     // 6400 microsteps
-static constexpr float   POSITION_ACCURACY_DEGREES = 0.05f;                                          // Target accuracy
-
-static constexpr float PIXEL_SIZE_UM              = 5.2f;  // Size of each pixel in the camera (micrometers)
-static constexpr float PIXEL_SIZE_MM              = (PIXEL_SIZE_UM * 1e-3f);
-static constexpr float CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from mirror to camera in millimeters (can be measured accurately)
-static constexpr float LEAD_SCREW_PITCH_UM        = 200.0f;  // Lead screw pitch in micrometers
+static constexpr int16_t STEPS_PER_REVOLUTION      = 200;                                         // Standard stepper motor
+static constexpr int16_t MICROSTEPS_PER_STEP       = static_cast<int16_t>(MICROSTEPS_64);         // 64 microsteps
+static constexpr int32_t MICROSTEPS_PER_REVOLUTION = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP;  // 6400 microsteps
+static constexpr float   POSITION_ACCURACY_DEGREES = 0.05f;                                       // Target accuracy
 
 // Movement types
 enum class MovementType
@@ -50,12 +46,6 @@ enum class ControlMode
     HYBRID        // Read encoder once at start, then open-loop
 };
 
-enum class MotorType
-{
-    LINEAR     = 0,
-    ROTATIONAL = 1,
-};
-
 // Movement command structure
 struct MovementCommand
 {
@@ -68,41 +58,6 @@ struct MovementCommand
     uint32_t     priority;          // Command priority (higher = more important)
     ControlMode  controlMode;       // Control mode (open-loop, closed-loop, hybrid)
     float        movementDistance;  // Calculated movement distance in degrees
-};
-
-struct ConvertValues
-{
-    struct FromDegrees
-    {
-        int32_t TO_PULSES;
-        int32_t TO_STEPS;
-        float   TO_UMETERS;
-        int32_t TO_TURNS;
-    };
-
-    struct FromPulses
-    {
-        float   TO_DEGREES;
-        int32_t TO_STEPS;
-        float   TO_UMETERS;
-        int32_t TO_TURNS;
-    };
-
-    struct FromSteps
-    {
-        int32_t TO_PULSES;
-        float   TO_DEGREES;
-        float   TO_UMETERS;
-        int32_t TO_TURNS;
-    };
-
-    struct FromUMeters
-    {
-        int32_t TO_PULSES;
-        int32_t TO_STEPS;
-        float   TO_DEGREES;
-        int32_t TO_TURNS;
-    };
 };
 
 // Motor status structure
@@ -174,19 +129,10 @@ public:
     float        calculateOptimalAccelerationForDistance(float distance);
     void         configureSpeedForDistance(float distance);
 
-    // Angle utilities
-    static float wrapAngle(float angle);
-    static float calculateShortestPath(float currentAngle, float targetAngle);
-
     // RTOS task management
     static void startPositionControlTask();
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
-
-    ConvertValues::FromDegrees convertFromDegrees(float degrees, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromPulses  convertFromPulses(int32_t pulses, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromSteps   convertFromMSteps(int32_t steps, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
-    ConvertValues::FromUMeters convertFromUMeters(float umeters, int32_t microsteps = (DEFAULT_CURRENT_PANCAKE - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM) const;
 
     float        calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     EncoderState getEncoderState() const;

@@ -13,7 +13,7 @@
 
 // Physical parameters
 
-#define ENCODER_RESOLUTION 4096  // Encoder 12 bits
+// Using UnitConverter::ENCODER_RESOLUTION instead
 
 struct votePair
 {
@@ -34,9 +34,9 @@ struct EncoderState
     volatile uint32_t width_high;
     volatile uint32_t width_low;
     volatile uint32_t width_interval;
-    uint32_t position_pulse;
-    uint32_t lap_id;
-    Direction direction;
+    uint32_t          position_pulse;
+    uint32_t          lap_id;
+    Direction         direction;
 };
 
 static constexpr int8_t MAX_LAPS = 20;
@@ -143,7 +143,7 @@ private:
 
     // Optional movement complete callback
     volatile bool _inAbsenceOfInterruptFlag;
-    void          (*_inAbsenceOfInterrupt)();
+    void (*_inAbsenceOfInterrupt)();
 };
 
 #endif  // MAE3_ENCODER2_H
