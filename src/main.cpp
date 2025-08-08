@@ -474,7 +474,6 @@ void setMotorId(String motorId)
     log_i("Motor %d selected and enabled", currentIndex + 1);
 }
 
-// Serial read task (M101)
 void serialReadTask(void* pvParameters)
 {
     const TickType_t xFrequency    = pdMS_TO_TICKS(100);
@@ -775,20 +774,6 @@ void serialReadTask(void* pvParameters)
                     {
                         rotationalProcess(target);
                     }
-                }
-            }
-            else if (c == cmdMoveRelative)
-            {
-                if (c.getArgument("n").isSet())
-                {
-                    String motorIdStr = c.getArgument("n").getValue();
-                    setMotorId(motorIdStr);
-                }
-                if (c.getArgument("p").isSet())
-                {
-                    String degreesStr  = c.getArgument("p").getValue();
-                    float  targetAngle = degreesStr.toFloat();
-                    log_i("Motor %d moving relative to %f degrees", currentIndex + 1, targetAngle);
                 }
             }
             else if (c == cmdControlMode)

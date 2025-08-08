@@ -7,7 +7,6 @@ SimpleCLI cli;
 
 Command cmdMotor;
 Command cmdMove;
-Command cmdMoveRelative;
 Command cmdControlMode;
 Command cmdStop;
 Command cmdEnable;
@@ -31,16 +30,10 @@ void initializeCLI()
     cmdMove.addArg("p", "0.0");  // positional argument (um or deg)
     cmdMove.setDescription("Move the current motor to the target position");
 
-    cmdMoveRelative = cli.addCmd("mover");
-    cmdMoveRelative.addArg("n", "1");    // motor number argument
-    cmdMoveRelative.addArg("p", "0.0");  // positional argument (um or deg)
-    cmdMoveRelative.setDescription("Move the current motor relative to the current position");
-
     cmdControlMode = cli.addCmd("control");
     cmdControlMode.addArg("n", "1");  // motor number argument
     cmdControlMode.addFlagArg("o");   // open loop
     cmdControlMode.addFlagArg("h");   // hybrid
-
     cmdControlMode.setDescription("Set control mode for current motor (open-loop or hybrid)");
 
     cmdStop = cli.addCmd("stop");
