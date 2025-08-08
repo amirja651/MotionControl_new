@@ -405,7 +405,7 @@ int32_t PositionController::getTargetSteps() const
     return _status.targetSteps;
 }
 
-MotorStatus PositionController::getStatus()
+MotorStatus PositionController::getMotorStatus()
 {
     MotorStatus status = _status;
     int32_t     steps;

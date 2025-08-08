@@ -47,7 +47,7 @@ DirMultiplexer dirMultiplexer(MultiplexerPins::S0, MultiplexerPins::S1, Multiple
 // MAE3 Encoders for position feedback (read-only, not used for control)
 MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
-// Position controllers for precise angle control
+// Position controllers for precise movement control
 PositionController positionController[4] = {PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0], DriverPins::EN[0], encoder[0]), PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
                                             PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoder[2]), PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
@@ -613,29 +613,17 @@ void serialReadTask(void* pvParameters)
 
             }
             */
-            else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' Show position status
+            else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' go to position from memory
             {
-                float targetAngle = data.position.value;
-                if (targetAngle == 0)
-                    targetAngle = 0.09f;
-                else if (targetAngle == 360)
-                    targetAngle = 359.9955f;
+                float target = data.position.value;
 
-                loadControlMode();
-
-                encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
-                positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
-
-                bool success = positionController[currentIndex].moveToAngle(targetAngle, MovementType::MEDIUM_RANGE, data.control.mode);
-
-                if (success)
+                if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
                 {
-                    const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
-                    log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
+                    linearProcess(target);
                 }
                 else
                 {
-                    log_e("Failed to queue movement command");
+                    rotationalProcess(target);
                 }
             }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
@@ -643,32 +631,32 @@ void serialReadTask(void* pvParameters)
                 // encoder[currentIndex].processPWM();
                 EncoderState encoderState = positionController[currentIndex].getEncoderState();
                 float        encoderAngle = positionController[currentIndex].convertFromPulses(encoderState.position_pulse).TO_DEGREES;
-                MotorStatus  status       = positionController[currentIndex].getStatus();
-                if (status.currentAngle == 0)
+                MotorStatus  motorStatus  = positionController[currentIndex].getMotorStatus();
+                if (motorStatus.currentAngle == 0)
                 {
                     setCurrentPositionFromEncoder();
-                    status.currentAngle = positionController[currentIndex].getCurrentAngle();
+                    motorStatus.currentAngle = positionController[currentIndex].getCurrentAngle();
                 }
-                float diff = status.currentAngle - encoderAngle;
+                float diff = motorStatus.currentAngle - encoderAngle;
                 Serial.print(F("[Position Status] Motor "));
                 Serial.print(currentIndex + 1);
                 Serial.print(F(": Diff="));
                 Serial.print(diff);
                 Serial.print(F("°, Current="));
-                Serial.print(status.currentAngle);
+                Serial.print(motorStatus.currentAngle);
                 Serial.print(F("° 💡, Target="));
-                Serial.print(status.targetAngle);
+                Serial.print(motorStatus.targetAngle);
                 Serial.print(F("°, Moving="));
-                Serial.print(status.isMoving ? F("YES") : F("NO"));
+                Serial.print(motorStatus.isMoving ? F("YES") : F("NO"));
                 Serial.print(F(", Enabled="));
-                Serial.print(status.isEnabled ? F("YES") : F("NO"));
+                Serial.print(motorStatus.isEnabled ? F("YES") : F("NO"));
                 Serial.print(F(", Mode="));
-                const char* modeStr = (status.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L" : (status.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L" : "HYBRID";
+                const char* modeStr = (motorStatus.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L" : (motorStatus.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L" : "HYBRID";
                 Serial.print(modeStr);
-                if (status.controlMode == ControlMode::CLOSED_LOOP)
+                if (motorStatus.controlMode == ControlMode::CLOSED_LOOP)
                 {
                     Serial.print(F(", Error="));
-                    Serial.print(status.positionError, 2);
+                    Serial.print(motorStatus.positionError, 2);
                     Serial.print(F("°"));
                 }
                 Serial.print(F(", (Encoder: "));

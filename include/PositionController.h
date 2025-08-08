@@ -158,7 +158,7 @@ public:
     float       getTargetUMeter() const;
     int32_t     getCurrentSteps() const;
     int32_t     getTargetSteps() const;
-    MotorStatus getStatus();
+    MotorStatus getMotorStatus();
 
     // Configuration
     void setMaxSpeed(float speedStepsPerSec);
