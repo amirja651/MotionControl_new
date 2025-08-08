@@ -1055,9 +1055,26 @@ void linearProcess(float targetUMeters)
 {
     data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
     data.voltageDropPosition.turns          = positionController[currentIndex].getCurrentTurnFromStepper();
+    Serial.print(F("Before:"));
+    Serial.print(data.voltageDropPosition.beforeMovement);
+    Serial.print(F("Turns:"));
+    Serial.println(data.voltageDropPosition.turns);
     loadControlMode();
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+
+    int32_t targetSteps = micrometersToSteps(targetUMeters);
+    bool    success     = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
+
+    if (success)
+    {
+        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid";
+        log_i("Motor %d moving to %f µm (%s)", currentIndex + 1, targetUMeters, modeStr);
+    }
+    else
+    {
+        log_e("Failed to queue movement command");
+    }
 }
 
 void rotationalProcess(float targetAngle)
