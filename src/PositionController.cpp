@@ -429,12 +429,6 @@ MotorStatus PositionController::getMotorStatus()
     status.isMoving  = isMoving();
     status.isEnabled = isEnabled();
 
-    // Update closed-loop information
-    if (isClosedLoopEnabled())
-    {
-        status.positionError = calculatePositionError();
-    }
-
     return status;
 }
 
@@ -642,7 +636,7 @@ bool PositionController::executeMovement(const MovementCommand& command)
     // Execute movement
     _stepper.moveTo(static_cast<long>(targetSteps));
 
-    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (command.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
+    const char* modeStr     = (command.controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : "HYBRID";
     const char* distanceStr = "";
     switch (command.distanceType)
     {
@@ -740,16 +734,9 @@ void PositionController::runPositionControl()
     _stepper.run();
 
     // Apply control mode corrections if enabled
-    if (_status.isMoving)
+    if (_status.isMoving && isHybridModeEnabled())
     {
-        if (isClosedLoopEnabled())
-        {
-            applyClosedLoopCorrection();
-        }
-        else if (isHybridModeEnabled())
-        {
-            applyHybridModeCorrection();
-        }
+        applyHybridModeCorrection();
     }
 
     // Update status periodically
@@ -770,18 +757,9 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
 
-        const char* modeStr = (_controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : (_controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED-LOOP" : "HYBRID";
-
-        if (_controlMode == ControlMode::CLOSED_LOOP)
-        {
-            float finalError = calculatePositionError();
-            log_i("Motor %d reached target (%s). 🎯 Final error: %.2f°", _motorId + 1, modeStr, finalError);
-        }
-        else
-        {
-            _movementCompleteFlag = true;
-            log_i("Motor %d reached target (%s). 🎯", _motorId + 1, modeStr);
-        }
+        const char* modeStr   = (_controlMode == ControlMode::OPEN_LOOP) ? "OPEN-LOOP" : "HYBRID";
+        _movementCompleteFlag = true;
+        log_i("Motor %d reached target (%s). 🎯", _motorId + 1, modeStr);
     }
 }
 
@@ -789,11 +767,6 @@ void PositionController::runPositionControl()
 ControlMode PositionController::getControlMode() const
 {
     return _controlMode;
-}
-
-bool PositionController::isClosedLoopEnabled() const
-{
-    return _controlMode == ControlMode::CLOSED_LOOP && _encoder != nullptr && _encoder->isEnabled();
 }
 
 bool PositionController::isHybridModeEnabled() const
@@ -819,7 +792,8 @@ float PositionController::getEncoderAngle()
 
 float PositionController::calculatePositionError()
 {
-    if (!isClosedLoopEnabled())
+    // Only calculate error if encoder is available and enabled
+    if (_encoder == nullptr || !_encoder->isEnabled())
         return 0.0f;
 
     float targetAngle  = _status.targetAngle;
@@ -832,26 +806,6 @@ float PositionController::calculatePositionError()
     _status.positionError = error;
 
     return error;
-}
-
-void PositionController::applyClosedLoopCorrection()
-{
-    if (!isClosedLoopEnabled() || !_status.isMoving)
-        return;
-
-    float error = calculatePositionError();
-
-    // Only apply correction if error is significant (more than 0.1 degrees)
-    if (abs(error) > 0.1f)
-    {
-        // Simple proportional correction
-        float   correctionSteps = UnitConverter::convertFromDegrees(error).TO_STEPS;
-        int32_t currentPos      = _stepper.currentPosition();
-        int32_t newTarget       = currentPos + static_cast<int32_t>(correctionSteps);
-
-        // Apply correction
-        _stepper.moveTo(newTarget);
-    }
 }
 
 float PositionController::calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg)
@@ -913,20 +867,7 @@ void PositionController::setControlMode(ControlMode mode)
     {
         case ControlMode::OPEN_LOOP:
             // No special setup needed for open-loop
-            break;
-
-        case ControlMode::CLOSED_LOOP:
-            // Enable continuous closed-loop control
-            if (_encoder != nullptr && _encoder->isEnabled())
-            {
-                _status.controlMode = ControlMode::CLOSED_LOOP;
-            }
-            else
-            {
-                log_w("Motor %d: Cannot enable closed-loop - encoder not available", _motorId + 1);
-                _controlMode        = ControlMode::OPEN_LOOP;
-                _status.controlMode = ControlMode::OPEN_LOOP;
-            }
+            _status.controlMode = ControlMode::OPEN_LOOP;
             break;
 
         case ControlMode::HYBRID:

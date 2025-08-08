@@ -40,8 +40,8 @@ void initializeCLI()
     cmdControlMode.addArg("n", "1");  // motor number argument
     cmdControlMode.addFlagArg("o");   // open loop
     cmdControlMode.addFlagArg("h");   // hybrid
-    cmdControlMode.addFlagArg("c");   // closed loop
-    cmdControlMode.setDescription("Set control mode for current motor");
+
+    cmdControlMode.setDescription("Set control mode for current motor (open-loop or hybrid)");
 
     cmdStop = cli.addCmd("stop");
     cmdStop.addArg("n", "1");  // motor number argument

@@ -652,14 +652,8 @@ void serialReadTask(void* pvParameters)
                 Serial.print(F(", Enabled="));
                 Serial.print(motorStatus.isEnabled ? F("YES") : F("NO"));
                 Serial.print(F(", Mode="));
-                const char* modeStr = (motorStatus.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L" : (motorStatus.controlMode == ControlMode::CLOSED_LOOP) ? "CLOSED L" : "HYBRID";
+                const char* modeStr = (motorStatus.controlMode == ControlMode::OPEN_LOOP) ? "OPEN L" : "HYBRID";
                 Serial.print(modeStr);
-                if (motorStatus.controlMode == ControlMode::CLOSED_LOOP)
-                {
-                    Serial.print(F(", Error="));
-                    Serial.print(motorStatus.positionError, 2);
-                    Serial.print(F("°"));
-                }
                 Serial.print(F(", (Encoder: "));
                 Serial.print(encoderAngle);
                 Serial.print(F("°,"));
@@ -930,11 +924,7 @@ void serialReadTask(void* pvParameters)
                     String motorIdStr = c.getArgument("n").getValue();
                     setMotorId(motorIdStr);
                 }
-                if (c.getArgument("c").isSet())
-                {
-                    data.control.mode = ControlMode::CLOSED_LOOP;
-                }
-                else if (c.getArgument("o").isSet())
+                if (c.getArgument("o").isSet())
                 {
                     data.control.mode = ControlMode::OPEN_LOOP;
                 }
@@ -1175,7 +1165,7 @@ void checkDifferenceCorrection()
         data.position.reached = currentAngle;
         data.position.save    = true;
         storeToMemory();
-        log_i("No movement needed, difference: %f, ControlMode: %s", difference, (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid");
+        log_i("No movement needed, difference: %f, ControlMode: %s", difference, (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid");
     }
 }
 
@@ -1221,7 +1211,7 @@ void rotationalProcess(float targetAngle)
 
     if (success)
     {
-        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : (data.control.mode == ControlMode::CLOSED_LOOP) ? "closed-loop" : "hybrid";
+        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid";
         log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
     }
     else

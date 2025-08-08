@@ -41,9 +41,8 @@ enum class DistanceType
 // Control modes
 enum class ControlMode
 {
-    OPEN_LOOP,    // Open-loop control only
-    CLOSED_LOOP,  // Continuous closed-loop control
-    HYBRID        // Read encoder once at start, then open-loop
+    OPEN_LOOP,  // Open-loop control only
+    HYBRID      // Read encoder once at start, then open-loop
 };
 
 // Movement command structure
@@ -56,7 +55,7 @@ struct MovementCommand
     DistanceType distanceType;      // Distance-based type
     bool         relative;          // True for relative movement, false for absolute
     uint32_t     priority;          // Command priority (higher = more important)
-    ControlMode  controlMode;       // Control mode (open-loop, closed-loop, hybrid)
+    ControlMode  controlMode;       // Control mode (open-loop, hybrid)
     float        movementDistance;  // Calculated movement distance in degrees
 };
 
@@ -195,11 +194,9 @@ private:
     // Control mode methods
     void        setControlMode(ControlMode mode);
     ControlMode getControlMode() const;
-    bool        isClosedLoopEnabled() const;
     bool        isHybridModeEnabled() const;
 
     float calculatePositionError();
-    void  applyClosedLoopCorrection();
     void  applyHybridModeCorrection();
 
     // RTOS task function
