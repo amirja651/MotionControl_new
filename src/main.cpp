@@ -94,6 +94,7 @@ void     checkDifferenceCorrection();
 void     onVoltageDrop();
 void     linearProcess(float targetUMeters);
 void     rotationalProcess(float targetAngle);
+void     prepaireBeforeMovement();
 
 // Helper functions for unit conversion
 int32_t degreesToSteps(float degrees);
@@ -1046,15 +1047,8 @@ void onVoltageDrop()
 
 void linearProcess(float targetUMeters)
 {
-    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
-    data.voltageDropPosition.turns          = positionController[currentIndex].getCurrentTurnFromStepper();
-    Serial.print(F("Before:"));
-    Serial.print(data.voltageDropPosition.beforeMovement);
-    Serial.print(F("Turns:"));
-    Serial.println(data.voltageDropPosition.turns);
-    loadControlMode();
-    encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
-    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+    data.voltageDropPosition.turns = positionController[currentIndex].getCurrentTurnFromStepper();
+    prepaireBeforeMovement();
 
     int32_t targetSteps = micrometersToSteps(targetUMeters);
     bool    success     = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
@@ -1077,10 +1071,8 @@ void rotationalProcess(float targetAngle)
     else if (targetAngle == 360)
         targetAngle = 359.9955f;
 
-    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
-    loadControlMode();
-    encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
-    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
+    data.voltageDropPosition.turns = 0;
+    prepaireBeforeMovement();
 
     int32_t targetSteps = degreesToSteps(targetAngle);
     bool    success     = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
@@ -1094,6 +1086,18 @@ void rotationalProcess(float targetAngle)
     {
         log_e("Failed to queue movement command");
     }
+}
+
+void prepaireBeforeMovement()
+{
+    data.voltageDropPosition.beforeMovement = setCurrentPositionFromEncoder();
+    Serial.print(F("Before:"));
+    Serial.print(data.voltageDropPosition.beforeMovement);
+    Serial.print(F("Turns:"));
+    Serial.println(data.voltageDropPosition.turns);
+    loadControlMode();
+    encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
+    positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 }
 
 // Helper functions for unit conversion
