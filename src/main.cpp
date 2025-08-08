@@ -82,7 +82,6 @@ Preferences prefs;
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number);
 void     storeToMemory();
 float    loadOriginPosition();
-int32_t  loadTurns();
 void     loadControlMode();
 void     loadPosition();
 void     clearAllOriginPositions();
@@ -333,20 +332,6 @@ float loadOriginPosition()
     float  originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
     log_d("Motor %d origin position loaded: %f°", currentIndex + 1, originPosition);
     return originPosition;
-}
-
-int32_t loadTurns()
-{
-    if (currentIndex >= 4)
-    {
-        log_e("Invalid motor index!");
-        return 0;
-    }
-
-    String  key   = "m" + String(currentIndex) + "_tu";
-    int32_t turns = prefs.getInt(key.c_str(), 0);
-    log_d("Motor %d turns loaded: %d", currentIndex + 1, turns);
-    return turns;
 }
 
 void loadControlMode()
@@ -1028,7 +1013,13 @@ void checkDifferenceCorrection()
     else
     {
         data.position.reached = currentAngle;
-        data.position.save    = true;
+
+        if (positionController[currentIndex].getMotorType() == MotorType::LINEAR)
+        {
+            data.position.turns = positionController[currentIndex].getCurrentTurnFromStepper();
+        }
+
+        data.position.save = true;
         storeToMemory();
         log_i("No movement needed, difference: %f, ControlMode: %s", difference, (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid");
     }
@@ -1048,6 +1039,8 @@ void onVoltageDrop()
         positionController[currentIndex].stop();
         data.voltageDropPosition.save = true;
         storeToMemory();
+
+        log_w("Motor %d stopped due to voltage drop, position saved", currentIndex + 1);
     }
 }
 
