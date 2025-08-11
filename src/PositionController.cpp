@@ -918,7 +918,10 @@ void PositionController::setMovementCompleteFlag(bool flag)
 MotorType PositionController::getMotorType() const
 {
     if (_motorId == 0)
+    {
+        UnitConverter::setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
         return MotorType::LINEAR;
+    }
     else
         return MotorType::ROTATIONAL;
 }

@@ -16,8 +16,8 @@
 // Motor configuration constants
 static constexpr int16_t STEPS_PER_REVOLUTION         = 200;                                            // Standard stepper motor
 static constexpr int16_t MICROSTEPS_PER_STEP_64       = static_cast<int16_t>(MICROSTEPS_64);            // 64 microsteps
-static constexpr int32_t MICROSTEPS_PER_REVOLUTION_64 = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP_64;  // 6400 microsteps
-static constexpr int16_t MICROSTEPS_PER_STEP_32       = static_cast<int16_t>(MICROSTEPS_32);            // 64 microsteps
+static constexpr int32_t MICROSTEPS_PER_REVOLUTION_64 = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP_64;  // 12800 microsteps
+static constexpr int16_t MICROSTEPS_PER_STEP_32       = static_cast<int16_t>(MICROSTEPS_32);            // 32 microsteps
 static constexpr int32_t MICROSTEPS_PER_REVOLUTION_32 = STEPS_PER_REVOLUTION * MICROSTEPS_PER_STEP_32;  // 6400 microsteps
 static constexpr int32_t POSITION_ACCURACY_STEPS      = 3;                                              // Target accuracy in steps (0.05° ≈ 3 steps)
 
