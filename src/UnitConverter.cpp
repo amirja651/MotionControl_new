@@ -102,16 +102,6 @@ ConvertValues::FromUMeters UnitConverter::convertFromUMeters(float umeters, int3
     return convert;
 }
 
-float UnitConverter::calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg)
-{
-    float deltaPixel     = newPixel - refPixel;
-    float delta_mm       = deltaPixel * PIXEL_SIZE_MM;
-    float mirrorAngleRad = atan(delta_mm / CAMERA_TO_MIRROR_LENGTH_MM);
-    float motorAngleDeg  = refMotorDeg + (mirrorAngleRad * 180.0f / M_PI);
-
-    return motorAngleDeg;
-}
-
 float UnitConverter::wrapAngle(float angle)
 {
     // Normalize angle to 0-360 range

@@ -81,7 +81,6 @@ public:
     static ConvertValues::FromUMeters convertFromUMeters(float umeters, int32_t microsteps = (MICROSTEPS_64 - 1) * 200, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM, MotorType motorType = MotorType::ROTATIONAL);
 
     // Utility methods
-    static float calculateMotorAngleFromReference(float newPixel, float refPixel, float refMotorDeg);
     static float wrapAngle(float angle);
     static float calculateShortestPath(float currentAngle, float targetAngle);
 
@@ -96,7 +95,6 @@ public:
 private:
     // Default configuration values
     static int32_t _defaultMicrosteps;
-    static int32_t _defaultMicrosteps_32;
     static int32_t _defaultResolution;
     static float   _defaultMicrometers;
 
