@@ -6,8 +6,7 @@
 #include <TMCStepper.h>
 #include <cstdint>
 
-static constexpr float    R_SENSE                 = 0.11f;  // Sense resistor value in ohms (updated value)
-static constexpr uint16_t MICROSTEPS_NEMA11_1004H = 32;
+static constexpr float R_SENSE = 0.11f;  // Sense resistor value in ohms (updated value)
 
 struct MotorConfig
 {

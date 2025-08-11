@@ -171,7 +171,12 @@ void PositionController::setCurrentPosition(int32_t position)
 
 int32_t PositionController::getCurrentTurnFromStepper()
 {
-    return _status.currentSteps / MICROSTEPS_PER_REVOLUTION;
+    if (getMotorType() == MotorType::LINEAR)
+    {
+        // For linear motors, return current position in turns
+        return _status.currentSteps / MICROSTEPS_PER_REVOLUTION_32;
+    }
+    return _status.currentSteps / MICROSTEPS_PER_REVOLUTION_64;
 }
 
 // Enable/Disable

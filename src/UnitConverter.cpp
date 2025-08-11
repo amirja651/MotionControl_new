@@ -13,6 +13,7 @@ ConvertValues::FromDegrees UnitConverter::convertFromDegrees(float degrees, int3
 
     if (motorType == MotorType::LINEAR)
     {
+        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
         convert.TO_TURNS = static_cast<int32_t>(std::floor(degrees / 360.0f));
         remain           = degrees - (convert.TO_TURNS * 360.0f);
     }
@@ -36,6 +37,7 @@ ConvertValues::FromPulses UnitConverter::convertFromPulses(int32_t pulses, int32
 
     if (motorType == MotorType::LINEAR)
     {
+        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
         convert.TO_TURNS = pulses / resolution;
         remain           = pulses % resolution;
     }
@@ -59,6 +61,7 @@ ConvertValues::FromSteps UnitConverter::convertFromSteps(int32_t steps, int32_t 
 
     if (motorType == MotorType::LINEAR)
     {
+        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
         convert.TO_TURNS = steps / microsteps;
         remain           = steps % microsteps;
     }
@@ -82,6 +85,7 @@ ConvertValues::FromUMeters UnitConverter::convertFromUMeters(float umeters, int3
 
     if (motorType == MotorType::LINEAR)
     {
+        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
         convert.TO_TURNS = static_cast<int32_t>(std::floor(umeters / micrometers));
         remain           = umeters - (convert.TO_TURNS * micrometers);
     }

@@ -2,5 +2,8 @@
     "clang-format.executable": "C:\\Program Files\\LLVM\\bin\\clang-format.exe",
     "files.autoSave": "afterDelay",
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format"
+    "editor.defaultFormatter": "xaver.clang-format",
+    "files.associations": {
+        "cmath": "cpp"
+    }
 }

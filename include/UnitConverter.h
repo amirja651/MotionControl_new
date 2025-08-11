@@ -11,6 +11,7 @@ static constexpr float    CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from
 static constexpr float    LEAD_SCREW_PITCH_UM        = 200.0f;  // Lead screw pitch in micrometers
 static constexpr int32_t  ENCODER_RESOLUTION         = 4096;    // Encoder 12 bits
 static constexpr uint16_t MICROSTEPS_64              = 64;      // Default current in mA
+static constexpr uint16_t MICROSTEPS_32              = 32;      // Default current in mA
 
 // Motor types for conversion logic
 enum class MotorType
@@ -95,6 +96,7 @@ public:
 private:
     // Default configuration values
     static int32_t _defaultMicrosteps;
+    static int32_t _defaultMicrosteps_32;
     static int32_t _defaultResolution;
     static float   _defaultMicrometers;
 

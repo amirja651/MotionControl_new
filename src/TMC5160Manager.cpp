@@ -7,9 +7,9 @@ TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) : 
     if (driverIndex == 0)
     {
         _rms_current_mA = DEFAULT_CURRENT_NEMA11_1004H;
-        _microsteps     = MICROSTEPS_NEMA11_1004H;
-        _irun           = 16;  // calculateCurrentSetting(350, DEFAULT_CURRENT_NEMA11_1004H);
-        _ihold          = 8;   // calculateCurrentSetting(180, DEFAULT_CURRENT_NEMA11_1004H);
+        _microsteps     = MICROSTEPS_32;  // Use 32 microsteps for NEMA11
+        _irun           = 16;             
+        _ihold          = 8;              // calculateCurrentSetting(180, DEFAULT_CURRENT_NEMA11_1004H);
         _iholddelay     = 8;
     }
     else

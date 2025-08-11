@@ -344,7 +344,7 @@ void loadControlMode()
     }
 
     String key        = "m" + String(currentIndex) + "_cm";
-    data.control.mode = static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::OPEN_LOOP)));
+    data.control.mode = static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::HYBRID)));
     log_d("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.control.mode));
 }
 
