@@ -6,3 +6,4 @@
 .vscode/ipch
 libdeps/
 logs/
+src/test.cpp
