@@ -80,6 +80,7 @@ bool voltageMonitorFirstTime = false;
 Preferences prefs;
 #pragma endregion
 
+#pragma region function_declarations
 // Function declarations
 uint16_t     calculateByNumber(uint16_t rms_current, uint8_t number);
 void         storeToMemory();
@@ -113,7 +114,9 @@ void         stop();
 bool         moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode);
 void         setCurrentPosition(int32_t positionSteps);
 void         showPositionStatus();
+#pragma endregion
 
+#pragma region setup_and_loop
 void setup()
 {
     // Initialize SPI
@@ -232,6 +235,7 @@ void loop()
     esp_task_wdt_reset();
     vTaskDelay(pdMS_TO_TICKS(1));
 }
+#pragma endregion
 
 uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
 {
@@ -1082,6 +1086,8 @@ void prepaireBeforeMovement()
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 }
+
+#pragma region helper_functions
 int32_t getEncoderSteps()
 {
     return positionController[currentIndex].getEncoderSteps();
@@ -1222,3 +1228,4 @@ void showPositionStatus()
         Serial.println(F(" pulses)"));
     }
 }
+#pragma endregion
