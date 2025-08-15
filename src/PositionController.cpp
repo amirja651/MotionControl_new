@@ -163,20 +163,24 @@ bool PositionController::begin()
     return true;
 }
 
-void PositionController::setCurrentPosition(int32_t position)
+void PositionController::setCurrentPosition(int32_t positionSteps)
 {
-    _stepper.setCurrentPosition(position);
-    _status.currentSteps = position;
+    _stepper.setCurrentPosition(positionSteps);
+    _status.currentSteps = positionSteps;
 }
 
 int32_t PositionController::getCurrentTurnFromStepper()
 {
     if (getMotorType() == MotorType::LINEAR)
     {
-        // For linear motors, return current position in turns
-        return _status.currentSteps / MICROSTEPS_PER_REVOLUTION_32;
+        UnitConverter::setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
     }
-    return _status.currentSteps / MICROSTEPS_PER_REVOLUTION_64;
+    else
+    {
+        UnitConverter::setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
+    }
+
+    return _status.currentSteps / UnitConverter::getDefaultMicrosteps();
 }
 
 // Enable/Disable

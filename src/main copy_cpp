@@ -178,7 +178,7 @@ void setup()
 
     // Add longer delay before accessing preferences to ensure stability
     delay(100);
-    printAllOriginPositions();  // amir
+    printAllOriginPositions();
     loadPosition();
     delay(100);
 
