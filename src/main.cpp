@@ -274,7 +274,7 @@ void storeToMemory()
         size_t w      = prefs.putInt(key_cm.c_str(), static_cast<int>(control_mode));
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        log_d("📍 Motor [%d]\n"
+        log_d("\n⚙️ Motor [%d]\n"
               "   • Key     : %d\n",
               "   • Value   : %d\n",
               "   • Success : %s\n",
@@ -296,7 +296,7 @@ void storeToMemory()
         size_t w2     = prefs.putInt(key_ot.c_str(), origin_turn);
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        log_d("📍 Motor [%d]\n"
+        log_d("\n⚙️ Motor [%d]\n"
               "   • Key     : %d\n",
               "   • Value   : %u\n",
               "   • Success : %s\n",
@@ -332,7 +332,7 @@ void storeToMemory()
         size_t w3     = prefs.putInt(key_vs.c_str(), static_cast<int>(voltage_status));
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        log_d("📍 Motor [%d]\n"
+        log_d("\n⚙️ Motor [%d]\n"
               "   • Key     : %d\n",
               "   • Value   : %u\n",
               "   • Success : %s\n",
@@ -375,7 +375,7 @@ void storeToMemory()
         size_t w3     = prefs.putInt(key_vs.c_str(), static_cast<int>(voltage_status));
         vTaskDelay(pdMS_TO_TICKS(20));
 
-        log_d("📍 Motor [%d]\n"
+        log_d("\n⚙️ Motor [%d]\n"
               "   • Key     : %d\n",
               "   • Value   : %u\n",
               "   • Success : %s\n",
@@ -416,8 +416,8 @@ uint32_t loadOriginPosition()
     String   key_op        = makeKey(currentIndex, "op");
     uint32_t origin_pulses = prefs.getUInt(key_op.c_str(), 0);  // Default to 0 if not found
 
-    log_d("⚙️ Motor [%d]\n"
-          "   📍 Origin : %u pulses\n",
+    log_d("\n⚙️ Motor [%d]\n"
+          "   • Origin : %u pulses\n",
           currentIndex + 1,
           origin_pulses);
 
@@ -436,7 +436,7 @@ void loadControlMode()
     int    raw    = prefs.getInt(key_cm.c_str(), static_cast<int>(ControlMode::HYBRID));
     control_mode  = safeModeFromInt(raw, ControlMode::HYBRID);
 
-    log_d("⚙️ Motor [%d]\n"
+    log_d("\n⚙️ Motor [%d]\n"
           "   • Mode  : %s\n",
           currentIndex + 1,
           toString(control_mode));
@@ -471,7 +471,7 @@ void loadPosition()
         loaded_turns                = prefs.getInt(key_voltageDrop_turn.c_str(), 0);
     }
 
-    log_d("⚙️ Motor [%d]\n"
+    log_d("\n⚙️ Motor [%d]\n"
           "   • Status : %s\n"
           "   • Turn   : %d\n"
           "   • Pulses : %u\n",
@@ -980,7 +980,7 @@ void serialReadTask(void* pvParameters)
                             int32_t turn = currentMotorSteps.TO_TURNS;
                             origin_turn  = turn;
 
-                            log_d("⚙️ Motor [%d] (Linear)\n"
+                            log_d("\n⚙️ Motor [%d] (Linear)\n"
                                   "   • Current  : %f µm   (%d turns) 💡\n"
                                   "   • Target   : %f µm   (%d turns)\n"
                                   "   • Diff     : %f µm\n"
@@ -1007,7 +1007,7 @@ void serialReadTask(void* pvParameters)
                             float diff  = currentMotorSteps.TO_DEGREES - encoderPulses.TO_DEGREES;
                             origin_turn = 0;
 
-                            log_d("⚙️ Motor [%d] (Rotational)\n"
+                            log_d("\n⚙️ Motor [%d] (Rotational)\n"
                                   "   • Current  : %f°   (%d turns) 💡\n"
                                   "   • Target   : %f°   (%d turns)\n"
                                   "   • Diff     : %f°\n"
@@ -1156,7 +1156,7 @@ void linearProcess(float targetMicrometers)
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
     int32_t targetSteps = UnitConverter::convertFromMicrometers(targetMicrometers).TO_STEPS;
 
-    log_d("⚙️ Motor [%d] (Linear)\n"
+    log_d("\n⚙️ Motor [%d] (Linear)\n"
           "   • Steps        : %u\n"
           "   • Microns      : %f µm\n"
           "   • Turns        : %d\n"
@@ -1209,7 +1209,7 @@ void rotationalProcess(float targetAngle)
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
     int32_t targetSteps = UnitConverter::convertFromDegrees(targetAngle).TO_STEPS;
 
-    log_d("⚙️ Motor [%d] (Rotational)\n"
+    log_d("\n⚙️ Motor [%d] (Rotational)\n"
           "   • Steps        : %d\n"
           "   • Degrees      : %f°\n",
           "   • Voltage drop : %u pulses\n"
@@ -1318,7 +1318,7 @@ void showPositionStatus()
         int32_t turn     = currentMotorSteps.TO_TURNS;
         voltageDrop_turn = turn;
 
-        log_d("⚙️ Motor [%d] (Linear)\n"
+        log_d("\n⚙️ Motor [%d] (Linear)\n"
               "   • Current  : %f µm   (%d turns) 💡\n"
               "   • Target   : %f µm   (%d turns)\n"
               "   • Diff     : %f µm\n"
@@ -1345,7 +1345,7 @@ void showPositionStatus()
         float diff       = currentMotorSteps.TO_DEGREES - encoderPulses.TO_DEGREES;
         voltageDrop_turn = 0;
 
-        log_d("⚙️ Motor [%d] (Rotational)\n"
+        log_d("\n⚙️ Motor [%d] (Rotational)\n"
               "   • Current  : %f°   (%d turns) 💡\n"
               "   • Target   : %f°   (%d turns)\n"
               "   • Diff     : %f°\n"
