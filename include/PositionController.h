@@ -36,7 +36,7 @@ enum class DistanceType
 };
 
 // Control modes
-enum class ControlMode
+enum class ControlMode : uint8_t
 {
     OPEN_LOOP,  // Open-loop control only
     HYBRID      // Read encoder once at start, then open-loop
@@ -191,7 +191,7 @@ private:
 
     // Optional movement complete callback
     volatile bool _movementCompleteFlag;
-    void (*_onComplete)();
+    void          (*_onComplete)();
 };
 
 // Global functions for RTOS integration

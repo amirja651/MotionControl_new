@@ -171,15 +171,6 @@ void PositionController::setCurrentPosition(int32_t positionSteps)
 
 int32_t PositionController::getCurrentTurnFromStepper()
 {
-    if (getMotorType() == MotorType::LINEAR)
-    {
-        UnitConverter::setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
-    }
-    else
-    {
-        UnitConverter::setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
-    }
-
     return _status.currentSteps / UnitConverter::getDefaultMicrosteps();
 }
 
@@ -394,7 +385,10 @@ void PositionController::startPositionControlTask()
     }
 
     // Create position control task
-    BaseType_t result = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", 4096, nullptr,
+    BaseType_t result = xTaskCreatePinnedToCore(positionControlTask,
+                                                "PositionControl",
+                                                4096,
+                                                nullptr,
                                                 3,  // Priority
                                                 &_positionControlTaskHandle,
                                                 1  // Core 1
@@ -922,10 +916,7 @@ void PositionController::setMovementCompleteFlag(bool flag)
 MotorType PositionController::getMotorType() const
 {
     if (_motorId == 0)
-    {
-        UnitConverter::setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
         return MotorType::LINEAR;
-    }
-    else
-        return MotorType::ROTATIONAL;
+
+    return MotorType::ROTATIONAL;
 }

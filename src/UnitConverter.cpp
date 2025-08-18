@@ -2,106 +2,79 @@
 #include <cmath>
 
 // Static member initialization
-int32_t UnitConverter::_defaultMicrosteps  = (MICROSTEPS_64 - 1) * 200;
-int32_t UnitConverter::_defaultResolution  = ENCODER_RESOLUTION;
-float   UnitConverter::_defaultMicrometers = LEAD_SCREW_PITCH_UM;
+MotorType UnitConverter::_defaultMotorType   = MotorType::ROTATIONAL;
+int32_t   UnitConverter::_defaultMicrosteps  = (MICROSTEPS_64 - 1) * 200;
+int32_t   UnitConverter::_defaultResolution  = ENCODER_RESOLUTION;
+float     UnitConverter::_defaultMicrometers = LEAD_SCREW_PITCH_UM;
 
-ConvertValues::FromDegrees UnitConverter::convertFromDegrees(float degrees, int32_t resolution, float micrometers, MotorType motorType)
+ConvertValues UnitConverter::convertFromDegrees(float degrees)
 {
-    float                      remain = 0;
-    ConvertValues::FromDegrees convert;
+    ConvertValues convert;
+    convert.TO_TURNS   = static_cast<int32_t>(std::floor(degrees / 360.0f));
+    convert.TO_DEGREES = degrees - (convert.TO_TURNS * 360.0f);
 
-    if (motorType == MotorType::LINEAR)
+    if (isRotational())
     {
-        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
-        convert.TO_TURNS = static_cast<int32_t>(std::floor(degrees / 360.0f));
-        remain           = degrees - (convert.TO_TURNS * 360.0f);
-    }
-    else
-    {
-        setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
         convert.TO_TURNS = 0;
-        remain           = degrees;
     }
 
-    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / 360.0f)));
-    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (_defaultMicrosteps / 360.0f)));
-    convert.TO_UMETERS = static_cast<float>(remain * (micrometers / 360.0f));
+    convert.TO_MICROMETERS = static_cast<float>(convert.TO_DEGREES * (_defaultMicrometers / 360.0f));
+    convert.TO_PULSES      = static_cast<int32_t>(std::round(convert.TO_DEGREES * (static_cast<float>(_defaultResolution) / 360.0f)));
+    convert.TO_STEPS       = static_cast<int32_t>(std::round(convert.TO_DEGREES * (static_cast<float>(_defaultMicrosteps) / 360.0f)));
 
     return convert;
 }
 
-ConvertValues::FromPulses UnitConverter::convertFromPulses(int32_t pulses, int32_t resolution, float micrometers, MotorType motorType)
+ConvertValues UnitConverter::convertFromPulses(int32_t pulses)
 {
-    int32_t                   remain = 0;
-    ConvertValues::FromPulses convert;
+    ConvertValues convert;
+    convert.TO_TURNS  = pulses / _defaultResolution;
+    convert.TO_PULSES = pulses % _defaultResolution;
 
-    if (motorType == MotorType::LINEAR)
+    if (isRotational())
     {
-        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
-        convert.TO_TURNS = pulses / resolution;
-        remain           = pulses % resolution;
-    }
-    else
-    {
-        setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
         convert.TO_TURNS = 0;
-        remain           = pulses;
     }
 
-    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / resolution));
-    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (_defaultMicrosteps / resolution)));
-    convert.TO_UMETERS = static_cast<float>(remain * (micrometers / resolution));
+    convert.TO_MICROMETERS = static_cast<float>(convert.TO_PULSES * (_defaultMicrometers / static_cast<float>(_defaultResolution)));
+    convert.TO_DEGREES     = static_cast<float>(convert.TO_PULSES * (360.0f / static_cast<float>(_defaultResolution)));
+    convert.TO_STEPS       = static_cast<int32_t>(std::round(convert.TO_PULSES * (static_cast<float>(_defaultMicrosteps) / static_cast<float>(_defaultResolution))));
 
     return convert;
 }
 
-ConvertValues::FromSteps UnitConverter::convertFromSteps(int32_t steps, int32_t resolution, float micrometers, MotorType motorType)
+ConvertValues UnitConverter::convertFromSteps(int32_t steps)
 {
-    int32_t                  remain = 0;
-    ConvertValues::FromSteps convert;
+    ConvertValues convert;
+    convert.TO_TURNS = steps / _defaultMicrosteps;
+    convert.TO_STEPS = steps % _defaultMicrosteps;
 
-    if (motorType == MotorType::LINEAR)
+    if (isRotational())
     {
-        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
-        convert.TO_TURNS = steps / _defaultMicrosteps;
-        remain           = steps % _defaultMicrosteps;
-    }
-    else
-    {
-        setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
         convert.TO_TURNS = 0;
-        remain           = steps;
     }
 
-    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / _defaultMicrosteps)));
-    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / _defaultMicrosteps));
-    convert.TO_UMETERS = static_cast<float>(remain * (micrometers / _defaultMicrosteps));
+    convert.TO_MICROMETERS = static_cast<float>(convert.TO_STEPS * (_defaultMicrometers / static_cast<float>(_defaultMicrosteps)));
+    convert.TO_PULSES      = static_cast<int32_t>(std::round(convert.TO_STEPS * (static_cast<float>(_defaultResolution) / static_cast<float>(_defaultMicrosteps))));
+    convert.TO_DEGREES     = static_cast<float>(convert.TO_STEPS * (360.0f / static_cast<float>(_defaultMicrosteps)));
 
     return convert;
 }
 
-ConvertValues::FromUMeters UnitConverter::convertFromUMeters(float umeters, int32_t resolution, float micrometers, MotorType motorType)
+ConvertValues UnitConverter::convertFromMicrometers(float micrometers)
 {
-    float                      remain = 0;
-    ConvertValues::FromUMeters convert;
+    ConvertValues convert;
+    convert.TO_TURNS       = static_cast<int32_t>(std::floor(micrometers / _defaultMicrometers));
+    convert.TO_MICROMETERS = micrometers - (convert.TO_TURNS * _defaultMicrometers);
 
-    if (motorType == MotorType::LINEAR)
+    if (isRotational())
     {
-        setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
-        convert.TO_TURNS = static_cast<int32_t>(std::floor(umeters / micrometers));
-        remain           = umeters - (convert.TO_TURNS * micrometers);
-    }
-    else
-    {
-        setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
         convert.TO_TURNS = 0;
-        remain           = umeters;
     }
 
-    convert.TO_DEGREES = static_cast<float>(remain * (360.0f / micrometers));
-    convert.TO_STEPS   = static_cast<int32_t>(std::round(remain * (_defaultMicrosteps / micrometers)));
-    convert.TO_PULSES  = static_cast<int32_t>(std::round(remain * (resolution / micrometers)));
+    convert.TO_PULSES  = static_cast<int32_t>(std::round(convert.TO_MICROMETERS * (static_cast<float>(_defaultResolution) / _defaultMicrometers)));
+    convert.TO_STEPS   = static_cast<int32_t>(std::round(convert.TO_MICROMETERS * (static_cast<float>(_defaultMicrosteps) / _defaultMicrometers)));
+    convert.TO_DEGREES = static_cast<float>(convert.TO_MICROMETERS * (360.0f / _defaultMicrometers));
 
     return convert;
 }
@@ -143,6 +116,10 @@ float UnitConverter::calculateShortestPath(float currentAngle, float targetAngle
 }
 
 // Configuration methods
+void UnitConverter::setDefaultMotorType(MotorType motorType)
+{
+    _defaultMotorType = motorType;
+}
 void UnitConverter::setDefaultMicrosteps(int32_t microsteps)
 {
     _defaultMicrosteps = microsteps;
@@ -171,4 +148,12 @@ int32_t UnitConverter::getDefaultResolution()
 float UnitConverter::getDefaultMicrometers()
 {
     return _defaultMicrometers;
+}
+bool UnitConverter::isLinear()
+{
+    return (_defaultMotorType == MotorType::LINEAR);
+}
+bool UnitConverter::isRotational()
+{
+    return (_defaultMotorType == MotorType::ROTATIONAL);
 }

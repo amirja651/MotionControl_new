@@ -54,3 +54,10 @@ ReflowComments: true
 
 # Additional settings
 Standard: Cpp11
+
+
+# --- additions/tweaks for your case ---
+BinPackArguments: false           # Do not put multiple arguments on the same line
+BinPackParameters: false          # Same rule for function parameters
+AllowAllArgumentsOnNextLine: true # Move arguments to new lines after opening parenthesis
+PenaltyBreakBeforeFirstCallParameter: 1  # Make breaking before the first parameter cheap

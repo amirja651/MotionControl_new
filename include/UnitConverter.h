@@ -14,7 +14,7 @@ static constexpr uint16_t MICROSTEPS_64              = 64;      // Default curre
 static constexpr uint16_t MICROSTEPS_32              = 32;      // Default current in mA
 
 // Motor types for conversion logic
-enum class MotorType
+enum class MotorType : uint8_t
 {
     LINEAR     = 0,
     ROTATIONAL = 1,
@@ -23,37 +23,11 @@ enum class MotorType
 // Conversion result structures
 struct ConvertValues
 {
-    struct FromDegrees
-    {
-        int32_t TO_PULSES;
-        int32_t TO_STEPS;
-        float   TO_UMETERS;
-        int32_t TO_TURNS;
-    };
-
-    struct FromPulses
-    {
-        float   TO_DEGREES;
-        int32_t TO_STEPS;
-        float   TO_UMETERS;
-        int32_t TO_TURNS;
-    };
-
-    struct FromSteps
-    {
-        int32_t TO_PULSES;
-        float   TO_DEGREES;
-        float   TO_UMETERS;
-        int32_t TO_TURNS;
-    };
-
-    struct FromUMeters
-    {
-        int32_t TO_PULSES;
-        int32_t TO_STEPS;
-        float   TO_DEGREES;
-        int32_t TO_TURNS;
-    };
+    float   TO_MICROMETERS;
+    int32_t TO_PULSES;
+    int32_t TO_STEPS;
+    float   TO_DEGREES;
+    int32_t TO_TURNS;
 };
 
 /**
@@ -72,31 +46,32 @@ class UnitConverter
 {
 public:
     // Conversion methods from different units
-    static ConvertValues::FromDegrees convertFromDegrees(float degrees, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM, MotorType motorType = MotorType::ROTATIONAL);
-
-    static ConvertValues::FromPulses convertFromPulses(int32_t pulses, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM, MotorType motorType = MotorType::ROTATIONAL);
-
-    static ConvertValues::FromSteps convertFromSteps(int32_t steps, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM, MotorType motorType = MotorType::ROTATIONAL);
-
-    static ConvertValues::FromUMeters convertFromUMeters(float umeters, int32_t resolution = ENCODER_RESOLUTION, float micrometers = LEAD_SCREW_PITCH_UM, MotorType motorType = MotorType::ROTATIONAL);
+    static ConvertValues convertFromDegrees(float degrees);
+    static ConvertValues convertFromPulses(int32_t pulses);
+    static ConvertValues convertFromSteps(int32_t steps);
+    static ConvertValues convertFromMicrometers(float umeters);
 
     // Utility methods
     static float wrapAngle(float angle);
     static float calculateShortestPath(float currentAngle, float targetAngle);
 
     // Configuration methods
+    static void    setDefaultMotorType(MotorType motorType = MotorType::ROTATIONAL);
     static void    setDefaultMicrosteps(int32_t microsteps);
     static void    setDefaultResolution(int32_t resolution);
     static void    setDefaultMicrometers(float micrometers);
     static int32_t getDefaultMicrosteps();
     static int32_t getDefaultResolution();
     static float   getDefaultMicrometers();
+    static bool    isLinear();
+    static bool    isRotational();
 
 private:
     // Default configuration values
-    static int32_t _defaultMicrosteps;
-    static int32_t _defaultResolution;
-    static float   _defaultMicrometers;
+    static MotorType _defaultMotorType;
+    static int32_t   _defaultMicrosteps;
+    static int32_t   _defaultResolution;
+    static float     _defaultMicrometers;
 
     // Private constructor to prevent instantiation (Singleton pattern)
     UnitConverter()                                = delete;

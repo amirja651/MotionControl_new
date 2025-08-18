@@ -15,27 +15,43 @@
 #include <esp_task_wdt.h>
 
 CommandHistory<16> history;
-const char*        commands[] = {"Q", "L", "K"};
-enum class CommandKey
+const char*        commands[] = {"Q", "L", "K", "J"};
+enum class CommandKey : uint8_t
 {
     Q = 0,
     L = 1,
     K = 2,
+    J = 3,
 };
 
-struct Data
+// Variables for store in memory ///////////////////////////
+enum class VoltageStatus : uint8_t
 {
-    struct Position
-    {
-        ControlMode mode           = ControlMode::OPEN_LOOP;
-        float       reached        = 0.0f;
-        float       beforeMovement = 0.0f;
-        int32_t     turns          = 0;
-        int32_t     turnsValue     = 0;
-        float       value          = 0.0f;
-        bool        save           = false;
-    } position, voltageDropPosition, orgin, control;
-} data;
+    VOLTAGE_NORMAL,
+    VOLTAGE_DROPPED
+};
+
+ControlMode control_mode = ControlMode::OPEN_LOOP;
+bool        control_save = false;
+
+uint32_t origin_pulses = 0;
+int32_t  origin_turn   = 0;  // For rotary motors always zero
+bool     origin_save   = false;
+
+uint32_t voltageDrop_pulses = 0;
+int32_t  voltageDrop_turn   = 0;  // For rotary motors always zero
+bool     voltageDrop_save   = false;
+
+VoltageStatus voltage_status = VoltageStatus::VOLTAGE_NORMAL;
+
+uint32_t reached_pulses = 0;
+int32_t  reached_turns  = 0;  // For rotary motors always zero
+bool     reached_save   = false;
+
+uint32_t loaded_pulses = 0;
+int32_t  loaded_turns  = 0;  // For rotary motors always zero
+
+///////////////////////////////////////////////////////////
 
 VoltageMonitor voltageMonitor(VoltageMonitorPins::POWER_3_3, VoltageMonitor::MonitorMode::DIGITAL_, 0, 10);
 
@@ -50,8 +66,10 @@ DirMultiplexer dirMultiplexer(MultiplexerPins::S0, MultiplexerPins::S1, Multiple
 MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0), MAE3Encoder(EncoderPins::SIGNAL[1], 1), MAE3Encoder(EncoderPins::SIGNAL[2], 2), MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
 
 // Position controllers for precise movement control
-PositionController positionController[4] = {PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0], DriverPins::EN[0], encoder[0]), PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
-                                            PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoder[2]), PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
+PositionController positionController[4] = {PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0], DriverPins::EN[0], encoder[0]),
+                                            PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1], DriverPins::EN[1], encoder[1]),
+                                            PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoder[2]),
+                                            PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoder[3])};
 
 static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
 TaskHandle_t              serialReadTaskHandle = NULL;
@@ -82,42 +100,48 @@ Preferences prefs;
 
 #pragma region function_declarations
 // Function declarations
-uint16_t     calculateByNumber(uint16_t rms_current, uint8_t number);
-void         storeToMemory();
-float        loadOriginPosition();
-void         loadControlMode();
-void         loadPosition();
-void         clearAllOriginPositions();
-void         printAllOriginPositions();
-void         clearLine();
-void         setMotorId(String motorId);
-void         serialReadTask(void* pvParameters);
-float        setCurrentPositionFromPulses();
-void         checkDifferenceCorrection();
-void         onVoltageDrop();
-void         linearProcess(float targetUMeters);
-void         rotationalProcess(float targetAngle);
-void         prepaireBeforeMovement();
-bool         isLinearMotor(uint8_t index);
-int32_t      getEncoderSteps();
-int32_t      getCurrentSteps();
-int32_t      getTargetSteps();
-void         handleInAbsenceOfInterrupt();
-void         handleMovementComplete();
-EncoderState getEncoderState();
-MotorStatus  getMotorStatus();
-int32_t      getCurrentTurnFromStepper();
-void         setDirection(bool fwd);
-void         disable();
-void         enable();
-void         stop();
-bool         moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode);
-void         setCurrentPosition(int32_t positionSteps);
-void         showPositionStatus();
+void               storeToMemory();
+uint32_t           loadOriginPosition();
+void               loadControlMode();
+void               loadPosition();
+void               printAllOriginPositions();
+void               clearLine();
+void               setMotorId(String motorId);
+void               serialReadTask(void* pvParameters);
+uint32_t           setCurrentPositionFromPulses();
+void               checkDifferenceCorrection();
+void               onVoltageDrop();
+void               linearProcess(float targetUMeters);
+void               rotationalProcess(float targetAngle);
+void               prepaireBeforeMovement();
+bool               isLinearMotor(uint8_t index);
+int32_t            getEncoderSteps();
+int32_t            getCurrentSteps();
+int32_t            getTargetSteps();
+void               handleInAbsenceOfInterrupt();
+void               handleMovementComplete();
+EncoderState       getEncoderState();
+MotorStatus        getMotorStatus();
+int32_t            getCurrentTurnFromStepper();
+void               setDirection(bool fwd);
+void               disable();
+void               enable();
+void               stop();
+bool               moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode);
+void               setCurrentPosition(int32_t positionSteps);
+void               showPositionStatus();
+const char*        toString(VoltageStatus status);
+const char*        toString(ControlMode m);
+String             makeKey(int motorIndex, const char* suffix);
+String             isSave(size_t result);
+inline ControlMode safeModeFromInt(int v, ControlMode fallback = ControlMode::HYBRID);
+bool               isMoving();
+static void        printConversionTable(float inputValue, const ConvertValues& cvfd, const ConvertValues& cvfp, const ConvertValues& cvfs, const ConvertValues& cvfm);
+
 #pragma endregion
 
 #pragma region setup_and_loop
-void setup()
+void           setup()
 {
     // Initialize SPI
     SPI.begin(SPIPins::SCK, SPIPins::MISO, SPIPins::MOSI);
@@ -237,118 +261,168 @@ void loop()
 }
 #pragma endregion
 
-uint16_t calculateByNumber(uint16_t rms_current, uint8_t number)
-{
-    return (rms_current * number) / 32;
-}
+#pragma region memory
 
 void storeToMemory()
 {
     noInterrupts();
 
-    if (data.orgin.save)
+    if (control_save)
     {
-        data.orgin.save = false;
-        String key      = "m" + String(currentIndex) + "_or";
-        log_d("Key: %s, Value: %f", key.c_str(), data.orgin.value);
-        bool success = prefs.putFloat(key.c_str(), data.orgin.value);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        control_save = false;
 
-        if (!success)
-        {
-            log_e("Failed to store origin position for motor %d", currentIndex + 1);
-        }
+        String key_cm = makeKey(currentIndex, "cm");  // control mode
+        size_t w      = prefs.putInt(key_cm.c_str(), static_cast<int>(control_mode));
+        vTaskDelay(pdMS_TO_TICKS(20));
 
-        if (isLinearMotor(currentIndex))
-        {
-            String key2 = "m" + String(currentIndex) + "_tu";
-            log_d("Key: %s, Value: %d", key2.c_str(), data.orgin.turns);
-            bool success = prefs.putInt(key2.c_str(), data.orgin.turns);
-
-            if (!success)
-            {
-                log_e("Failed to store turns for motor %d", currentIndex + 1);
-            }
-        }
+        log_d("📍 Motor [%d]\n"
+              "   • Key     : %d\n",
+              "   • Value   : %d\n",
+              "   • Success : %s\n",
+              currentIndex + 1,
+              key_cm.c_str(),
+              static_cast<int>(control_mode),
+              isSave(w));
     }
-    if (data.control.save)
-    {
-        data.control.save = false;
-        String key        = "m" + String(currentIndex) + "_cm";
-        log_d("Key: %s, Value: %d", key.c_str(), static_cast<int>(data.control.mode));
-        bool success = prefs.putInt(key.c_str(), static_cast<int>(data.control.mode));
-        vTaskDelay(pdMS_TO_TICKS(100));
 
-        if (!success)
-        {
-            log_e("Failed to store control mode for motor %d", currentIndex + 1);
-        }
+    if (origin_save)
+    {
+        origin_save = false;
+
+        String key_op = makeKey(currentIndex, "op");  // origin pulses
+        size_t w1     = prefs.putUInt(key_op.c_str(), origin_pulses);
+        vTaskDelay(pdMS_TO_TICKS(20));
+
+        String key_ot = makeKey(currentIndex, "ot");  // origin turns
+        size_t w2     = prefs.putInt(key_ot.c_str(), origin_turn);
+        vTaskDelay(pdMS_TO_TICKS(20));
+
+        log_d("📍 Motor [%d]\n"
+              "   • Key     : %d\n",
+              "   • Value   : %u\n",
+              "   • Success : %s\n",
+              "    -------------\n"
+              "   • Key     : %d\n",
+              "   • Value   : %u\n",
+              "   • Success : %s\n",
+              currentIndex + 1,
+              key_op.c_str(),
+              origin_pulses,
+              isSave(w1),
+              key_ot.c_str(),
+              origin_turn,
+              isSave(w2));
     }
-    if (data.voltageDropPosition.save)
+
+    if (voltageDrop_save)
     {
-        data.voltageDropPosition.save = false;
-        String key1                   = "m" + String(currentIndex) + "_po";
-        log_d("Key: %s, Value: %f", key1.c_str(), data.voltageDropPosition.beforeMovement);
-        bool success = prefs.putFloat(key1.c_str(), data.voltageDropPosition.beforeMovement);
+        voltageDrop_save = false;
 
-        if (!success)
-        {
-            log_e("Failed to store voltage drop for motor %d", currentIndex + 1);
-        }
+        // pulses (UINT)
+        String key_vdp = makeKey(currentIndex, "vdp");
+        size_t w1      = prefs.putUInt(key_vdp.c_str(), voltageDrop_pulses);
+        vTaskDelay(pdMS_TO_TICKS(20));
 
-        if (isLinearMotor(currentIndex))
-        {
-            String key2 = "m" + String(currentIndex) + "_tu";
-            log_d("Key: %s, Value: %d", key2.c_str(), data.voltageDropPosition.turns);
-            bool success = prefs.putInt(key2.c_str(), data.voltageDropPosition.turns);
+        // turns (INT)
+        String key_vdt = makeKey(currentIndex, "vdt");
+        size_t w2      = prefs.putInt(key_vdt.c_str(), voltageDrop_turn);
+        vTaskDelay(pdMS_TO_TICKS(20));
 
-            if (!success)
-            {
-                log_e("Failed to store turns for motor %d", currentIndex + 1);
-            }
-        }
+        // voltage status (INT)
+        String key_vs = makeKey(currentIndex, "vs");
+        size_t w3     = prefs.putInt(key_vs.c_str(), static_cast<int>(voltage_status));
+        vTaskDelay(pdMS_TO_TICKS(20));
+
+        log_d("📍 Motor [%d]\n"
+              "   • Key     : %d\n",
+              "   • Value   : %u\n",
+              "   • Success : %s\n",
+              "    -------------\n"
+              "   • Key     : %d\n",
+              "   • Value   : %d\n",
+              "   • Success : %s\n",
+              "    -------------\n"
+              "   • Key     : %d\n",
+              "   • Value   : %d\n",
+              "   • Success : %s\n",
+              currentIndex + 1,
+              key_vdp.c_str(),
+              voltageDrop_pulses,
+              isSave(w1),
+              key_vdt.c_str(),
+              voltageDrop_turn,
+              isSave(w2),
+              key_vs.c_str(),
+              static_cast<int>(voltage_status),
+              isSave(w3));
     }
-    if (data.position.save)
+
+    if (reached_save)
     {
-        data.position.save = false;
-        String key1        = "m" + String(currentIndex) + "_po";
-        log_d("Key: %s, Value: %f", key1.c_str(), data.position.reached);
-        bool success = prefs.putFloat(key1.c_str(), data.position.reached);
+        reached_save = false;
 
-        if (!success)
-        {
-            log_e("Failed to store target reached for motor %d", currentIndex + 1);
-        }
+        // pulses (UINT)
+        String key_rp = makeKey(currentIndex, "rp");
+        size_t w1     = prefs.putUInt(key_rp.c_str(), reached_pulses);
+        vTaskDelay(pdMS_TO_TICKS(20));
 
-        if (isLinearMotor(currentIndex))
-        {
-            String key2 = "m" + String(currentIndex) + "_tu";
-            log_d("Key: %s, Value: %d", key2.c_str(), data.position.turns);
-            bool success = prefs.putInt(key2.c_str(), data.position.turns);
+        // turns (INT)
+        String key_rt = makeKey(currentIndex, "rt");
+        size_t w2     = prefs.putInt(key_rt.c_str(), reached_turns);
+        vTaskDelay(pdMS_TO_TICKS(20));
 
-            if (!success)
-            {
-                log_e("Failed to store turns for motor %d", currentIndex + 1);
-            }
-        }
+        // voltage status (INT)
+        String key_vs = makeKey(currentIndex, "vs");
+        size_t w3     = prefs.putInt(key_vs.c_str(), static_cast<int>(voltage_status));
+        vTaskDelay(pdMS_TO_TICKS(20));
+
+        log_d("📍 Motor [%d]\n"
+              "   • Key     : %d\n",
+              "   • Value   : %u\n",
+              "   • Success : %s\n",
+              "    -------------\n"
+              "   • Key     : %d\n",
+              "   • Value   : %d\n",
+              "   • Success : %s\n",
+              "    -------------\n"
+              "   • Key     : %d\n",
+              "   • Value   : %d\n",
+              "   • Success : %s\n",
+              currentIndex + 1,
+              key_rp.c_str(),
+              reached_pulses,
+              isSave(w1),
+              key_rt.c_str(),
+              reached_turns,
+              isSave(w2),
+              key_vs.c_str(),
+              static_cast<int>(voltage_status),
+              isSave(w3));
     }
 
     interrupts();
+
+    // Clear the "absence of interrupt" flag (post-write)
     encoder[currentIndex].setInAbsenceOfInterruptFlag(false);
 }
 
-float loadOriginPosition()
+uint32_t loadOriginPosition()
 {
     if (currentIndex >= 4)
     {
         log_e("Invalid motor index!");
-        return 0.0f;
+        return 0;  // fixed: correct return type
     }
 
-    String key            = "m" + String(currentIndex) + "_or";
-    float  originPosition = prefs.getFloat(key.c_str(), 0.0f);  // Default to 0.0 if not found
-    log_d("Motor %d origin position loaded: %f°", currentIndex + 1, originPosition);
-    return originPosition;
+    String   key_op        = makeKey(currentIndex, "op");
+    uint32_t origin_pulses = prefs.getUInt(key_op.c_str(), 0);  // Default to 0 if not found
+
+    log_d("⚙️ Motor [%d]\n"
+          "   📍 Origin : %u pulses\n",
+          currentIndex + 1,
+          origin_pulses);
+
+    return origin_pulses;
 }
 
 void loadControlMode()
@@ -359,9 +433,14 @@ void loadControlMode()
         return;
     }
 
-    String key        = "m" + String(currentIndex) + "_cm";
-    data.control.mode = static_cast<ControlMode>(prefs.getInt(key.c_str(), static_cast<int>(ControlMode::HYBRID)));
-    log_d("Motor %d control mode loaded: %d", currentIndex + 1, static_cast<int>(data.control.mode));
+    String key_cm = makeKey(currentIndex, "cm");  // "m<idx>_cm"
+    int    raw    = prefs.getInt(key_cm.c_str(), static_cast<int>(ControlMode::HYBRID));
+    control_mode  = safeModeFromInt(raw, ControlMode::HYBRID);
+
+    log_d("⚙️ Motor [%d]\n"
+          "   • Mode  : %s\n",
+          currentIndex + 1,
+          toString(control_mode));
 }
 
 void loadPosition()
@@ -372,31 +451,35 @@ void loadPosition()
         return;
     }
 
-    String key1         = "m" + String(currentIndex) + "_po";
-    data.position.value = prefs.getFloat(key1.c_str(), 0.0f);
+    // Load voltage status
+    String key_voltage_status = makeKey(currentIndex, "vs");
+    voltage_status            = static_cast<VoltageStatus>(prefs.getInt(key_voltage_status.c_str(), static_cast<int>(VoltageStatus::VOLTAGE_NORMAL)));
 
-    if (isLinearMotor(currentIndex))
+    if (voltage_status == VoltageStatus::VOLTAGE_NORMAL)
     {
-        String key2         = "m" + String(currentIndex) + "_tu";
-        data.position.turns = prefs.getInt(key2.c_str(), 0);
-        log_d("Motor %d position loaded: Position %f, Turns %d", currentIndex + 1, data.position.value, data.position.turns);
+        String key_reached_pulses = makeKey(currentIndex, "rp");
+        loaded_pulses             = prefs.getUInt(key_reached_pulses.c_str(), 0);
+
+        String key_reached_turns = makeKey(currentIndex, "rt");
+        loaded_turns             = prefs.getInt(key_reached_turns.c_str(), 0);
     }
     else
     {
-        log_d("Motor %d position loaded: Position %f", currentIndex + 1, data.position.value);
-    }
-}
+        String key_voltageDrop_pulses = makeKey(currentIndex, "vdp");
+        loaded_pulses                 = prefs.getUInt(key_voltageDrop_pulses.c_str(), 0);
 
-void clearAllOriginPositions()
-{
-    // Clear origin positions for all motors
-    for (uint8_t i = 0; i < 4; i++)
-    {
-        String key = "m" + String(i) + "_or";
-        prefs.remove(key.c_str());
+        String key_voltageDrop_turn = makeKey(currentIndex, "vdt");
+        loaded_turns                = prefs.getInt(key_voltageDrop_turn.c_str(), 0);
     }
 
-    log_d("All motor origin positions cleared");
+    log_d("⚙️ Motor [%d]\n"
+          "   • Status : %s\n"
+          "   • Turn   : %d\n"
+          "   • Pulses : %u\n",
+          currentIndex + 1,
+          toString(voltage_status),
+          loaded_turns,
+          loaded_pulses);
 }
 
 void printAllOriginPositions()
@@ -434,6 +517,8 @@ void printAllOriginPositions()
     log_d("Total free entries: %d", totalKeys);
 }
 
+#pragma endregion
+
 void clearLine()
 {
     Serial.print(F("\r"));                                                                                // Go to the beginning of the line
@@ -470,6 +555,20 @@ void setMotorId(String motorId)
         {
             encoder[index].disable();  // Enable encoder for reading
         }
+    }
+
+    UnitConverter::setDefaultResolution(ENCODER_RESOLUTION);
+    UnitConverter::setDefaultMicrometers(LEAD_SCREW_PITCH_UM);
+
+    if (currentIndex > 0)  // Rotary motors
+    {
+        UnitConverter::setDefaultMotorType(MotorType::ROTATIONAL);
+        UnitConverter::setDefaultMicrosteps((MICROSTEPS_64 - 1) * 200);
+    }
+    else  // Linear motor
+    {
+        UnitConverter::setDefaultMotorType(MotorType::LINEAR);
+        UnitConverter::setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
     }
 
     encoder[currentIndex].enable();
@@ -561,19 +660,22 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' go to position from memory
             {
-                float target = data.position.value;
-
+                float target;
+                // amir1
                 if (isLinearMotor(currentIndex))
                 {
+                    target = UnitConverter::convertFromPulses(loaded_pulses).TO_MICROMETERS + (loaded_turns * ENCODER_RESOLUTION);
                     linearProcess(target);
                 }
                 else
                 {
-                    rotationalProcess(target);
+                    target = UnitConverter::convertFromPulses(loaded_pulses).TO_DEGREES;
+                    rotationalProcess(loaded_pulses);
                 }
             }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
+                // amir2
                 showPositionStatus();
             }
             else if (c == commands[static_cast<int>(CommandKey::K)][0])  // 'K' Show encoder interrupt counters
@@ -646,6 +748,64 @@ void serialReadTask(void* pvParameters)
                     lastKPressTime = currentTime;
                 }
             }
+            else if (c == commands[static_cast<int>(CommandKey::J)][0])  // 'J' Show encoder interrupt counters
+            {
+                const uint32_t currentTime  = millis();
+                uint32_t       timeInterval = 0;
+
+                if (lastKPressTime != 0)
+                {
+                    timeInterval = currentTime - lastKPressTime;  // uint32_t wrap-safe
+                }
+
+                Serial.println();
+                Serial.printf("[Encoder Interrupt Counters] Motor %d:\n", currentIndex + 1);
+
+                if (currentIndex >= 4 || !driverEnabled[currentIndex])
+                {
+                    log_e("Invalid motor index or driver not enabled");
+                    Serial.println(F("  [Aborted]"));
+                    return;
+                }
+
+                // Snapshot / reads
+                const uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
+                const uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
+                const uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
+                const bool     enabled         = encoder[currentIndex].isEnabled();
+
+                Serial.printf("  Total Interrupts      : %u\n", totalInterrupts);
+                Serial.printf("  Rising Edges (High)   : %u\n", highEdges);
+                Serial.printf("  Falling Edges (Low)   : %u\n", lowEdges);
+                Serial.printf("  Encoder Enabled       : %s\n", enabled ? "YES" : "NO");
+
+                if (enabled)
+                {
+                    const uint32_t pulses = getEncoderState().position_pulse;
+                    const float    angle  = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
+                    Serial.printf("  Encoder Position      : %.2f° (%u pulses)\n", angle, pulses);
+                }
+                else
+                {
+                    log_w("Encoder not enabled");
+                }
+
+                if (lastKPressTime != 0)
+                {
+                    Serial.printf("  Time since last J     : %u ms\n", timeInterval);
+                }
+                else
+                {
+                    Serial.println(F("  Time since last J     : First press"));
+                }
+
+                // Reset counters after displaying
+                encoder[currentIndex].resetInterruptCounters();
+                Serial.println(F("  [Counters Reset]"));
+
+                // Update last press time
+                lastKPressTime = currentTime;
+            }
             else  // Only add to buffer if not a direct command
             {
                 bool isCommand = false;
@@ -676,50 +836,6 @@ void serialReadTask(void* pvParameters)
                 if (c.getArgument("n").isSet())
                 {
                     String motorIdStr = c.getArgument("n").getValue();
-
-                    if (0)
-                    {
-                        if (motorIdStr == "1")
-                        {
-                            currentIndex = 0;
-                            setDirection(true);
-                        }
-                        else if (motorIdStr == "2")
-                        {
-                            currentIndex = 1;
-                            setDirection(true);
-                        }
-                        else if (motorIdStr == "3")
-                        {
-                            currentIndex = 2;
-                            setDirection(true);
-                        }
-                        else if (motorIdStr == "4")
-                        {
-                            currentIndex = 3;
-                            setDirection(true);
-                        }
-                        else if (motorIdStr == "5")
-                        {
-                            currentIndex = 0;
-                            setDirection(false);
-                        }
-                        else if (motorIdStr == "6")
-                        {
-                            currentIndex = 1;
-                            setDirection(false);
-                        }
-                        else if (motorIdStr == "7")
-                        {
-                            currentIndex = 2;
-                            setDirection(false);
-                        }
-                        else if (motorIdStr == "8")
-                        {
-                            currentIndex = 3;
-                            setDirection(false);
-                        }
-                    }
                     setMotorId(motorIdStr);
                 }
             }
@@ -754,14 +870,14 @@ void serialReadTask(void* pvParameters)
                 }
                 if (c.getArgument("o").isSet())
                 {
-                    data.control.mode = ControlMode::OPEN_LOOP;
+                    control_mode = ControlMode::OPEN_LOOP;
                 }
                 else if (c.getArgument("h").isSet())
                 {
-                    data.control.mode = ControlMode::HYBRID;
+                    control_mode = ControlMode::HYBRID;
                 }
 
-                data.control.save = true;
+                control_save = true;
                 storeToMemory();
             }
             else if (c == cmdStop)
@@ -790,31 +906,45 @@ void serialReadTask(void* pvParameters)
                     setMotorId(motorIdStr);
                 }
                 stop();
-                vTaskDelay(pdMS_TO_TICKS(100));
+                vTaskDelay(pdMS_TO_TICKS(25));
                 disable();
             }
             else if (c == cmdCurrentPosition)
             {
-                if (c.getArgument("n").isSet())
+                if (!isMoving())
                 {
-                    String motorIdStr = c.getArgument("n").getValue();
-                    setMotorId(motorIdStr);
+                    if (c.getArgument("n").isSet())
+                    {
+                        String motorIdStr = c.getArgument("n").getValue();
+                        setMotorId(motorIdStr);
+                    }
+                    int32_t currentSteps = getCurrentSteps();
+                    float   position     = UnitConverter::convertFromSteps(currentSteps).TO_DEGREES;
+                    Serial.print(F("CURRENT"));
+                    Serial.print(position);
                 }
-                int32_t currentSteps = getCurrentSteps();
-                float   position     = UnitConverter::convertFromSteps(currentSteps).TO_DEGREES;
-                Serial.print(F("CURRENT"));
-                Serial.print(position);
             }
             else if (c == cmdLastPosition)
             {
-                if (c.getArgument("n").isSet())
+                if (!isMoving())
                 {
-                    String motorIdStr = c.getArgument("n").getValue();
-                    setMotorId(motorIdStr);
+                    if (c.getArgument("n").isSet())
+                    {
+                        String motorIdStr = c.getArgument("n").getValue();
+                        setMotorId(motorIdStr);
+                    }
+                    float target;
+                    if (isLinearMotor(currentIndex))
+                    {
+                        target = UnitConverter::convertFromPulses(loaded_pulses).TO_MICROMETERS + (loaded_turns * ENCODER_RESOLUTION);
+                    }
+                    else
+                    {
+                        target = UnitConverter::convertFromPulses(loaded_pulses).TO_DEGREES;
+                    }
+                    Serial.print(F("LAST"));
+                    Serial.print(target);
                 }
-                float targetAngle = data.position.value;
-                Serial.print(F("LAST"));
-                Serial.print(targetAngle);
             }
             else if (c == cmdSave)
             {
@@ -829,28 +959,11 @@ void serialReadTask(void* pvParameters)
                     }
                     else
                     {
-                        float value      = setCurrentPositionFromPulses();
-                        data.orgin.value = value;
-                        data.orgin.save  = true;
-
-                        if (1)
-                        {
-                            ConvertValues::FromDegrees cvfd = UnitConverter::convertFromDegrees(value);
-                            ConvertValues::FromPulses  cvfp = UnitConverter::convertFromPulses(value);
-                            ConvertValues::FromSteps   cvfs = UnitConverter::convertFromSteps(value);
-                            Serial.print(F("From Degrees: "));
-                            Serial.print(cvfd.TO_PULSES);
-                            Serial.print(F(", "));
-                            Serial.println(cvfd.TO_STEPS);
-                            Serial.print(F("From Pulses: "));
-                            Serial.print(cvfp.TO_DEGREES);
-                            Serial.print(F(", "));
-                            Serial.println(cvfp.TO_STEPS);
-                            Serial.print(F("From Steps: "));
-                            Serial.print(cvfs.TO_DEGREES);
-                            Serial.print(F(", "));
-                            Serial.println(cvfs.TO_PULSES);
-                        }
+                        // amir3
+                        uint32_t encoderPulses = setCurrentPositionFromPulses();
+                        // origin_turn =
+                        origin_pulses = encoderPulses;
+                        origin_save   = true;
                     }
                 }
             }
@@ -860,11 +973,15 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == cmdShow)
             {
-                if (c.getArgument("n").isSet())
+                if (!isMoving())
                 {
-                    String motorIdStr = c.getArgument("n").getValue();
-                    setMotorId(motorIdStr);
-                    showPositionStatus();
+                    if (c.getArgument("n").isSet())
+                    {
+                        String motorIdStr = c.getArgument("n").getValue();
+                        setMotorId(motorIdStr);
+                        // amir4
+                        showPositionStatus();
+                    }
                 }
             }
             else if (c == cmdHelp)
@@ -877,48 +994,16 @@ void serialReadTask(void* pvParameters)
             {
                 if (c.getArgument("p").isSet())
                 {
-                    String                     valueStr = c.getArgument("p").getValue();
-                    float                      value    = valueStr.toFloat();
-                    ConvertValues::FromDegrees cvfd     = UnitConverter::convertFromDegrees(value);
-                    ConvertValues::FromPulses  cvfp     = UnitConverter::convertFromPulses(value);
-                    ConvertValues::FromSteps   cvfs     = UnitConverter::convertFromSteps(value);
-                    ConvertValues::FromUMeters cvfm     = UnitConverter::convertFromUMeters(value);
+                    String valueStr = c.getArgument("p").getValue();
+                    float  value    = valueStr.toFloat();
 
-                    Serial.print(F("From Degrees: Pulses:"));
-                    Serial.print(cvfd.TO_PULSES);
-                    Serial.print(F(", Steps:"));
-                    Serial.print(cvfd.TO_STEPS);
-                    Serial.print(F(", Turns:"));
-                    Serial.print(cvfd.TO_TURNS);
-                    Serial.print(F(", Micrometers:"));
-                    Serial.println(cvfd.TO_UMETERS);
+                    ConvertValues cvfd = UnitConverter::convertFromDegrees(value);
+                    ConvertValues cvfp = UnitConverter::convertFromPulses(value);
+                    ConvertValues cvfs = UnitConverter::convertFromSteps(value);
+                    ConvertValues cvfm = UnitConverter::convertFromMicrometers(value);
 
-                    Serial.print(F("From Pulses: Degrees:"));
-                    Serial.print(cvfp.TO_DEGREES);
-                    Serial.print(F(", Steps:"));
-                    Serial.print(cvfp.TO_STEPS);
-                    Serial.print(F(", Turns:"));
-                    Serial.print(cvfp.TO_TURNS);
-                    Serial.print(F(", Micrometers:"));
-                    Serial.println(cvfp.TO_UMETERS);
-
-                    Serial.print(F("From Steps: Degrees:"));
-                    Serial.print(cvfs.TO_DEGREES);
-                    Serial.print(F(", Pulses:"));
-                    Serial.print(cvfs.TO_PULSES);
-                    Serial.print(F(", Turns:"));
-                    Serial.print(cvfs.TO_TURNS);
-                    Serial.print(F(", Micrometers:"));
-                    Serial.println(cvfs.TO_UMETERS);
-
-                    Serial.print(F("From Micrometers: Degrees:"));
-                    Serial.print(cvfm.TO_DEGREES);
-                    Serial.print(F(", Steps:"));
-                    Serial.print(cvfm.TO_STEPS);
-                    Serial.print(F(", Pulses:"));
-                    Serial.print(cvfm.TO_PULSES);
-                    Serial.print(F(", Turns:"));
-                    Serial.println(cvfm.TO_TURNS);
+                    Serial.println();
+                    printConversionTable(value, cvfd, cvfp, cvfs, cvfm);
                     Serial.println();
                 }
             }
@@ -935,26 +1020,24 @@ void serialReadTask(void* pvParameters)
     }
 }
 
-float setCurrentPositionFromPulses()
+uint32_t setCurrentPositionFromPulses()
 {
     uint32_t pulses = getEncoderState().position_pulse;
     int32_t  steps  = UnitConverter::convertFromPulses(pulses).TO_STEPS;
+    float    degree = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
+
     setCurrentPosition(steps);
-    float output;
     if (isLinearMotor(currentIndex))
     {
-        float   micrometers = UnitConverter::convertFromPulses(pulses).TO_UMETERS;
+        float   micrometers = UnitConverter::convertFromPulses(pulses).TO_MICROMETERS;
         int32_t turns       = UnitConverter::convertFromPulses(pulses).TO_TURNS;
-        output              = micrometers;
-        log_d("Motor %d current position set to Steps: %d (%f µm, %d t)", currentIndex + 1, steps, micrometers, turns);
+        log_d("Motor %d current position set to Steps: %d (%f µm, %d t, %f° )", currentIndex + 1, steps, micrometers, turns, degree);
     }
     else
     {
-        float angle = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
-        output      = angle;
-        log_d("Motor %d current position set to Steps: %d (%f°)", currentIndex + 1, steps, angle);
+        log_d("Motor %d current position set to Steps: %d (%f°)", currentIndex + 1, steps, degree);
     }
-    return output;
+    return pulses;
 }
 
 void checkDifferenceCorrection()
@@ -974,7 +1057,7 @@ void checkDifferenceCorrection()
 
     float difference = encoderAngle - currentAngle;
 
-    if (data.control.mode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
+    if (control_mode == ControlMode::OPEN_LOOP && fabs(difference) > 0.05)
     {
         setCurrentPosition(encoderSteps);
 
@@ -987,7 +1070,7 @@ void checkDifferenceCorrection()
         positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 
         int32_t targetSteps = UnitConverter::convertFromDegrees(targetAngle).TO_STEPS;
-        bool    success     = moveToSteps(targetSteps, MovementType::SHORT_RANGE, data.control.mode);
+        bool    success     = moveToSteps(targetSteps, MovementType::SHORT_RANGE, control_mode);
 
         if (success)
         {
@@ -1000,16 +1083,16 @@ void checkDifferenceCorrection()
     }
     else
     {
-        data.position.reached = currentAngle;
+        reached_pulses = currentAngle;  // amir
 
         if (isLinearMotor(currentIndex))
         {
-            data.position.turns = getCurrentTurnFromStepper();
+            reached_turns = getCurrentTurnFromStepper();
         }
 
-        data.position.save = true;
+        reached_save = true;
         storeToMemory();
-        log_i("No movement needed, difference: %f, ControlMode: %s", difference, (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid");
+        log_i("No movement needed, difference: %f, ControlMode: %s", difference, (control_mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid");
     }
 }
 
@@ -1022,10 +1105,10 @@ void onVoltageDrop()
         return;
     }
 
-    if (positionController[currentIndex].isMoving())
+    if (isMoving())
     {
         stop();
-        data.voltageDropPosition.save = true;
+        voltageDrop_save = true;
         storeToMemory();
 
         log_w("Motor %d stopped due to voltage drop, position saved", currentIndex + 1);
@@ -1034,15 +1117,15 @@ void onVoltageDrop()
 
 void linearProcess(float targetUMeters)
 {
-    data.voltageDropPosition.turns = getCurrentTurnFromStepper();
+    voltageDrop_turn = getCurrentTurnFromStepper();
     prepaireBeforeMovement();
 
-    int32_t targetSteps = UnitConverter::convertFromUMeters(targetUMeters).TO_STEPS;
-    bool    success     = moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
+    int32_t targetSteps = UnitConverter::convertFromMicrometers(targetUMeters).TO_STEPS;
+    bool    success     = moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
 
     if (success)
     {
-        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid";
+        const char* modeStr = (control_mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid";
         log_i("Motor %d moving to %f µm (%s)", currentIndex + 1, targetUMeters, modeStr);
     }
     else
@@ -1058,15 +1141,15 @@ void rotationalProcess(float targetAngle)
     else if (targetAngle == 360)
         targetAngle = 359.9955f;
 
-    data.voltageDropPosition.turns = 0;
+    voltageDrop_turn = 0;
     prepaireBeforeMovement();
 
     int32_t targetSteps = UnitConverter::convertFromDegrees(targetAngle).TO_STEPS;
-    bool    success     = moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
+    bool    success     = moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
 
     if (success)
     {
-        const char* modeStr = (data.control.mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid";
+        const char* modeStr = (control_mode == ControlMode::OPEN_LOOP) ? "open-loop" : "hybrid";
         log_i("Motor %d moving to %f degrees (%s)", currentIndex + 1, targetAngle, modeStr);
     }
     else
@@ -1077,18 +1160,19 @@ void rotationalProcess(float targetAngle)
 
 void prepaireBeforeMovement()
 {
-    data.voltageDropPosition.beforeMovement = setCurrentPositionFromPulses();
+    uint32_t encoderPulses = setCurrentPositionFromPulses();
+    voltageDrop_pulses     = encoderPulses;
     Serial.print(F("Before:"));
-    Serial.print(data.voltageDropPosition.beforeMovement);
+    Serial.print(voltageDrop_pulses);
     Serial.print(F("Turns:"));
-    Serial.println(data.voltageDropPosition.turns);
+    Serial.println(voltageDrop_turn);
     loadControlMode();
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
 }
 
 #pragma region helper_functions
-int32_t getEncoderSteps()
+int32_t        getEncoderSteps()
 {
     return positionController[currentIndex].getEncoderSteps();
 }
@@ -1142,7 +1226,7 @@ void stop()
 }
 bool moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode)
 {
-    return positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, data.control.mode);
+    return positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
 }
 void setCurrentPosition(int32_t positionSteps)
 {
@@ -1164,12 +1248,12 @@ void showPositionStatus()
     if (isLinearMotor(currentIndex))
     {
         // For linear motor, display in micrometers
-        float   encoderMicrometers     = UnitConverter::convertFromPulses(pulses).TO_UMETERS;
-        float   currentMicrometers     = UnitConverter::convertFromSteps(motorStatus.currentSteps).TO_UMETERS;
-        int32_t turns                  = UnitConverter::convertFromSteps(motorStatus.currentSteps).TO_TURNS;
-        float   targetMicrometers      = UnitConverter::convertFromSteps(motorStatus.targetSteps).TO_UMETERS;
-        float   diff                   = currentMicrometers - encoderMicrometers;
-        data.voltageDropPosition.turns = turns;
+        float   encoderMicrometers = UnitConverter::convertFromPulses(pulses).TO_MICROMETERS;
+        float   currentMicrometers = UnitConverter::convertFromSteps(motorStatus.currentSteps).TO_MICROMETERS;
+        int32_t turns              = UnitConverter::convertFromSteps(motorStatus.currentSteps).TO_TURNS;
+        float   targetMicrometers  = UnitConverter::convertFromSteps(motorStatus.targetSteps).TO_MICROMETERS;
+        float   diff               = currentMicrometers - encoderMicrometers;
+        voltageDrop_turn           = turns;
 
         Serial.print(F("[Position Status] Motor "));
         Serial.print(currentIndex + 1);
@@ -1228,4 +1312,80 @@ void showPositionStatus()
         Serial.println(F(" pulses)"));
     }
 }
+
+const char* toString(VoltageStatus status)
+{
+    switch (status)
+    {
+        case VoltageStatus::VOLTAGE_NORMAL:
+            return "✅ NORMAL";
+        case VoltageStatus::VOLTAGE_DROPPED:
+            return "⚡ DROPPED";
+        default:
+            return "❓ UNKNOWN";
+    }
+}
+
+const char* toString(ControlMode m)
+{
+    switch (m)
+    {
+        case ControlMode::OPEN_LOOP:
+            return "OPEN_LOOP";
+        case ControlMode::HYBRID:
+            return "HYBRID";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+// Build preference key for a motor
+String makeKey(int motorIndex, const char* suffix)
+{
+    return "m" + String(motorIndex) + "_" + suffix;
+}
+
+String isSave(size_t result)
+{
+    return (result == 0) ? "Failed ❌" : "OK ✅";
+}
+
+// Optional: small helper to clamp/validate an int to ControlMode
+inline ControlMode safeModeFromInt(int v, ControlMode fallback)
+{
+    if (v < static_cast<int>(ControlMode::OPEN_LOOP) || v > static_cast<int>(ControlMode::HYBRID))
+    {
+        return fallback;
+    }
+    return static_cast<ControlMode>(v);
+}
+
+bool isMoving()
+{
+    return positionController[currentIndex].isMoving();
+}
+// Pretty-print a fixed-width ASCII table of conversions
+static void printConversionTable(float inputValue, const ConvertValues& cvfd, const ConvertValues& cvfp, const ConvertValues& cvfs, const ConvertValues& cvfm)
+{
+    Serial.println(inputValue);
+    auto line = []() { Serial.println("+----------------------+------------+------------+------------+------------+--------------+"); };
+    line();
+    Serial.printf("| %-20s | %10s | %10s | %10s | %10s | %12s |\n", "From (unit)", "Degrees", "Pulses", "Steps", "Turns", "Micrometers");
+    line();
+
+    // From Degrees (inputValue interpreted as degrees)
+    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Degrees", cvfd.TO_DEGREES, static_cast<long>(cvfd.TO_PULSES), static_cast<long>(cvfd.TO_STEPS), static_cast<long>(cvfd.TO_TURNS), static_cast<double>(cvfd.TO_MICROMETERS));
+
+    // From Pulses (inputValue interpreted as pulses)
+    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Pulses", static_cast<double>(cvfp.TO_DEGREES), static_cast<long>(cvfp.TO_PULSES), static_cast<long>(cvfp.TO_STEPS), static_cast<long>(cvfp.TO_TURNS), static_cast<double>(cvfp.TO_MICROMETERS));
+
+    // From Steps (inputValue interpreted as steps)
+    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Steps", static_cast<double>(cvfs.TO_DEGREES), static_cast<long>(cvfs.TO_PULSES), static_cast<long>(cvfs.TO_STEPS), static_cast<long>(cvfs.TO_TURNS), static_cast<double>(cvfs.TO_MICROMETERS));
+
+    // From Micrometers (inputValue interpreted as µm)
+    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Micrometers", static_cast<double>(cvfm.TO_DEGREES), static_cast<long>(cvfm.TO_PULSES), static_cast<long>(cvfm.TO_STEPS), static_cast<long>(cvfm.TO_TURNS), static_cast<double>(cvfm.TO_MICROMETERS));
+
+    line();
+}
+
 #pragma endregion
