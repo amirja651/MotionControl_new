@@ -275,8 +275,8 @@ void storeToMemory()
         vTaskDelay(pdMS_TO_TICKS(20));
 
         log_d("\n⚙️ Motor [%d]\n"
-              "   • Key     : %d\n",
-              "   • Value   : %d\n",
+              "   • Key     : %d\n"
+              "   • Value   : %d\n"
               "   • Success : %s\n",
               currentIndex + 1,
               key_cm.c_str(),
@@ -297,12 +297,12 @@ void storeToMemory()
         vTaskDelay(pdMS_TO_TICKS(20));
 
         log_d("\n⚙️ Motor [%d]\n"
-              "   • Key     : %d\n",
-              "   • Value   : %u\n",
-              "   • Success : %s\n",
+              "   • Key     : %d\n"
+              "   • Value   : %u\n"
+              "   • Success : %s\n"
               "    -------------\n"
-              "   • Key     : %d\n",
-              "   • Value   : %u\n",
+              "   • Key     : %d\n"
+              "   • Value   : %u\n"
               "   • Success : %s\n",
               currentIndex + 1,
               key_op.c_str(),
@@ -333,16 +333,16 @@ void storeToMemory()
         vTaskDelay(pdMS_TO_TICKS(20));
 
         log_d("\n⚙️ Motor [%d]\n"
-              "   • Key     : %d\n",
-              "   • Value   : %u\n",
-              "   • Success : %s\n",
+              "   • Key     : %d\n"
+              "   • Value   : %u\n"
+              "   • Success : %s\n"
               "    -------------\n"
-              "   • Key     : %d\n",
-              "   • Value   : %d\n",
-              "   • Success : %s\n",
+              "   • Key     : %d\n"
+              "   • Value   : %d\n"
+              "   • Success : %s\n"
               "    -------------\n"
-              "   • Key     : %d\n",
-              "   • Value   : %d\n",
+              "   • Key     : %d\n"
+              "   • Value   : %d\n"
               "   • Success : %s\n",
               currentIndex + 1,
               key_vdp.c_str(),
@@ -376,16 +376,16 @@ void storeToMemory()
         vTaskDelay(pdMS_TO_TICKS(20));
 
         log_d("\n⚙️ Motor [%d]\n"
-              "   • Key     : %d\n",
-              "   • Value   : %u\n",
-              "   • Success : %s\n",
+              "   • Key     : %d\n"
+              "   • Value   : %u\n"
+              "   • Success : %s\n"
               "    -------------\n"
-              "   • Key     : %d\n",
-              "   • Value   : %d\n",
-              "   • Success : %s\n",
+              "   • Key     : %d\n"
+              "   • Value   : %d\n"
+              "   • Success : %s\n"
               "    -------------\n"
-              "   • Key     : %d\n",
-              "   • Value   : %d\n",
+              "   • Key     : %d\n"
+              "   • Value   : %d\n"
               "   • Success : %s\n",
               currentIndex + 1,
               key_rp.c_str(),
@@ -659,150 +659,160 @@ void serialReadTask(void* pvParameters)
             }
             else if (c == commands[static_cast<int>(CommandKey::Q)][0])  // 'Q' go to position from memory
             {
-                ConvertValues encoderPulses = UnitConverter::convertFromPulses(loaded_pulses);
-                float         target;
-                if (isLinearMotor(currentIndex))
+                if (!isMoving())
                 {
-                    target = encoderPulses.TO_MICROMETERS + (loaded_turns * LEAD_SCREW_PITCH_UM);
-                    linearProcess(target);
-                }
-                else
-                {
-                    target = encoderPulses.TO_DEGREES;
-                    rotationalProcess(target);
+                    ConvertValues encoderPulses = UnitConverter::convertFromPulses(loaded_pulses);
+                    float         target;
+                    if (isLinearMotor(currentIndex))
+                    {
+                        target = encoderPulses.TO_MICROMETERS + (loaded_turns * LEAD_SCREW_PITCH_UM);
+                        linearProcess(target);
+                    }
+                    else
+                    {
+                        target = encoderPulses.TO_DEGREES;
+                        rotationalProcess(target);
+                    }
                 }
             }
             else if (c == commands[static_cast<int>(CommandKey::L)][0])  // 'L' Show position status
             {
-                showPositionStatus();
+                if (!isMoving())
+                    showPositionStatus();
             }
             else if (c == commands[static_cast<int>(CommandKey::K)][0])  // 'K' Show encoder interrupt counters
             {
-                uint32_t currentTime  = millis();
-                uint32_t timeInterval = 0;
-
-                // Calculate time interval since last K press
-                if (lastKPressTime > 0)
+                if (!isMoving())
                 {
-                    timeInterval = currentTime - lastKPressTime;
-                }
+                    uint32_t currentTime  = millis();
+                    uint32_t timeInterval = 0;
 
-                Serial.println();
-                Serial.print(F("[Encoder Interrupt Counters] Motor "));
-                Serial.print(currentIndex + 1);
-                Serial.println(F(":"));
-
-                if (currentIndex >= 4 || !driverEnabled[currentIndex])
-                {
-                    log_e("Invalid motor index or driver not enabled");
-                }
-                else
-                {
-                    // Get interrupt counters
-                    uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
-                    uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
-                    uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
-
-                    Serial.print(F("  Total Interrupts: "));
-                    Serial.println(totalInterrupts);
-                    Serial.print(F("  Rising Edges (High): "));
-                    Serial.println(highEdges);
-                    Serial.print(F("  Falling Edges (Low): "));
-                    Serial.println(lowEdges);
-                    Serial.print(F("  Encoder Enabled: "));
-                    Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
-                    if (encoder[currentIndex].isEnabled())
+                    // Calculate time interval since last K press
+                    if (lastKPressTime > 0)
                     {
-                        uint32_t pulses       = getEncoderState().position_pulse;
-                        float    encoderAngle = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
-                        Serial.print(F("  Encoder Position: "));
-                        Serial.print(encoderAngle);
-                        Serial.print(F("° ("));
-                        Serial.print(pulses);
-                        Serial.println(F(" pulses)"));
+                        timeInterval = currentTime - lastKPressTime;
+                    }
+
+                    Serial.println();
+                    Serial.print(F("[Encoder Interrupt Counters] Motor "));
+                    Serial.print(currentIndex + 1);
+                    Serial.println(F(":"));
+
+                    if (currentIndex >= 4 || !driverEnabled[currentIndex])
+                    {
+                        log_e("Invalid motor index or driver not enabled");
+                    }
+                    else
+                    {
+                        // Get interrupt counters
+                        uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
+                        uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
+                        uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
+
+                        Serial.print(F("  Total Interrupts: "));
+                        Serial.println(totalInterrupts);
+                        Serial.print(F("  Rising Edges (High): "));
+                        Serial.println(highEdges);
+                        Serial.print(F("  Falling Edges (Low): "));
+                        Serial.println(lowEdges);
+                        Serial.print(F("  Encoder Enabled: "));
+                        Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
+                        if (encoder[currentIndex].isEnabled())
+                        {
+                            uint32_t pulses       = getEncoderState().position_pulse;
+                            float    encoderAngle = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
+                            Serial.print(F("  Encoder Position: "));
+                            Serial.print(encoderAngle);
+                            Serial.print(F("° ("));
+                            Serial.print(pulses);
+                            Serial.println(F(" pulses)"));
+                        }
+                        else
+                        {
+                            log_w("Encoder not enabled");
+                        }
+
+                        // Display time interval
+                        if (lastKPressTime > 0)
+                        {
+                            Serial.print(F("  Time since last K press: "));
+                            Serial.print(timeInterval);
+                            Serial.println(F(" ms"));
+                        }
+                        else
+                        {
+                            Serial.println(F("  Time since last K press: First press"));
+                        }
+
+                        // Reset counters after displaying
+                        encoder[currentIndex].resetInterruptCounters();
+                        Serial.println(F("  [Counters Reset]"));
+
+                        // Update last K press time
+                        lastKPressTime = currentTime;
+                    }
+                }
+            }
+            else if (c == commands[static_cast<int>(CommandKey::J)][0])  // 'J' Show encoder interrupt counters
+            {
+                if (!isMoving())
+                {
+                    const uint32_t currentTime  = millis();
+                    uint32_t       timeInterval = 0;
+
+                    if (lastKPressTime != 0)
+                    {
+                        timeInterval = currentTime - lastKPressTime;  // uint32_t wrap-safe
+                    }
+
+                    Serial.println();
+                    Serial.printf("[Encoder Interrupt Counters] Motor %d:\n", currentIndex + 1);
+
+                    if (currentIndex >= 4 || !driverEnabled[currentIndex])
+                    {
+                        log_e("Invalid motor index or driver not enabled");
+                        Serial.println(F("  [Aborted]"));
+                        return;
+                    }
+
+                    // Snapshot / reads
+                    const uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
+                    const uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
+                    const uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
+                    const bool     enabled         = encoder[currentIndex].isEnabled();
+
+                    Serial.printf("  Total Interrupts      : %u\n", totalInterrupts);
+                    Serial.printf("  Rising Edges (High)   : %u\n", highEdges);
+                    Serial.printf("  Falling Edges (Low)   : %u\n", lowEdges);
+                    Serial.printf("  Encoder Enabled       : %s\n", enabled ? "YES" : "NO");
+
+                    if (enabled)
+                    {
+                        const uint32_t pulses = getEncoderState().position_pulse;
+                        const float    angle  = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
+                        Serial.printf("  Encoder Position      : %.2f° (%u pulses)\n", angle, pulses);
                     }
                     else
                     {
                         log_w("Encoder not enabled");
                     }
 
-                    // Display time interval
-                    if (lastKPressTime > 0)
+                    if (lastKPressTime != 0)
                     {
-                        Serial.print(F("  Time since last K press: "));
-                        Serial.print(timeInterval);
-                        Serial.println(F(" ms"));
+                        Serial.printf("  Time since last J     : %u ms\n", timeInterval);
                     }
                     else
                     {
-                        Serial.println(F("  Time since last K press: First press"));
+                        Serial.println(F("  Time since last J     : First press"));
                     }
 
                     // Reset counters after displaying
                     encoder[currentIndex].resetInterruptCounters();
                     Serial.println(F("  [Counters Reset]"));
 
-                    // Update last K press time
+                    // Update last press time
                     lastKPressTime = currentTime;
                 }
-            }
-            else if (c == commands[static_cast<int>(CommandKey::J)][0])  // 'J' Show encoder interrupt counters
-            {
-                const uint32_t currentTime  = millis();
-                uint32_t       timeInterval = 0;
-
-                if (lastKPressTime != 0)
-                {
-                    timeInterval = currentTime - lastKPressTime;  // uint32_t wrap-safe
-                }
-
-                Serial.println();
-                Serial.printf("[Encoder Interrupt Counters] Motor %d:\n", currentIndex + 1);
-
-                if (currentIndex >= 4 || !driverEnabled[currentIndex])
-                {
-                    log_e("Invalid motor index or driver not enabled");
-                    Serial.println(F("  [Aborted]"));
-                    return;
-                }
-
-                // Snapshot / reads
-                const uint32_t totalInterrupts = encoder[currentIndex].getInterruptCount();
-                const uint32_t highEdges       = encoder[currentIndex].getHighEdgeCount();
-                const uint32_t lowEdges        = encoder[currentIndex].getLowEdgeCount();
-                const bool     enabled         = encoder[currentIndex].isEnabled();
-
-                Serial.printf("  Total Interrupts      : %u\n", totalInterrupts);
-                Serial.printf("  Rising Edges (High)   : %u\n", highEdges);
-                Serial.printf("  Falling Edges (Low)   : %u\n", lowEdges);
-                Serial.printf("  Encoder Enabled       : %s\n", enabled ? "YES" : "NO");
-
-                if (enabled)
-                {
-                    const uint32_t pulses = getEncoderState().position_pulse;
-                    const float    angle  = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
-                    Serial.printf("  Encoder Position      : %.2f° (%u pulses)\n", angle, pulses);
-                }
-                else
-                {
-                    log_w("Encoder not enabled");
-                }
-
-                if (lastKPressTime != 0)
-                {
-                    Serial.printf("  Time since last J     : %u ms\n", timeInterval);
-                }
-                else
-                {
-                    Serial.println(F("  Time since last J     : First press"));
-                }
-
-                // Reset counters after displaying
-                encoder[currentIndex].resetInterruptCounters();
-                Serial.println(F("  [Counters Reset]"));
-
-                // Update last press time
-                lastKPressTime = currentTime;
             }
             else  // Only add to buffer if not a direct command
             {
@@ -981,10 +991,10 @@ void serialReadTask(void* pvParameters)
                             origin_turn  = turn;
 
                             log_d("\n⚙️ Motor [%d] (Linear)\n"
-                                  "   • Current  : %f µm   (%d turns) 💡\n"
-                                  "   • Target   : %f µm   (%d turns)\n"
+                                  "   • Current  : %f µm (%d turns) 💡\n"
+                                  "   • Target   : %f µm (%d turns)\n"
                                   "   • Diff     : %f µm\n"
-                                  "   • Encoder  : %f µm   (%s, %u pulses)\n"
+                                  "   • Encoder  : %f µm (%s, %u pulses)\n"
                                   "   • Moving   : %s\n"
                                   "   • Enabled  : %s\n"
                                   "   • Mode     : %s\n",
@@ -1008,10 +1018,10 @@ void serialReadTask(void* pvParameters)
                             origin_turn = 0;
 
                             log_d("\n⚙️ Motor [%d] (Rotational)\n"
-                                  "   • Current  : %f°   (%d turns) 💡\n"
-                                  "   • Target   : %f°   (%d turns)\n"
+                                  "   • Current  : %f° (%d turns) 💡\n"
+                                  "   • Target   : %f° (%d turns)\n"
                                   "   • Diff     : %f°\n"
-                                  "   • Encoder  : %f°   (%s, %u pulses)\n"
+                                  "   • Encoder  : %f° (%s, %u pulses)\n"
                                   "   • Moving   : %s\n"
                                   "   • Enabled  : %s\n"
                                   "   • Mode     : %s\n",
@@ -1137,7 +1147,7 @@ void onVoltageDrop()
     }
 }
 
-void linearProcess(float targetMicrometers)
+void linearProcess(float targetMicrometers)  // amir
 {
     int32_t currentTurn = getCurrentTurnFromStepper();
     voltageDrop_turn    = currentTurn;
@@ -1160,13 +1170,13 @@ void linearProcess(float targetMicrometers)
           "   • Steps        : %u\n"
           "   • Microns      : %f µm\n"
           "   • Turns        : %d\n"
-          "   • Degrees      : %f°\n",
+          "   • Degrees      : %f°\n"
           "   • Voltage drop : %u pulses\n"
-          "   • Turns        : %d\n",
-          "   • Mode         : %s\n",
+          "   • Turns        : %d\n"
+          "   • Mode         : %s\n"
           "   • Target       : %f µm\n",
           currentIndex + 1,
-          encoderPulses.TO_STEPS,
+          currentSteps,
           encoderPulses.TO_MICROMETERS,
           currentTurn,
           encoderPulses.TO_DEGREES,
@@ -1211,10 +1221,10 @@ void rotationalProcess(float targetAngle)
 
     log_d("\n⚙️ Motor [%d] (Rotational)\n"
           "   • Steps        : %d\n"
-          "   • Degrees      : %f°\n",
+          "   • Degrees      : %f°\n"
           "   • Voltage drop : %u pulses\n"
-          "   • Turns        : %d\n",
-          "   • Mode         : %s\n",
+          "   • Turns        : %d\n"
+          "   • Mode         : %s\n"
           "   • Target       : %f steps\n",
           currentIndex + 1,
           encoderPulses.TO_STEPS,
@@ -1319,10 +1329,10 @@ void showPositionStatus()
         voltageDrop_turn = turn;
 
         log_d("\n⚙️ Motor [%d] (Linear)\n"
-              "   • Current  : %f µm   (%d turns) 💡\n"
-              "   • Target   : %f µm   (%d turns)\n"
+              "   • Current  : %f µm (%d turns) 💡\n"
+              "   • Target   : %f µm (%d turns)\n"
               "   • Diff     : %f µm\n"
-              "   • Encoder  : %f µm   (%s, %u pulses)\n"
+              "   • Encoder  : %f µm (%s, %u pulses)\n"
               "   • Moving   : %s\n"
               "   • Enabled  : %s\n"
               "   • Mode     : %s\n",
@@ -1346,10 +1356,10 @@ void showPositionStatus()
         voltageDrop_turn = 0;
 
         log_d("\n⚙️ Motor [%d] (Rotational)\n"
-              "   • Current  : %f°   (%d turns) 💡\n"
-              "   • Target   : %f°   (%d turns)\n"
+              "   • Current  : %f° (%d turns) 💡\n"
+              "   • Target   : %f° (%d turns)\n"
               "   • Diff     : %f°\n"
-              "   • Encoder  : %f°   (%s, %u pulses)\n"
+              "   • Encoder  : %f° (%s, %u pulses)\n"
               "   • Moving   : %s\n"
               "   • Enabled  : %s\n"
               "   • Mode     : %s\n",
