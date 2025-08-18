@@ -116,17 +116,9 @@ void               linearProcess(float targetUMeters);
 void               rotationalProcess(float targetAngle);
 bool               isLinearMotor(uint8_t index);
 bool               isRotationalMotor(uint8_t index);
-void               handleInAbsenceOfInterrupt();
-void               handleMovementComplete();
-EncoderState       getEncoderState();
-MotorStatus        getMotorStatus();
-int32_t            getCurrentTurnFromStepper();
-void               setDirection(bool fwd);
 void               disable();
 void               enable();
 void               stop();
-bool               moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode);
-void               setCurrentPosition(int32_t positionSteps);
 void               showPositionStatus();
 const char*        toString(VoltageStatus status);
 const char*        toString(ControlMode m);
@@ -242,8 +234,8 @@ void           setup()
 void loop()
 {
     // Handle movement complete outside ISR
-    handleInAbsenceOfInterrupt();
-    handleMovementComplete();
+    encoder[currentIndex].handleInAbsenceOfInterrupt();
+    positionController[currentIndex].handleMovementComplete();
     voltageMonitor.update();
 
     // Example: Check for drop detection manually
@@ -719,7 +711,7 @@ void serialReadTask(void* pvParameters)
                         Serial.println(encoder[currentIndex].isEnabled() ? F("YES") : F("NO"));
                         if (encoder[currentIndex].isEnabled())
                         {
-                            uint32_t pulses       = getEncoderState().position_pulse;
+                            uint32_t pulses       = positionController[currentIndex].getEncoderState().position_pulse;
                             float    encoderAngle = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
                             Serial.print(F("  Encoder Position: "));
                             Serial.print(encoderAngle);
@@ -788,7 +780,7 @@ void serialReadTask(void* pvParameters)
 
                     if (enabled)
                     {
-                        const uint32_t pulses = getEncoderState().position_pulse;
+                        const uint32_t pulses = positionController[currentIndex].getEncoderState().position_pulse;
                         const float    angle  = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
                         Serial.printf("  Encoder Position      : %.2f° (%u pulses)\n", angle, pulses);
                     }
@@ -964,14 +956,14 @@ void serialReadTask(void* pvParameters)
 
                     if (encoder[currentIndex].isEnabled())
                     {
-                        uint32_t      pulses        = getEncoderState().position_pulse;
+                        uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
                         ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
-                        Direction     direction     = getEncoderState().direction;
-                        MotorStatus   motorStatus   = getMotorStatus();
+                        Direction     direction     = positionController[currentIndex].getEncoderState().direction;
+                        MotorStatus   motorStatus   = positionController[currentIndex].getMotorStatus();
 
                         if (motorStatus.currentSteps == 0)
                         {
-                            setCurrentPosition(encoderPulses.TO_STEPS);
+                            positionController[currentIndex].setCurrentPosition(encoderPulses.TO_STEPS);
                             motorStatus.currentSteps = positionController[currentIndex].getCurrentSteps();
                         }
 
@@ -1105,9 +1097,9 @@ void checkDifferenceCorrection()
     vTaskDelay(pdMS_TO_TICKS(300));
     esp_task_wdt_reset();
 
-    uint32_t      pulses            = getEncoderState().position_pulse;
+    uint32_t      pulses            = positionController[currentIndex].getEncoderState().position_pulse;
     ConvertValues encoderPulses     = UnitConverter::convertFromPulses(pulses);
-    MotorStatus   motorStatus       = getMotorStatus();
+    MotorStatus   motorStatus       = positionController[currentIndex].getMotorStatus();
     ConvertValues currentMotorSteps = UnitConverter::convertFromSteps(motorStatus.currentSteps);
     float         difference        = encoderPulses.TO_DEGREES - currentMotorSteps.TO_DEGREES;
 
@@ -1149,43 +1141,55 @@ void onVoltageDrop()
 
 void linearProcess(float targetMicrometers)  // amir
 {
-    int32_t currentTurn = getCurrentTurnFromStepper();
-    voltageDrop_turn    = currentTurn;
+    MotorStatus   motorStatus = positionController[currentIndex].getMotorStatus();
+    ConvertValues motor       = UnitConverter::convertFromSteps(motorStatus.currentSteps);
+    voltageDrop_turn          = motor.TO_TURNS;
 
     // set current position from encoders //////////
-    uint32_t      pulses        = getEncoderState().position_pulse;
+    uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
     ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
     int32_t       microsteps    = UnitConverter::getDefaultMicrosteps();
-    uint32_t      currentSteps  = encoderPulses.TO_STEPS + (currentTurn * microsteps);
-    setCurrentPosition(currentSteps);
+    int32_t       currentSteps  = encoderPulses.TO_STEPS + (motor.TO_TURNS * microsteps);
+    positionController[currentIndex].setCurrentPosition(currentSteps);
     ///////////////////////////////////////////////
 
     voltageDrop_pulses = pulses;
     loadControlMode();
     encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
-    int32_t targetSteps = UnitConverter::convertFromMicrometers(targetMicrometers).TO_STEPS;
+    ConvertValues target      = UnitConverter::convertFromMicrometers(targetMicrometers);
+    int32_t       targetSteps = target.TO_STEPS + (target.TO_TURNS * microsteps);
 
     log_d("\n⚙️ Motor [%d] (Linear)\n"
-          "   • Steps        : %u\n"
-          "   • Microns      : %f µm\n"
-          "   • Turns        : %d\n"
-          "   • Degrees      : %f°\n"
-          "   • Voltage drop : %u pulses\n"
-          "   • Turns        : %d\n"
-          "   • Mode         : %s\n"
-          "   • Target       : %f µm\n",
-          currentIndex + 1,
-          currentSteps,
-          encoderPulses.TO_MICROMETERS,
-          currentTurn,
-          encoderPulses.TO_DEGREES,
-          voltageDrop_pulses,
-          voltageDrop_turn,
-          toString(control_mode),
-          targetMicrometers);
 
-    bool success = moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
+          "   • Motor        : %d total steps (%d steps, %d turns, %f µm, new: %d)\n"
+          "   • Target       : %d total steps (%d steps, %d turns, %f µm)\n"
+          "   • Encoder      : %f° (%f µm)\n"
+          "   • Mode         : %s\n"
+          "   • Voltage drop : %u pulses (%d turns)\n",
+
+          currentIndex + 1,
+
+          motorStatus.currentSteps,
+          motor.TO_STEPS,
+          motor.TO_TURNS,
+          motor.TO_MICROMETERS,
+          currentSteps,
+
+          targetSteps,
+          target.TO_STEPS,
+          target.TO_TURNS,
+          target.TO_MICROMETERS,
+
+          encoderPulses.TO_DEGREES,
+          encoderPulses.TO_MICROMETERS,
+
+          toString(control_mode),
+
+          voltageDrop_pulses,
+          voltageDrop_turn);
+
+    bool success = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
 
     if (success)
     {
@@ -1207,10 +1211,10 @@ void rotationalProcess(float targetAngle)
     voltageDrop_turn = 0;
 
     // set current position from encoders //////////
-    uint32_t      pulses        = getEncoderState().position_pulse;
+    uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
     ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
     uint32_t      currentSteps  = encoderPulses.TO_STEPS;
-    setCurrentPosition(currentSteps);
+    positionController[currentIndex].setCurrentPosition(currentSteps);
     ///////////////////////////////////////////////
 
     voltageDrop_pulses = pulses;
@@ -1234,7 +1238,7 @@ void rotationalProcess(float targetAngle)
           toString(control_mode),
           targetSteps);
 
-    bool success = moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
+    bool success = positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
 
     if (success)
     {
@@ -1256,30 +1260,6 @@ bool isRotationalMotor(uint8_t index)
 {
     return (positionController[index].getMotorType() == MotorType::ROTATIONAL);
 }
-void handleInAbsenceOfInterrupt()
-{
-    encoder[currentIndex].handleInAbsenceOfInterrupt();
-}
-void handleMovementComplete()
-{
-    positionController[currentIndex].handleMovementComplete();
-}
-EncoderState getEncoderState()
-{
-    return positionController[currentIndex].getEncoderState();
-}
-MotorStatus getMotorStatus()
-{
-    return positionController[currentIndex].getMotorStatus();
-}
-int32_t getCurrentTurnFromStepper()
-{
-    return positionController[currentIndex].getCurrentTurnFromStepper();
-}
-void setDirection(bool fwd)
-{
-    positionController[currentIndex].setDirection(fwd);
-}
 void disable()
 {
     positionController[currentIndex].disable();
@@ -1292,24 +1272,16 @@ void stop()
 {
     positionController[currentIndex].stop();
 }
-bool moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode)
-{
-    return positionController[currentIndex].moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, control_mode);
-}
-void setCurrentPosition(int32_t positionSteps)
-{
-    positionController[currentIndex].setCurrentPosition(positionSteps);
-}
 void showPositionStatus()
 {
-    uint32_t      pulses        = getEncoderState().position_pulse;
+    uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
     ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
-    Direction     direction     = getEncoderState().direction;
-    MotorStatus   motorStatus   = getMotorStatus();
+    Direction     direction     = positionController[currentIndex].getEncoderState().direction;
+    MotorStatus   motorStatus   = positionController[currentIndex].getMotorStatus();  // amir
 
     if (motorStatus.currentSteps == 0)
     {
-        setCurrentPosition(encoderPulses.TO_STEPS);
+        positionController[currentIndex].setCurrentPosition(encoderPulses.TO_STEPS);
         motorStatus.currentSteps = positionController[currentIndex].getCurrentSteps();
     }
 
@@ -1324,30 +1296,48 @@ void showPositionStatus()
     if (isLinearMotor(currentIndex))
     {
         // For linear motor, display in micrometers
-        float   diff     = currentMotorSteps.TO_MICROMETERS - encoderPulses.TO_MICROMETERS;
-        int32_t turn     = currentMotorSteps.TO_TURNS;
-        voltageDrop_turn = turn;
+        int32_t diff_steps   = motorStatus.targetSteps - motorStatus.currentSteps;
+        float   diff_encoder = currentMotorSteps.TO_MICROMETERS - encoderPulses.TO_MICROMETERS;
+        int32_t turn         = currentMotorSteps.TO_TURNS;
+        voltageDrop_turn     = turn;
 
         log_d("\n⚙️ Motor [%d] (Linear)\n"
-              "   • Current  : %f µm (%d turns) 💡\n"
-              "   • Target   : %f µm (%d turns)\n"
-              "   • Diff     : %f µm\n"
-              "   • Encoder  : %f µm (%s, %u pulses)\n"
-              "   • Moving   : %s\n"
-              "   • Enabled  : %s\n"
-              "   • Mode     : %s\n",
+
+              "   • Current      : %d total steps (%d steps, %d turns, %f µm)\n"
+              "   • Target       : %d total steps (%d steps, %d turns, %f µm)\n"
+              "   • Diff         : %f steps\n"
+              "   • Encoder      : %f° (%f µm, diff: %f µm, dir: %s)\n"
+              "   • Moving       : %s\n"
+              "   • Enabled      : %s\n"
+              "   • Mode         : %s\n"
+              "   • Voltage drop : %u pulses (%d turns)\n",
+
               currentIndex + 1,
-              currentMotorSteps.TO_MICROMETERS,
+
+              motorStatus.currentSteps,
+              currentMotorSteps.TO_STEPS,
               currentMotorSteps.TO_TURNS,
-              targetMotorSteps.TO_MICROMETERS,
+              currentMotorSteps.TO_MICROMETERS,
+
+              motorStatus.targetSteps,
+              targetMotorSteps.TO_STEPS,
               targetMotorSteps.TO_TURNS,
-              diff,
+              targetMotorSteps.TO_MICROMETERS,
+
+              diff_steps,
+
+              encoderPulses.TO_DEGREES,
               encoderPulses.TO_MICROMETERS,
+              diff_encoder,
               toString(direction),
-              pulses,
+
               movingStr,
               enabledStr,
-              toString(motorStatus.controlMode));
+
+              toString(motorStatus.controlMode),
+
+              voltageDrop_pulses,
+              voltageDrop_turn);
     }
     else
     {

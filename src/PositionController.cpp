@@ -165,13 +165,8 @@ bool PositionController::begin()
 
 void PositionController::setCurrentPosition(int32_t positionSteps)
 {
-    _stepper.setCurrentPosition(positionSteps);
+    _stepper.setCurrentPosition(static_cast<long>(positionSteps));
     _status.currentSteps = positionSteps;
-}
-
-int32_t PositionController::getCurrentTurnFromStepper()
-{
-    return _status.currentSteps / UnitConverter::getDefaultMicrosteps();
 }
 
 // Enable/Disable
@@ -317,7 +312,11 @@ int32_t PositionController::getCurrentSteps() const
 
 int32_t PositionController::getTargetSteps() const
 {
-    return _status.targetSteps;
+    if (!_initialized)
+        return 0;
+
+    return static_cast<int32_t>(const_cast<AccelStepper&>(_stepper).currentPosition());
+    // return _status.targetSteps;
 }
 
 MotorStatus PositionController::getMotorStatus()
@@ -655,24 +654,6 @@ int32_t PositionController::getEncoderSteps()
 {
     uint32_t pulse = getEncoderState().position_pulse;
     return UnitConverter::convertFromPulses(pulse).TO_STEPS;
-}
-
-int32_t PositionController::calculatePositionErrorSteps()
-{
-    // Only calculate error if encoder is available and enabled
-    if (_encoder == nullptr || !_encoder->isEnabled())
-        return 0;
-
-    int32_t targetSteps  = _status.targetSteps;
-    int32_t encoderSteps = getEncoderSteps();
-
-    // Calculate error in steps
-    int32_t error = targetSteps - encoderSteps;
-
-    _status.encoderSteps       = encoderSteps;
-    _status.positionErrorSteps = error;
-
-    return error;
 }
 
 // Global functions for RTOS integration

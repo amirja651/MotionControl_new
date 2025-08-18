@@ -84,7 +84,6 @@ public:
     // Initialization
     bool    begin();
     void    setCurrentPosition(int32_t positionSteps);
-    int32_t getCurrentTurnFromStepper();
     void    enable();
     void    disable();
     bool    isEnabled() const;
@@ -182,7 +181,6 @@ private:
     ControlMode getControlMode() const;
     bool        isHybridModeEnabled() const;
 
-    int32_t calculatePositionErrorSteps();
     void    applyHybridModeCorrection();
 
     // RTOS task function
