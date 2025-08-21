@@ -1104,19 +1104,20 @@ void checkDifferenceCorrection()
     float         difference        = encoderPulses.TO_DEGREES - currentMotorSteps.TO_DEGREES;
 
     if (fabs(difference) > 0.05)
-    {
-        if (isLinearMotor(currentIndex))
         {
-            linearProcess(global_target);
+            if (isLinearMotor(currentIndex))
+            {
+                linearProcess(global_target);
+            }
+            else
+            {
+                rotationalProcess(global_target);
+            }
         }
-        else
-        {
-            rotationalProcess(global_target);
-        }
-    }
     else
     {
         log_i("No movement needed!");
+        log_i("anjam shod pooya.");
     }
 }
 
@@ -1198,6 +1199,7 @@ void linearProcess(float targetMicrometers)  // amir
     else
     {
         log_e("❌ Failed to queue movement");
+        log_i("anjam shod pooya.");
     }
 }
 
@@ -1247,6 +1249,7 @@ void rotationalProcess(float targetAngle)
     else
     {
         log_e("❌ Failed to queue movement");
+        log_i("anjam shod pooya.");
     }
 }
 
