@@ -1,0 +1,237 @@
+// Layers: mae3_encoder.hpp — API and contracts (Driver + Domain layer)
+
+#ifndef MAE3_ENCODER_HPP_
+#define MAE3_ENCODER_HPP_
+
+#include <array>
+#include <atomic>
+#include <cstdint>
+
+#include "driver/gpio.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+namespace mae3 {
+
+// ---------- Domain types ----------
+
+enum class EncoderId : std::uint8_t { Enc1 = 0U, Enc2, Enc3, Enc4 };
+
+enum class Status : std::uint8_t {
+  Ok = 0U,
+  InvalidArg,
+  NotInitialized,
+  AlreadyInitialized
+};
+
+enum class LogicLevel : std::uint8_t { Low = 0U, High = 1U };
+
+// ---------- Constants (compile-time) ----------
+
+struct Constants final {
+  static constexpr std::uint32_t kResolutionBits = 12U;
+  static constexpr std::uint32_t kResolutionSteps =
+      (1UL << kResolutionBits);                                      // 4096
+  static constexpr std::uint32_t kMaxIndex = kResolutionSteps - 1U;  // 4095
+  static constexpr std::uint32_t kMinTonUs = 1U;       // per datasheet ~1 us
+  static constexpr std::uint32_t kMaxCycleUs = 4300U;  // ~4.3 ms (≈ 230 Hz)
+  static constexpr std::uint32_t kMinCycleUs = 3500U;  // ~3.5 ms
+};
+
+struct GpioConfig final {
+  gpio_num_t pin;
+  bool pull_up;
+  bool pull_down;
+  bool inverted;
+};
+
+// ---------- Observer pattern ----------
+
+class IEncoderObserver {
+ public:
+  virtual ~IEncoderObserver() = default;
+  // Called from task context (never from ISR)
+  virtual void onPositionUpdate(EncoderId id, std::uint16_t position) = 0;
+};
+
+// ---------- Utility (no dynamic allocation) ----------
+
+class SpinLock {
+ public:
+  SpinLock() {
+    mux_.owner = portMUX_FREE_VAL;
+    mux_.count = 0;
+  }
+  void lockISR() { portENTER_CRITICAL_ISR(&mux_); }
+  void unlockISR() { portEXIT_CRITICAL_ISR(&mux_); }
+  void lock() { portENTER_CRITICAL(&mux_); }
+  void unlock() { portEXIT_CRITICAL(&mux_); }
+
+ private:
+  portMUX_TYPE mux_{};
+};
+
+// ---------- PWM capture (edge timestamps) ----------
+
+class EdgeCapture {
+ public:
+  EdgeCapture() = default;
+  ~EdgeCapture() = default;
+
+  EdgeCapture(const EdgeCapture&) = delete;
+  EdgeCapture& operator=(const EdgeCapture&) = delete;
+
+  inline void onEdgeISR(LogicLevel level, std::uint32_t now_us) noexcept {
+    // Minimal ISR logic: compute delta from last edge and store high/low
+    // durations
+    lock_.lockISR();
+    const std::uint32_t dt = now_us - last_edge_us_;
+    last_edge_us_ = now_us;
+
+    if (level == LogicLevel::High) {
+      // Rising edge -> low period finished
+      toff_us_ = dt;
+      low_valid_ = true;
+    } else {
+      // Falling edge -> high period finished
+      ton_us_ = dt;
+      high_valid_ = true;
+    }
+
+    // Sample ready when both halves measured once since last read
+    if (high_valid_ && low_valid_) {
+      sample_ready_ = true;
+      high_valid_ = false;
+      low_valid_ = false;
+    }
+    lock_.unlockISR();
+  }
+
+  inline bool tryConsumeSample(std::uint32_t& ton_us,
+                               std::uint32_t& toff_us) noexcept {
+    lock_.lock();
+    const bool ready = sample_ready_;
+    if (ready) {
+      ton_us = ton_us_;
+      toff_us = toff_us_;
+      sample_ready_ = false;
+    }
+    lock_.unlock();
+    return ready;
+  }
+
+  inline void reset(std::uint32_t now_us) noexcept {
+    lock_.lock();
+    last_edge_us_ = now_us;
+    ton_us_ = 0U;
+    toff_us_ = 0U;
+    high_valid_ = false;
+    low_valid_ = false;
+    sample_ready_ = false;
+    lock_.unlock();
+  }
+
+ private:
+  SpinLock lock_{};
+  std::uint32_t last_edge_us_{0U};
+  std::uint32_t ton_us_{0U};
+  std::uint32_t toff_us_{0U};
+  bool high_valid_{false};
+  bool low_valid_{false};
+  bool sample_ready_{false};
+};
+
+// ---------- Encoder driver (per-channel) ----------
+
+class Mae3Encoder {
+ public:
+  explicit Mae3Encoder(EncoderId id, GpioConfig cfg) : id_{id}, cfg_{cfg} {}
+
+  Mae3Encoder(const Mae3Encoder&) = delete;
+  Mae3Encoder& operator=(const Mae3Encoder&) = delete;
+
+  Status init();
+  Status deinit();
+
+  // Enable only when this channel is the active encoder
+  Status enable();
+  Status disable();
+
+  // Non-blocking: if a fresh sample exists, computes position (0..4095) and
+  // returns true
+  bool tryGetPosition(std::uint16_t& position);
+
+  // Interrupt trampoline
+  static void IRAM_ATTR isrTrampoline(void* arg);
+
+  inline gpio_num_t pin() const noexcept { return cfg_.pin; }
+  inline EncoderId id() const noexcept { return id_; }
+
+ private:
+  static inline std::uint16_t dutyToPosition(std::uint32_t ton,
+                                             std::uint32_t toff) noexcept {
+    const std::uint32_t period = ton + toff;
+    if ((period < Constants::kMinCycleUs) ||
+        (period > Constants::kMaxCycleUs) || (ton < Constants::kMinTonUs)) {
+      return last_valid_pos_.load(std::memory_order_relaxed);
+    }
+    // Position = ((ton * (N+1)) / period) - 1  ; N = 4096
+    const std::uint32_t raw =
+        (ton * (Constants::kResolutionSteps + 1UL)) / period;
+    const std::int32_t pos = static_cast<std::int32_t>(raw) - 1;
+    const std::uint16_t clamped =
+        (pos < 0) ? 0U
+                  : (pos > static_cast<std::int32_t>(Constants::kMaxIndex)
+                         ? Constants::kMaxIndex
+                         : static_cast<std::uint16_t>(pos));
+    last_valid_pos_.store(clamped, std::memory_order_relaxed);
+    return clamped;
+  }
+
+  static std::atomic<std::uint16_t> last_valid_pos_;
+
+  EncoderId id_;
+  GpioConfig cfg_;
+  bool inited_{false};
+  bool enabled_{false};
+  EdgeCapture capture_{};
+};
+
+// ---------- Manager (Singleton + Factory + Observer) ----------
+
+class EncoderManager {
+ public:
+  static EncoderManager& instance();
+
+  EncoderManager(const EncoderManager&) = delete;
+  EncoderManager& operator=(const EncoderManager&) = delete;
+
+  Status configure(const std::array<GpioConfig, 4U>& pins);
+  Mae3Encoder* get(EncoderId id);
+  Status setActive(EncoderId id);
+
+  // Observer management (fixed-capacity, no heap)
+  Status attach(IEncoderObserver* obs);
+  Status detach(IEncoderObserver* obs);
+
+  // To be called from an application task (non-blocking)
+  void pollAndNotify();
+
+ private:
+  EncoderManager() = default;
+
+  static constexpr std::size_t kMaxObservers = 4U;
+
+  Mae3Encoder* active_{nullptr};
+  std::array<Mae3Encoder, 4U>* encs_{
+      nullptr};  // constructed in-place in storage_
+  alignas(Mae3Encoder) std::uint8_t storage_[sizeof(Mae3Encoder) * 4U]{};
+
+  std::array<IEncoderObserver*, kMaxObservers> observers_{
+      {nullptr, nullptr, nullptr, nullptr}};
+};
+
+}  // namespace mae3
+
+#endif  // MAE3_ENCODER_HPP_
