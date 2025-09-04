@@ -6,7 +6,7 @@
 
 namespace mae3 {
 
-enum class EncoderId : std::uint8_t { Enc1 = 0U, Enc2, Enc3, Enc4 };
+// ---------- Types & Constants ----------
 enum class Status : std::uint8_t {
   Ok = 0U,
   InvalidArg,
@@ -17,60 +17,72 @@ enum class LogicLevel : std::uint8_t { Low = 0U, High = 1U };
 
 struct Constants final {
   static constexpr std::uint32_t kResolutionBits = 12U;
-  static constexpr std::uint32_t kResolutionSteps = (1UL << kResolutionBits);
-  static constexpr std::uint32_t kMaxIndex = kResolutionSteps - 1U;
+  static constexpr std::uint32_t kResolutionSteps =
+      (1UL << kResolutionBits);                                      // 4096
+  static constexpr std::uint32_t kMaxIndex = kResolutionSteps - 1U;  // 4095
   static constexpr std::uint32_t kMinTonUs = 1U;
-  static constexpr std::uint32_t kMinCycleUs = 3500U;
-  static constexpr std::uint32_t kMaxCycleUs = 4300U;
+  static constexpr std::uint32_t kMinCycleUs = 3892U;  // ~3.8 ms
+  static constexpr std::uint32_t kMaxCycleUs = 4302U;  // ~4.3 ms
 };
 
 struct GpioConfig final {
   int pin;
   bool pullup;
-  bool pulldown;
+  bool pulldown;  // note: Arduino INPUT_PULLDOWN not guaranteed for all pins;
+                  // prefer external
   bool inverted;
 };
 
 class IEncoderObserver {
  public:
   virtual ~IEncoderObserver() = default;
-  virtual void onPositionUpdate(EncoderId id, std::uint16_t position) = 0;
+  virtual void onPositionUpdate(std::uint8_t index, 
+                                std::uint16_t position,
+                                std::uint32_t tonUs,
+                                std::uint32_t toffUs) = 0;
 };
 
+// ---------- EdgeCapture (per channel, no heap) ----------
 class EdgeCapture {
  public:
   EdgeCapture() = default;
-  void reset(std::uint32_t now) noexcept {
+
+  void reset(std::uint32_t now_us) noexcept {
     noInterrupts();
-    last_edge_us_ = now;
+    last_edge_us_ = now_us;
     ton_us_ = 0U;
     toff_us_ = 0U;
-    hv_ = false;
-    lv_ = false;
+    high_valid_ = false;
+    low_valid_ = false;
     ready_ = false;
     interrupts();
   }
-  void onEdgeISR(bool level, std::uint32_t now) noexcept {
-    const std::uint32_t dt = now - last_edge_us_;
-    last_edge_us_ = now;
+
+  // ISR-side: store delta only (no math/log/heap)
+  inline void onEdgeISR(bool level, std::uint32_t now_us) noexcept {
+    const std::uint32_t dt = now_us - last_edge_us_;
+    last_edge_us_ = now_us;
     if (level) {
       toff_us_ = dt;
-      lv_ = true;
+      low_valid_ = true;
     } else {
       ton_us_ = dt;
-      hv_ = true;
+      high_valid_ = true;
     }
-    if (hv_ && lv_) {
+    if (high_valid_ && low_valid_) {
       ready_ = true;
-      hv_ = lv_ = false;
+      high_valid_ = false;
+      low_valid_ = false;
     }
   }
-  bool tryConsume(std::uint32_t& ton, std::uint32_t& toff) noexcept {
+
+  // Task-side: consume most recent full sample (non-blocking)
+  bool tryConsume(std::uint32_t& ton_us, std::uint32_t& toff_us) noexcept {
     noInterrupts();
     const bool rdy = ready_;
     if (rdy) {
-      ton = ton_us_;
-      toff = toff_us_;
+      ton_us = ton_us_;
+      toff_us = toff_us_;
       ready_ = false;
     }
     interrupts();
@@ -81,30 +93,28 @@ class EdgeCapture {
   volatile std::uint32_t last_edge_us_{0U};
   volatile std::uint32_t ton_us_{0U};
   volatile std::uint32_t toff_us_{0U};
-  volatile bool hv_{false}, lv_{false}, ready_{false};
+  volatile bool high_valid_{false};
+  volatile bool low_valid_{false};
+  volatile bool ready_{false};
 };
 
+// ---------- Mae3Encoder (per channel) ----------
 class Mae3Encoder {
  public:
-  explicit Mae3Encoder(EncoderId id, const GpioConfig& cfg)
-      : id_{id}, cfg_{cfg} {}
-  Mae3Encoder(const Mae3Encoder&) = delete;
-  Mae3Encoder& operator=(const Mae3Encoder&) = delete;  // amir
+  Mae3Encoder() = default;
+  Mae3Encoder(std::uint8_t index, const GpioConfig& cfg)
+      : index_{index}, cfg_{cfg} {}
 
   Status init() {
     if (inited_) {
       return Status::AlreadyInitialized;
     }
-    pinMode(cfg_.pin, INPUT);
-    if (cfg_.pullup) {
-      pinMode(cfg_.pin, INPUT_PULLUP);
-    }
-    // (ESP32 Arduino lacks INPUT_PULLDOWN on all pins reliably; wire extern
-    // pull-down if needed)
+    pinMode(cfg_.pin, cfg_.pullup ? INPUT_PULLUP : INPUT);
     capture_.reset(micros());
-    attachInterruptArg(digitalPinToInterrupt(cfg_.pin), &Mae3Encoder::isrThunk,
+    // Attach the same ISR function for all encoders; pass "this" as arg
+    attachInterruptArg(digitalPinToInterrupt(cfg_.pin), &Mae3Encoder::isrShared,
                        this, CHANGE);
-    disable();
+    disable();  // keep disabled until selected active
     inited_ = true;
     return Status::Ok;
   }
@@ -134,37 +144,43 @@ class Mae3Encoder {
     return Status::Ok;
   }
 
-  bool tryGetPosition(std::uint16_t& pos) {
+  bool tryGetPosition(std::uint16_t& pos_out, std::uint32_t& ton_us,
+                      std::uint32_t& toff_us) noexcept {
     std::uint32_t ton{0U}, toff{0U};
     if (!capture_.tryConsume(ton, toff)) {
       return false;
     }
     if (cfg_.inverted) {
-      auto t = ton;
+      const std::uint32_t t = ton;
       ton = toff;
       toff = t;
     }
-    pos = dutyToPosition(ton, toff);
+    pos_out = dutyToPosition(ton, toff);
+    ton_us = ton;
+    toff_us = toff;
     return true;
   }
 
-  inline EncoderId id() const noexcept { return id_; }
+  inline std::uint8_t index() const noexcept { return index_; }
 
  private:
-  static void IRAM_ATTR isrThunk(void* arg) {
+  // --- Single ISR for all encoders (same function pointer) ---
+  static void IRAM_ATTR isrShared(void* arg) {
     auto* self = static_cast<Mae3Encoder*>(arg);
     if (!self->enabled_) {
       return;
     }
-    const bool level = digitalRead(self->cfg_.pin);
+    const bool level = (digitalRead(self->cfg_.pin) != 0);
     self->capture_.onEdgeISR(level, micros());
   }
 
+  // --- Conversion (task-side) ---
   static std::uint16_t dutyToPosition(std::uint32_t ton,
                                       std::uint32_t toff) noexcept {
     const std::uint32_t period = ton + toff;
     if ((period < Constants::kMinCycleUs) ||
         (period > Constants::kMaxCycleUs) || (ton < Constants::kMinTonUs)) {
+      // Return last valid to avoid jitter when sample invalid
       return last_valid_pos_.load(std::memory_order_relaxed);
     }
     const std::uint32_t raw =
@@ -181,8 +197,8 @@ class Mae3Encoder {
 
   static std::atomic<std::uint16_t> last_valid_pos_;
 
-  EncoderId id_;
-  GpioConfig cfg_;
+  std::uint8_t index_{0U};
+  GpioConfig cfg_{};
   bool inited_{false};
   volatile bool enabled_{false};
   EdgeCapture capture_{};
@@ -190,37 +206,37 @@ class Mae3Encoder {
 
 inline std::atomic<std::uint16_t> Mae3Encoder::last_valid_pos_{0U};
 
-// Manager (Singleton) for 4 encoders, one active
+// ---------- Manager (templated N; no heap; one-active-at-a-time) ----------
+template <std::size_t N>
 class EncoderManager {
  public:
-  static EncoderManager& instance() {
-    static EncoderManager m;
-    return m;
-  }
-  Status configure(const GpioConfig (&pins)[4]) {
+  Status configure(const GpioConfig (&pins)[N]) {
     if (inited_) {
       return Status::AlreadyInitialized;
     }
-    for (std::uint8_t i = 0U; i < 4U; ++i) {
-      encs_[i] = Mae3Encoder(static_cast<EncoderId>(i), pins[i]);
+    for (std::size_t i = 0U; i < N; ++i) {
+      encs_[i] = Mae3Encoder(static_cast<std::uint8_t>(i),
+                             pins[i]);  // RAII: stack object
       (void)encs_[i].init();
     }
     inited_ = true;
     return Status::Ok;
   }
-  Mae3Encoder* get(EncoderId id) {
-    return inited_ ? &encs_[static_cast<std::uint8_t>(id)] : nullptr;
-  }
-  Status setActive(EncoderId id) {
-    if (!inited_) {
-      return Status::NotInitialized;
+
+  Mae3Encoder* get(std::size_t i) { return (i < N) ? &encs_[i] : nullptr; }
+
+  // Per your original contract: only one encoder is active at any time.
+  Status setActive(std::size_t i) {
+    if (!inited_ || (i >= N)) {
+      return Status::InvalidArg;
     }
     for (auto& e : encs_) {
       (void)e.disable();
     }
-    active_ = &encs_[static_cast<std::uint8_t>(id)];
+    active_ = &encs_[i];
     return active_->enable();
   }
+
   void attach(IEncoderObserver* obs) {
     for (auto& s : observers_) {
       if (s == nullptr) {
@@ -229,30 +245,28 @@ class EncoderManager {
       }
     }
   }
+
   void pollAndNotify() {
     if (active_ == nullptr) {
       return;
     }
-    std::uint16_t p{0U};
-    if (active_->tryGetPosition(p)) {
+    std::uint16_t pos{0U};
+    std::uint32_t ton{0U};
+    std::uint32_t toff{0U};
+    if (active_->tryGetPosition(pos, ton, toff)) {
       for (auto* o : observers_) {
         if (o != nullptr) {
-          o->onPositionUpdate(active_->id(), p);
+          o->onPositionUpdate(active_->index(), pos, ton, toff);
         }
       }
     }
   }
 
  private:
-  EncoderManager() = default;
   bool inited_{false};
-  Mae3Encoder encs_[4] = {
-      Mae3Encoder(EncoderId::Enc1, {0, false, false, false}),
-      Mae3Encoder(EncoderId::Enc2, {0, false, false, false}),
-      Mae3Encoder(EncoderId::Enc3, {0, false, false, false}),
-      Mae3Encoder(EncoderId::Enc4, {0, false, false, false})};
+  Mae3Encoder encs_[N];
   Mae3Encoder* active_{nullptr};
-  IEncoderObserver* observers_[4]{};
+  IEncoderObserver* observers_[N]{};  // fixed-capacity, no dynamic allocation
 };
 
 }  // namespace mae3

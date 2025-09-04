@@ -50,7 +50,11 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "cinttypes": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "main_cpp": "cpp",
+        "cwchar": "cpp",
+        "set": "cpp",
+        "iostream": "cpp"
     },
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"

@@ -52,3 +52,67 @@
 **Thread-safety:** On Arduino, short critical sections use noInterrupts() / interrupts().
 
 **Unit tests:** In the env:native environment only the math conversion is tested, with no Arduino dependencies.
+
+
+Why a Shared ISR Works Safely
+
+All encoder channels register the same ISR function (Mae3Encoder::isrShared).
+Each ISR call receives a pointer to its own channel object. The ISR only updates the state of that specific object (its own EdgeCapture), so there is no shared data and therefore no race between channels.
+
+By design, only one encoder is active at a time:
+
+The EncoderManager disables all other channels before enabling the next one.
+
+If an edge arrives on a disabled pin, the ISR exits immediately with an early return.
+
+Inside the ISR there is no printing, no math, no heap allocation. It does the minimum work:
+
+digitalRead
+
+micros()
+
+store the delta
+
+This keeps ISR execution time minimal and prevents timing conflicts.
+
+If, in the future, multiple encoders are enabled at once, the same design still holds:
+
+each channel has independent state
+
+the ISR only touches its own data
+
+only the Observer/consumers need to be prepared for multiple sources.
+
+Design Compliance
+
+MISRA C++ mindset: fixed-width types, early returns, no undefined behavior, no dynamic allocation in real-time paths.
+
+RAII: clear init/deinit ownership, idempotent setup, objects live on stack or in static storage.
+
+constexpr / inline: constants and tiny helpers resolved at compile-time.
+
+SOLID principles:
+
+Single Responsibility: Mae3Encoder (edge capture), EncoderManager (coordination), IEncoderObserver (consumption).
+
+Open/Closed: observers can be added without touching core logic.
+
+LSP/ISP/DIP: depend on the IEncoderObserver interface, not concrete classes.
+
+Enums over macros: enum class used for IDs and states (no magic numbers).
+
+No dynamic allocation in RT path: static storage, fixed capacities.
+
+Design patterns: Manager as lightweight factory, Observer for event delivery.
+
+Non-blocking APIs: tryGetPosition() and pollAndNotify() never block.
+
+Minimal ISR: only pin read + timestamp + local state update.
+
+Thread-safety: short critical sections with noInterrupts()/interrupts(), no cross-channel shared state.
+
+Unit tests: conversion math and edge cases tested in env:native, no Arduino dependency.
+
+Layered structure:
+
+Domain types → Driver (Mae3Encoder) → Manager (N channels) → Application (observers).
