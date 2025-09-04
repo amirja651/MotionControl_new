@@ -10,25 +10,26 @@ class LoggerObserver final : public IEncoderObserver {
     static std::uint32_t cnt{0U};
     if ((++cnt % 50U) == 0U) {
       const std::uint32_t period = tonUs + toffUs;
-      Serial.printf(
-          "Enc[%u] pos=%u ton=%uus period=%uus\n", static_cast<unsigned>(index),
-          static_cast<unsigned>(position), static_cast<unsigned>(tonUs),
-          static_cast<unsigned>(period));
+      Serial.printf("Enc[%u] pos=%u ton=%uus toff=%uus period=%uus\n",
+                    static_cast<unsigned>(index),
+                    static_cast<unsigned>(position),
+                    static_cast<unsigned>(tonUs), static_cast<unsigned>(toffUs),
+                    static_cast<unsigned>(period));
     }
   }
 };
 
 // Choose N freely (1..N)
-constexpr std::size_t kN = 4U;
+constexpr std::size_t kN = 1U;
 EncoderManager<kN> manager;
 
 void setup() {
   Serial.begin(115200);
   GpioConfig pins[kN] = {
       {36, true, false, false},
-      {39, true, false, false},
-      {34, true, false, false},
-      {35, true, false, false},
+      //{39, true, false, false},
+      //{34, true, false, false},
+      //{35, true, false, false},
   };
   (void)manager.configure(pins);
 

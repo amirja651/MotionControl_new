@@ -4,7 +4,55 @@
 #include <atomic>
 #include <cstdint>
 
+extern "C" {
+#include "driver/gpio.h"  // ESP-IDF GPIO ISR service
+#include "esp_intr_alloc.h"
+#include "soc/gpio_reg.h"
+}
+
 namespace mae3 {
+
+// Optional compile-time switch (define in platformio.ini if you want)
+#ifndef MAE3_USE_FASTREAD
+#define MAE3_USE_FASTREAD 1
+#endif
+
+#ifndef MAE3_TIME_SOURCE_CYCLE
+#define MAE3_TIME_SOURCE_CYCLE 1
+#endif
+
+// Keep it in header to allow full inlining in ISR
+inline bool fastRead(int pin) noexcept {
+#if defined(ARDUINO_ARCH_ESP32) && (MAE3_USE_FASTREAD == 1)
+  if (pin < 32) {
+    return (REG_READ(GPIO_IN_REG) >> pin) & 0x1U;
+  }
+  return (REG_READ(GPIO_IN1_REG) >> (pin - 32)) & 0x1U;
+#else
+  // Fallback: portable (slower) path
+  return (digitalRead(pin) != 0);
+#endif
+}
+
+#if MAE3_TIME_SOURCE_CYCLE
+// Cycle counter (very low jitter). Requires fixed CPU freq (e.g., 240 MHz).
+// If DFS/light-sleep is enabled, DO NOT use this path.
+// for ESP.getCycleCount(), it needs #include <Arduino.h>
+struct TimeStamp {
+  static inline uint32_t nowTicks() noexcept {
+    return ESP.getCycleCount();
+  }  // 32-bit is fine for deltas
+  static inline uint32_t toMicros(uint32_t cycles) noexcept {
+    // 240 MHz -> 240 cycles/us. Adjust if using a different fixed CPU freq.
+    return cycles / 240U;
+  }
+};
+#else
+struct TimeStamp {
+  static inline uint32_t nowTicks() noexcept { return micros(); }
+  static inline uint32_t toMicros(uint32_t us) noexcept { return us; }
+};
+#endif
 
 // ---------- Types & Constants ----------
 enum class Status : std::uint8_t {
@@ -20,7 +68,7 @@ struct Constants final {
   static constexpr std::uint32_t kResolutionSteps =
       (1UL << kResolutionBits);                                      // 4096
   static constexpr std::uint32_t kMaxIndex = kResolutionSteps - 1U;  // 4095
-  static constexpr std::uint32_t kMinTonUs = 1U;
+  static constexpr std::float_t kMinTonUs = 0.95f;
   static constexpr std::uint32_t kMinCycleUs = 3892U;  // ~3.8 ms
   static constexpr std::uint32_t kMaxCycleUs = 4302U;  // ~4.3 ms
 };
@@ -36,10 +84,8 @@ struct GpioConfig final {
 class IEncoderObserver {
  public:
   virtual ~IEncoderObserver() = default;
-  virtual void onPositionUpdate(std::uint8_t index, 
-                                std::uint16_t position,
-                                std::uint32_t tonUs,
-                                std::uint32_t toffUs) = 0;
+  virtual void onPositionUpdate(std::uint8_t index, std::uint16_t position,
+                                std::uint32_t tonUs, std::uint32_t toffUs) = 0;
 };
 
 // ---------- EdgeCapture (per channel, no heap) ----------
@@ -47,11 +93,11 @@ class EdgeCapture {
  public:
   EdgeCapture() = default;
 
-  void reset(std::uint32_t now_us) noexcept {
+  void reset(std::uint32_t now_ticks) noexcept {
     noInterrupts();
-    last_edge_us_ = now_us;
-    ton_us_ = 0U;
-    toff_us_ = 0U;
+    last_edge_ticks_ = now_ticks;
+    ton_ticks_ = 0U;
+    toff_ticks_ = 0U;
     high_valid_ = false;
     low_valid_ = false;
     ready_ = false;
@@ -59,14 +105,14 @@ class EdgeCapture {
   }
 
   // ISR-side: store delta only (no math/log/heap)
-  inline void onEdgeISR(bool level, std::uint32_t now_us) noexcept {
-    const std::uint32_t dt = now_us - last_edge_us_;
-    last_edge_us_ = now_us;
+  inline void onEdgeISR(bool level, std::uint32_t now_ticks) noexcept {
+    const std::uint32_t dt = now_ticks - last_edge_ticks_;
+    last_edge_ticks_ = now_ticks;
     if (level) {
-      toff_us_ = dt;
+      toff_ticks_ = dt;
       low_valid_ = true;
     } else {
-      ton_us_ = dt;
+      ton_ticks_ = dt;
       high_valid_ = true;
     }
     if (high_valid_ && low_valid_) {
@@ -77,12 +123,13 @@ class EdgeCapture {
   }
 
   // Task-side: consume most recent full sample (non-blocking)
-  bool tryConsume(std::uint32_t& ton_us, std::uint32_t& toff_us) noexcept {
+  bool tryConsume(std::uint32_t& ton_ticks,
+                  std::uint32_t& toff_ticks) noexcept {
     noInterrupts();
     const bool rdy = ready_;
     if (rdy) {
-      ton_us = ton_us_;
-      toff_us = toff_us_;
+      ton_ticks = ton_ticks_;
+      toff_ticks = toff_ticks_;
       ready_ = false;
     }
     interrupts();
@@ -90,9 +137,9 @@ class EdgeCapture {
   }
 
  private:
-  volatile std::uint32_t last_edge_us_{0U};
-  volatile std::uint32_t ton_us_{0U};
-  volatile std::uint32_t toff_us_{0U};
+  volatile std::uint32_t last_edge_ticks_{0U};
+  volatile std::uint32_t ton_ticks_{0U};
+  volatile std::uint32_t toff_ticks_{0U};
   volatile bool high_valid_{false};
   volatile bool low_valid_{false};
   volatile bool ready_{false};
@@ -110,7 +157,7 @@ class Mae3Encoder {
       return Status::AlreadyInitialized;
     }
     pinMode(cfg_.pin, cfg_.pullup ? INPUT_PULLUP : INPUT);
-    capture_.reset(micros());
+    capture_.reset(mae3::TimeStamp::nowTicks());
     // Attach the same ISR function for all encoders; pass "this" as arg
     attachInterruptArg(digitalPinToInterrupt(cfg_.pin), &Mae3Encoder::isrShared,
                        this, CHANGE);
@@ -144,20 +191,24 @@ class Mae3Encoder {
     return Status::Ok;
   }
 
-  bool tryGetPosition(std::uint16_t& pos_out, std::uint32_t& ton_us,
-                      std::uint32_t& toff_us) noexcept {
-    std::uint32_t ton{0U}, toff{0U};
-    if (!capture_.tryConsume(ton, toff)) {
+  bool tryGetPosition(std::uint16_t& pos_out, std::uint32_t& tonUs,
+                      std::uint32_t& toffUs) noexcept {
+    std::uint32_t ton_raw{0U}, toff_raw{0U};
+    if (!capture_.tryConsume(ton_raw, toff_raw)) {
       return false;
     }
+
+    std::uint32_t ton_us = mae3::TimeStamp::toMicros(ton_raw);
+    std::uint32_t toff_us = mae3::TimeStamp::toMicros(toff_raw);
+
     if (cfg_.inverted) {
-      const std::uint32_t t = ton;
-      ton = toff;
-      toff = t;
+      const std::uint32_t t = ton_us;
+      ton_us = toff_us;
+      toff_us = t;
     }
-    pos_out = dutyToPosition(ton, toff);
-    ton_us = ton;
-    toff_us = toff;
+    pos_out = dutyToPosition(ton_us, toff_us);
+    tonUs = ton_us;
+    toffUs = toff_us;
     return true;
   }
 
@@ -170,21 +221,24 @@ class Mae3Encoder {
     if (!self->enabled_) {
       return;
     }
-    const bool level = (digitalRead(self->cfg_.pin) != 0);
-    self->capture_.onEdgeISR(level, micros());
+    const bool level = fastRead(self->cfg_.pin);
+    self->capture_.onEdgeISR(level, mae3::TimeStamp::nowTicks());
   }
 
   // --- Conversion (task-side) ---
-  static std::uint16_t dutyToPosition(std::uint32_t ton,
-                                      std::uint32_t toff) noexcept {
-    const std::uint32_t period = ton + toff;
-    if ((period < Constants::kMinCycleUs) ||
-        (period > Constants::kMaxCycleUs) || (ton < Constants::kMinTonUs)) {
+  static std::uint16_t dutyToPosition(std::uint32_t ton_us,
+                                      std::uint32_t toff_us) noexcept {
+    const std::uint32_t period_us = ton_us + toff_us;
+    if ((period_us < Constants::kMinCycleUs) ||
+        (period_us > Constants::kMaxCycleUs) ||
+        (ton_us < Constants::kMinTonUs)) {
       // Return last valid to avoid jitter when sample invalid
       return last_valid_pos_.load(std::memory_order_relaxed);
     }
-    const std::uint32_t raw =
-        (ton * (Constants::kResolutionSteps + 1UL)) / period;
+    const uint32_t raw =
+        (ton_us * (Constants::kResolutionSteps + 2U) + (period_us >> 1)) /
+        period_us;
+
     const int pos = static_cast<int>(raw) - 1;
     const std::uint16_t clamped =
         (pos < 0) ? 0U
