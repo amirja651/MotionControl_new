@@ -1,100 +1,106 @@
 #include <Arduino.h>
 
-#include "UserConsole.hpp"
-#include "mae3_encoder.hpp"
+#include "TMC5160Module.hpp"
 
-using namespace mae3;
+// ESP32 VSPI pins (typical; adjust to your board wiring)
+constexpr uint8_t PIN_SCK = 18U;
+constexpr uint8_t PIN_MISO = 19U;
+constexpr uint8_t PIN_MOSI = 23U;
 
-// =================== CONFIGURABLE PARAMETERS ===================
-constexpr std::uint32_t kDisplayDurationSec = 3U;  // Encoder display duration (seconds)
-// ===============================================================
+// Example STEP/DIR/CS/EN pins per driver (adjust to your wiring)
+constexpr uint8_t M1_STEP = 25U;
+constexpr uint8_t M1_DIR = 26U;
+constexpr uint8_t M1_CS = 5U;
+constexpr int8_t M1_EN = 27;  // -1 if not used
 
-class LoggerObserver final : public IEncoderObserver {
- public:
-  void onPositionUpdate(std::uint8_t index, std::uint16_t position, std::uint32_t tonUs,
-                        std::uint32_t toffUs) override {
-    if (!display_active_) {
-      return;  // Don't print anything when the view is not active
-    }
-    static std::uint32_t cnt{0U};
-    if ((++cnt % 50U) == 0U) {
-      const std::uint32_t period = tonUs + toffUs;
-      std::printf("Enc[%u] pos=%u ton=%uus toff=%uus period=%uus\n", static_cast<unsigned>(index),
-                  static_cast<unsigned>(position), static_cast<unsigned>(tonUs), static_cast<unsigned>(toffUs),
-                  static_cast<unsigned>(period));
-    }
-  }
+constexpr uint8_t M2_STEP = 14U;
+constexpr uint8_t M2_DIR = 12U;
+constexpr uint8_t M2_CS = 4U;
+constexpr int8_t M2_EN = 13;
 
-  // Display timer control; called in loop()
-  static void updateState() noexcept {
-    if (display_active_ && (millis() - display_start_ms_ >= display_duration_ms_)) {
-      display_active_ = false;
-      std::printf("Encoder display stopped (timeout reached)\n");
-    }
-  }
+SPIClass SPIbus(VSPI);  // Shared bus
 
-  // Console command: Start timed display
-  static int CmdShowEnc(int argc, char** /*argv*/) {
-    if (argc != 1) {
-      std::printf("usage: showenc\n");
-      return EXIT_FAILURE;
-    }
-    display_active_ = true;
-    display_start_ms_ = millis();
-    display_duration_ms_ = kDisplayDurationSec * 1000U;
-    std::printf("Encoder display started for %u seconds\n", static_cast<unsigned>(kDisplayDurationSec));
-    return EXIT_SUCCESS;
-  }
+// Rotational motor config: 0.01 .. 359.95 degrees
+MotorConfig cfg_rot{/*step*/ M1_STEP,
+                    /*dir*/ M1_DIR,
+                    /*cs*/ M1_CS,
+                    /*en*/ M1_EN,
+                    /*enPol*/ EnablePolarity::ActiveLow,
+                    /*inv*/ false,
+                    /*kind*/ MotorKind::Rotational,
+                    /*name*/ "ROT-A",
+                    /*steps_per_rev*/ 200U,
+                    /*microsteps*/ 16U,
+                    /*um_per_rev*/ 200U,  // not used for rotational, kept for completeness
+                    /*hold_mA*/ 300U,
+                    /*run_mA*/ 900U,
+                    /*r_sense*/ 0.075f,
+                    /*min_user*/ 0.01,
+                    /*max_user*/ 359.95,
+                    /*max_speed_sps*/ 4000.0f,
+                    /*max_accel*/ 8000.0f};
 
- private:
-  static inline bool display_active_{false};
-  static inline std::uint32_t display_start_ms_{0U};
-  static inline std::uint32_t display_duration_ms_{0U};
-};
+// Linear motor config: -3000 .. +3000 µm ; spec says 1 rev = 200 µm
+MotorConfig cfg_lin{/*step*/ M2_STEP,
+                    /*dir*/ M2_DIR,
+                    /*cs*/ M2_CS,
+                    /*en*/ M2_EN,
+                    /*enPol*/ EnablePolarity::ActiveLow,
+                    /*inv*/ false,
+                    /*kind*/ MotorKind::Linear,
+                    /*name*/ "LIN-Z",
+                    /*steps_per_rev*/ 200U,
+                    /*microsteps*/ 32U,
+                    /*um_per_rev*/ 200U,  // per spec
+                    /*hold_mA*/ 300U,
+                    /*run_mA*/ 1000U,
+                    /*r_sense*/ 0.075f,
+                    /*min_user*/ -3000.0,
+                    /*max_user*/ +3000.0,
+                    /*max_speed_sps*/ 5000.0f,
+                    /*max_accel*/ 12000.0f};
 
-// Number of encoders (adjust to your needs)
-constexpr std::size_t kN = 1U;
-EncoderManager<kN> manager;
-
-static const char* SimpleStatus();
+TMC5160Motor motor_rot(cfg_rot, SPIbus);
+TMC5160Motor motor_lin(cfg_lin, SPIbus);
+TMC5160BusManager bus(SPIbus);
 
 void setup() {
-  using namespace cnc::console;
+  Serial.begin(115200);
+  delay(50);
 
-  // Launch the console
-  ConsoleConfig cfg;
-  cfg.prompt = "CNC> ";
-  cfg.baud = BaudRate::BR_115200;
-  (void)UserConsole::Instance().Begin(cfg);
-  UserConsole::Instance().SetStatusProvider(&SimpleStatus);
+  bus.addMotor(&motor_rot);
+  bus.addMotor(&motor_lin);
 
-  // Registering a new command without referring to ESP32 Console internal types
-  (void)UserConsole::Instance().RegisterCommand("showenc", &LoggerObserver::CmdShowEnc,
-                                                "Show encoder values for limited time");
+  const bool ok = bus.begin(PIN_SCK, PIN_MISO, PIN_MOSI, 2000000UL);
+  Serial.printf("Bus begin: %s\r\n", ok ? "OK" : "FAIL");
 
-  // Configure encoder(s)
-  GpioConfig pins[kN] = {
-      {36, true, false, false},
-  };
-  (void)manager.configure(pins);
+  // Enable drivers after init (safe current pre-configured)
+  motor_rot.driverEnable(true);
+  motor_lin.driverEnable(true);
 
-  static LoggerObserver obs{};
-  manager.attach(&obs);
+  // Probe which motors are present (SPI test)
+  ProbeResult res[4]{};
+  const size_t n = bus.probeAll(res, 4U);
+  for (size_t i = 0; i < n; ++i) {
+    Serial.printf("Probe cs=%u name=%s -> %s\r\n", res[i].cs_pin, (res[i].name != nullptr ? res[i].name : "(null)"),
+                  res[i].connected ? "CONNECTED" : "NOT FOUND");
+  }
 
-  // By convention: one encoder active at any time
-  (void)manager.setActive(0U);
+  // Example commands (non-blocking)
+  (void)motor_rot.moveToUser(90.0);     // degrees (within 0.01..359.95)
+  (void)motor_lin.moveToUser(+1500.0);  // micrometers (within -3000..+3000)
 }
 
 void loop() {
-  manager.pollAndNotify();
-  LoggerObserver::updateState();  // Check display timeout
+  // Non-blocking service (ensure this runs fast — no delays)
+  bus.serviceAll();
 
-  // keep the loop short; the console task is separate
-  delay(10);
-}
+  // Example: constant-speed jog on the linear axis after reaching target
+  static bool jog_started = false;
+  if (!jog_started && fabs(motor_lin.currentPositionUser() - 1500.0) < 5.0) {
+    motor_lin.setSpeedUser(+50.0);  // +50 µm/s
+    jog_started = true;
+  }
 
-// Simple status for the console status command
-static const char* SimpleStatus() {
-  static const char kLine[] = "status: idle, axes: X0 Y0 Z0 (mock)";
-  return kLine;
+  // Pet the watchdog here if you enabled one in your system
 }
