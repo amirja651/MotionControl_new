@@ -1,0 +1,74 @@
+; PlatformIO Project Configuration File
+;
+; Build options: build flags, source filter
+; Upload options: custom upload port, speed and extra flags
+; Library options: dependencies, extra library storages
+; Advanced options: extra scripting
+;
+; Please visit documentation for the other options and examples
+; https://docs.platformio.org/page/projectconf.html
+
+ ;================================
+; PlatformIO Project Configuration
+; ================================
+[platformio]
+    default_envs=esp32dev
+    ;test_default_envs=native
+
+[env:native]
+    platform=native
+    test_framework=googletest
+    build_flags=
+        -D USING_NATIVE=1
+    lib_deps=
+        ArduinoFake
+
+[env:esp32dev]
+    platform=espressif32@6.2.0
+    framework=arduino
+    board=esp32dev
+    board_build.mcu=esp32
+    build_type=debug
+    upload_protocol=esptool
+    upload_speed=921600
+    ;upload_port=COM5
+    monitor_speed=115200
+    monitor_filters=colorize, esp32_exception_decoder
+    monitor_eol=LF
+    monitor_encoding=UTF-8
+    lib_deps=
+        jbtronics/ESP32Console @ ^1.2.0
+        ;SimpleCLI
+        ;TMCStepper
+        ;accelstepper
+    lib_ldf_mode=deep+
+    lib_archive=true
+    build_unflags=-std=gnu++11 -std=c++11 -std=gnu++14 -std=c++14
+    build_flags=
+        -std=gnu++17
+        -fno-exceptions
+        ;-fexceptions
+        -Wno-psabi
+        -DCORE_DEBUG_LEVEL=5
+        -DDEBUG
+        -DCONFIG_ESP32_DEFAULT_CPU_FREQ_240=1
+        -DCONFIG_FREERTOS_HZ=1000
+        -DCONFIG_FREERTOS_USE_TRACE_FACILITY=1
+        -DCONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS=1
+        -DCONFIG_FREERTOS_CHECK_STACKOVERFLOW=2
+        -D MAE3_USE_FASTREAD=1
+        -D MAE3_TIME_SOURCE_CYCLE=1
+        -I include
+        -Wall
+        -Wextra
+        -Werror
+        
+        -mlongcalls
+        -mtext-section-literals
+        -falign-functions=4
+        -ffunction-sections
+        -fdata-sections
+        -Wl,--gc-sections
+        -Wno-error=implicit-fallthrough
+        -Wno-unknown-pragmas
+        -g -O0

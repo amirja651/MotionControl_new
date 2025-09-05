@@ -1,55 +1,28 @@
 #include <Arduino.h>
+#include "UserConsole.hpp"
 
-#include "mae3_encoder_arduino.hpp"
-using namespace mae3;
-
-class LoggerObserver final : public IEncoderObserver {
- public:
-  void onPositionUpdate(std::uint8_t index, std::uint16_t position,
-                        std::uint32_t tonUs, std::uint32_t toffUs) override {
-    static std::uint32_t cnt{0U};
-    if ((++cnt % 50U) == 0U) {
-      const std::uint32_t period = tonUs + toffUs;
-      Serial.printf("Enc[%u] pos=%u ton=%uus toff=%uus period=%uus\n",
-                    static_cast<unsigned>(index),
-                    static_cast<unsigned>(position),
-                    static_cast<unsigned>(tonUs), static_cast<unsigned>(toffUs),
-                    static_cast<unsigned>(period));
-    }
-  }
-};
-
-// Choose N freely (1..N)
-constexpr std::size_t kN = 1U;
-EncoderManager<kN> manager;
+// Optional: fast, readonly status provider (no allocation)
+static const char* SimpleStatus() {
+    // Keep short and constant-time
+    static const char kLine[] = "status: idle, axes: X0 Y0 Z0 (mock)";
+    return kLine;
+}
 
 void setup() {
-  Serial.begin(115200);
-  GpioConfig pins[kN] = {
-      {36, true, false, false},
-      //{39, true, false, false},
-      //{34, true, false, false},
-      //{35, true, false, false},
-  };
-  (void)manager.configure(pins);
+    using namespace cnc::console;
 
-  static LoggerObserver obs{};
-  manager.attach(&obs);
+    // Console init (allocates only during startup)
+    ConsoleConfig cfg;
+    cfg.prompt = "CNC> ";
+    cfg.baud = BaudRate::BR_115200;
+    (void)UserConsole::Instance().Begin(cfg);
+    UserConsole::Instance().SetStatusProvider(&SimpleStatus);
 
-  // Contract: one active at a time
-  (void)manager.setActive(0U);
+    // NOTE: Do not call Serial.begin(); ESP32Console owns stdio (see library docs).  // :contentReference[oaicite:6]{index=6}
 }
 
 void loop() {
-  manager.pollAndNotify();
-
-  // Rotate active encoder every 5s (example policy)
-  static std::uint32_t t0 = millis();
-  static std::size_t idx = 0U;
-  if (millis() - t0 > 5000U) {
-    t0 = millis();
-    idx = (idx + 1U) % kN;
-    (void)manager.setActive(idx);
-  }
-  delay(2);
+    // Your realtime control tasks live elsewhere.
+    // Keep loop() short; console runs in its own FreeRTOS task.
+    delay(10);
 }
