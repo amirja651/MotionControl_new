@@ -55,7 +55,9 @@
         "cwchar": "cpp",
         "set": "cpp",
         "iostream": "cpp",
-        "mae3encoder copy_cpp": "cpp"
+        "mae3encoder copy_cpp": "cpp",
+        "list": "cpp",
+        "regex": "cpp"
     },
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"

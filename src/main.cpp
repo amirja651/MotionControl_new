@@ -1,28 +1,100 @@
 #include <Arduino.h>
-#include "UserConsole.hpp"
 
-// Optional: fast, readonly status provider (no allocation)
-static const char* SimpleStatus() {
-    // Keep short and constant-time
-    static const char kLine[] = "status: idle, axes: X0 Y0 Z0 (mock)";
-    return kLine;
-}
+#include "UserConsole.hpp"
+#include "mae3_encoder.hpp"
+
+using namespace mae3;
+
+// =================== CONFIGURABLE PARAMETERS ===================
+constexpr std::uint32_t kDisplayDurationSec = 3U;  // Encoder display duration (seconds)
+// ===============================================================
+
+class LoggerObserver final : public IEncoderObserver {
+ public:
+  void onPositionUpdate(std::uint8_t index, std::uint16_t position, std::uint32_t tonUs,
+                        std::uint32_t toffUs) override {
+    if (!display_active_) {
+      return;  // Don't print anything when the view is not active
+    }
+    static std::uint32_t cnt{0U};
+    if ((++cnt % 50U) == 0U) {
+      const std::uint32_t period = tonUs + toffUs;
+      std::printf("Enc[%u] pos=%u ton=%uus toff=%uus period=%uus\n", static_cast<unsigned>(index),
+                  static_cast<unsigned>(position), static_cast<unsigned>(tonUs), static_cast<unsigned>(toffUs),
+                  static_cast<unsigned>(period));
+    }
+  }
+
+  // Display timer control; called in loop()
+  static void updateState() noexcept {
+    if (display_active_ && (millis() - display_start_ms_ >= display_duration_ms_)) {
+      display_active_ = false;
+      std::printf("Encoder display stopped (timeout reached)\n");
+    }
+  }
+
+  // Console command: Start timed display
+  static int CmdShowEnc(int argc, char** /*argv*/) {
+    if (argc != 1) {
+      std::printf("usage: showenc\n");
+      return EXIT_FAILURE;
+    }
+    display_active_ = true;
+    display_start_ms_ = millis();
+    display_duration_ms_ = kDisplayDurationSec * 1000U;
+    std::printf("Encoder display started for %u seconds\n", static_cast<unsigned>(kDisplayDurationSec));
+    return EXIT_SUCCESS;
+  }
+
+ private:
+  static inline bool display_active_{false};
+  static inline std::uint32_t display_start_ms_{0U};
+  static inline std::uint32_t display_duration_ms_{0U};
+};
+
+// Number of encoders (adjust to your needs)
+constexpr std::size_t kN = 1U;
+EncoderManager<kN> manager;
+
+static const char* SimpleStatus();
 
 void setup() {
-    using namespace cnc::console;
+  using namespace cnc::console;
 
-    // Console init (allocates only during startup)
-    ConsoleConfig cfg;
-    cfg.prompt = "CNC> ";
-    cfg.baud = BaudRate::BR_115200;
-    (void)UserConsole::Instance().Begin(cfg);
-    UserConsole::Instance().SetStatusProvider(&SimpleStatus);
+  // Launch the console
+  ConsoleConfig cfg;
+  cfg.prompt = "CNC> ";
+  cfg.baud = BaudRate::BR_115200;
+  (void)UserConsole::Instance().Begin(cfg);
+  UserConsole::Instance().SetStatusProvider(&SimpleStatus);
 
-    // NOTE: Do not call Serial.begin(); ESP32Console owns stdio (see library docs).  // :contentReference[oaicite:6]{index=6}
+  // Registering a new command without referring to ESP32 Console internal types
+  (void)UserConsole::Instance().RegisterCommand("showenc", &LoggerObserver::CmdShowEnc,
+                                                "Show encoder values for limited time");
+
+  // Configure encoder(s)
+  GpioConfig pins[kN] = {
+      {36, true, false, false},
+  };
+  (void)manager.configure(pins);
+
+  static LoggerObserver obs{};
+  manager.attach(&obs);
+
+  // By convention: one encoder active at any time
+  (void)manager.setActive(0U);
 }
 
 void loop() {
-    // Your realtime control tasks live elsewhere.
-    // Keep loop() short; console runs in its own FreeRTOS task.
-    delay(10);
+  manager.pollAndNotify();
+  LoggerObserver::updateState();  // Check display timeout
+
+  // keep the loop short; the console task is separate
+  delay(10);
+}
+
+// Simple status for the console status command
+static const char* SimpleStatus() {
+  static const char kLine[] = "status: idle, axes: X0 Y0 Z0 (mock)";
+  return kLine;
 }

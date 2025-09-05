@@ -52,6 +52,11 @@ class UserConsole final {
       const char* (*)();  // returns pointer to static/constexpr text
   void SetStatusProvider(StatusFn fn) noexcept;
 
+  // NEW: Register a custom command (name, handler, help). Returns false if the
+  // console is not started.
+  bool RegisterCommand(const char* name, int (*handler)(int, char**),
+                       const char* help) noexcept;
+
   // Verbose flag can be polled by other modules (atomic, thread-safe)
   bool IsVerbose() const noexcept { return verbose_.load(); }
 
