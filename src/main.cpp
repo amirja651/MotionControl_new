@@ -36,22 +36,22 @@ enum class VoltageStatus : uint8_t
 ControlMode control_mode = ControlMode::OPEN_LOOP;
 bool        control_save = false;
 
-uint32_t origin_pulses = 0;
-int32_t  origin_turn   = 0;  // For rotary motors always zero
-bool     origin_save   = false;
+std::int32_t origin_pulses = 0;
+int32_t      origin_turn   = 0;  // For rotary motors always zero
+bool         origin_save   = false;
 
-uint32_t voltageDrop_pulses = 0;
-int32_t  voltageDrop_turn   = 0;  // For rotary motors always zero
-bool     voltageDrop_save   = false;
+std::int32_t voltageDrop_pulses = 0;
+int32_t      voltageDrop_turn   = 0;  // For rotary motors always zero
+bool         voltageDrop_save   = false;
 
 VoltageStatus voltage_status = VoltageStatus::VOLTAGE_NORMAL;
 
-uint32_t reached_pulses = 0;
-int32_t  reached_turns  = 0;  // For rotary motors always zero
-bool     reached_save   = false;
+std::int32_t reached_pulses = 0;
+int32_t      reached_turns  = 0;  // For rotary motors always zero
+bool         reached_save   = false;
 
-uint32_t loaded_pulses = 0;
-int32_t  loaded_turns  = 0;  // For rotary motors always zero
+std::int32_t loaded_pulses = 0;
+int32_t      loaded_turns  = 0;  // For rotary motors always zero
 
 ///////////////////////////////////////////////////////////
 
@@ -79,17 +79,17 @@ PositionController positionController[4] = {PositionController(0, driver[0], dir
                                             PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2], DriverPins::EN[2], encoderMae3[2]),
                                             PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3], DriverPins::EN[3], encoderMae3[3])};
 
-static constexpr uint32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
-TaskHandle_t              serialReadTaskHandle = NULL;
+static constexpr std::int32_t SPI_CLOCK            = 1000000;  // 1MHz SPI clock
+TaskHandle_t                  serialReadTaskHandle = NULL;
 
 static uint8_t currentIndex = 1;  // Current driver index
 
 // K key press timing
-static uint32_t lastKPressTime = 0;  // Timestamp of last K key press
+static std::int32_t lastKPressTime = 0;  // Timestamp of last K key press
 
 // Current control parameters
-static constexpr uint32_t MIN_RMS_CURRENT = 100;  // Minimum RMS current in mA
-static constexpr uint32_t MAX_RMS_CURRENT = 500;  // Maximum RMS current in mA
+static constexpr std::int32_t MIN_RMS_CURRENT = 100;  // Minimum RMS current in mA
+static constexpr std::int32_t MAX_RMS_CURRENT = 500;  // Maximum RMS current in mA
 
 static constexpr uint8_t MIN_IRUN = 1;   // Minimum IRUN value (1/32 of RMS current)
 static constexpr uint8_t MAX_IRUN = 31;  // Maximum IRUN value (31/32 of RMS current)
@@ -97,9 +97,9 @@ static constexpr uint8_t MAX_IRUN = 31;  // Maximum IRUN value (31/32 of RMS cur
 static constexpr uint8_t MIN_IHOLD = 1;   // Minimum IHOLD value (1/32 of RMS current)
 static constexpr uint8_t MAX_IHOLD = 31;  // Maximum IHOLD value (31/32 of RMS current)
 
-static constexpr uint32_t CURRENT_INCREMENT = 10;  // Current change increment
-static constexpr uint8_t  IRUN_INCREMENT    = 1;   // IRUN change increment
-static constexpr uint8_t  IHOLD_INCREMENT   = 1;   // IHOLD change increment
+static constexpr std::int32_t CURRENT_INCREMENT = 10;  // Current change increment
+static constexpr uint8_t      IRUN_INCREMENT    = 1;   // IRUN change increment
+static constexpr uint8_t      IHOLD_INCREMENT   = 1;   // IHOLD change increment
 
 bool voltageMonitorFirstTime = false;
 
@@ -111,7 +111,7 @@ Preferences prefs;
 #pragma region function_declarations
 // Function declarations
 void               storeToMemory();
-uint32_t           loadOriginPosition();
+std::int32_t       loadOriginPosition();
 void               loadControlMode();
 void               loadPosition();
 void               printAllOriginPositions();
@@ -406,7 +406,7 @@ void storeToMemory()
     encoderMae3[currentIndex].setInAbsenceOfInterruptFlag(false);
 }
 
-uint32_t loadOriginPosition()
+std::int32_t loadOriginPosition()
 {
     if (currentIndex >= 4)
     {
@@ -414,8 +414,8 @@ uint32_t loadOriginPosition()
         return 0;  // fixed: correct return type
     }
 
-    String   key_op        = makeKey(currentIndex, "op");
-    uint32_t origin_pulses = prefs.getUInt(key_op.c_str(), 0);  // Default to 0 if not found
+    String       key_op        = makeKey(currentIndex, "op");
+    std::int32_t origin_pulses = prefs.getUInt(key_op.c_str(), 0);  // Default to 0 if not found
 
     log_d("\n⚙️ Motor [%d]\n"
           "   • Origin : %u pulses\n",
@@ -686,8 +686,8 @@ void serialReadTask(void* pvParameters)
             {
                 if (!isMoving())
                 {
-                    uint32_t currentTime  = millis();
-                    uint32_t timeInterval = 0;
+                    std::int32_t currentTime  = millis();
+                    std::int32_t timeInterval = 0;
 
                     // Calculate time interval since last K press
                     if (lastKPressTime > 0)
@@ -709,12 +709,12 @@ void serialReadTask(void* pvParameters)
                         Serial.println(encoderMae3[currentIndex].enable() == mae3::Status::Ok ? F("YES") : F("NO"));
                         if (encoderMae3[currentIndex].enable() == mae3::Status::Ok)
                         {
-                            uint32_t pulses       = positionController[currentIndex].getEncoderState().position_pulse;
-                            float    encoderAngle = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
+                            auto  encoderState = positionController[currentIndex].getEncoderState();
+                            float encoderAngle = UnitConverter::convertFromPulses(encoderState.position_pulse).TO_DEGREES;
                             Serial.print(F("  Encoder Position: "));
                             Serial.print(encoderAngle);
                             Serial.print(F("° ("));
-                            Serial.print(pulses);
+                            Serial.print(encoderState.position_pulse);
                             Serial.println(F(" pulses)"));
                         }
                         else
@@ -743,12 +743,12 @@ void serialReadTask(void* pvParameters)
             {
                 if (!isMoving())
                 {
-                    const uint32_t currentTime  = millis();
-                    uint32_t       timeInterval = 0;
+                    const std::int32_t currentTime  = millis();
+                    std::int32_t       timeInterval = 0;
 
                     if (lastKPressTime != 0)
                     {
-                        timeInterval = currentTime - lastKPressTime;  // uint32_t wrap-safe
+                        timeInterval = currentTime - lastKPressTime;  // std::int32_t wrap-safe
                     }
 
                     Serial.println();
@@ -768,9 +768,9 @@ void serialReadTask(void* pvParameters)
 
                     if (enabled)
                     {
-                        const uint32_t pulses = positionController[currentIndex].getEncoderState().position_pulse;
-                        const float    angle  = UnitConverter::convertFromPulses(pulses).TO_DEGREES;
-                        Serial.printf("  Encoder Position      : %.2f° (%u pulses)\n", angle, pulses);
+                        auto        encoderState = positionController[currentIndex].getEncoderState();
+                        const float angle        = UnitConverter::convertFromPulses(encoderState.position_pulse).TO_DEGREES;
+                        Serial.printf("  Encoder Position      : %.2f° (%u pulses)\n", angle, encoderState.position_pulse);
                     }
                     else
                     {
@@ -940,9 +940,9 @@ void serialReadTask(void* pvParameters)
 
                     if (encoderMae3[currentIndex].enable() == mae3::Status::Ok)
                     {
-                        uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
-                        ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
-                        Direction     direction     = positionController[currentIndex].getEncoderState().direction;
+                        auto          encoderState  = positionController[currentIndex].getEncoderState();
+                        ConvertValues encoderPulses = UnitConverter::convertFromPulses(encoderState.position_pulse);
+                        Direction     direction     = encoderState.direction;
                         MotorStatus   motorStatus   = positionController[currentIndex].getMotorStatus();
 
                         if (motorStatus.currentSteps == 0)
@@ -982,7 +982,7 @@ void serialReadTask(void* pvParameters)
                                   diff,
                                   encoderPulses.TO_MICROMETERS,
                                   toString(direction),
-                                  pulses,
+                                  encoderState.position_pulse,
                                   movingStr,
                                   enabledStr,
                                   toString(motorStatus.controlMode));
@@ -1009,12 +1009,12 @@ void serialReadTask(void* pvParameters)
                                   diff,
                                   encoderPulses.TO_DEGREES,
                                   toString(direction),
-                                  pulses,
+                                  encoderState.position_pulse,
                                   movingStr,
                                   enabledStr,
                                   toString(motorStatus.controlMode));
                         }
-                        origin_pulses = pulses;
+                        origin_pulses = encoderState.position_pulse;
                         origin_save   = true;
                     }
                     else
@@ -1081,8 +1081,8 @@ void checkDifferenceCorrection()
     vTaskDelay(pdMS_TO_TICKS(300));
     esp_task_wdt_reset();
 
-    uint32_t      pulses            = positionController[currentIndex].getEncoderState().position_pulse;
-    ConvertValues encoderPulses     = UnitConverter::convertFromPulses(pulses);
+    auto          encoderState      = positionController[currentIndex].getEncoderState();
+    ConvertValues encoderPulses     = UnitConverter::convertFromPulses(encoderState.position_pulse);
     MotorStatus   motorStatus       = positionController[currentIndex].getMotorStatus();
     ConvertValues currentMotorSteps = UnitConverter::convertFromSteps(motorStatus.currentSteps);
     float         difference        = encoderPulses.TO_DEGREES - currentMotorSteps.TO_DEGREES;
@@ -1124,21 +1124,21 @@ void onVoltageDrop()
     }
 }
 
-void linearProcess(float targetMicrometers)  // amir
+void linearProcess(float targetMicrometers)
 {
     MotorStatus   motorStatus = positionController[currentIndex].getMotorStatus();
     ConvertValues motor       = UnitConverter::convertFromSteps(motorStatus.currentSteps);
     voltageDrop_turn          = motor.TO_TURNS;
 
     // set current position from encoders //////////
-    uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
-    ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
+    auto          encoderState  = positionController[currentIndex].getEncoderState();
+    ConvertValues encoderPulses = UnitConverter::convertFromPulses(encoderState.position_pulse);
     int32_t       microsteps    = UnitConverter::getDefaultMicrosteps();
     int32_t       currentSteps  = encoderPulses.TO_STEPS + (motor.TO_TURNS * microsteps);
     positionController[currentIndex].setCurrentPosition(currentSteps);
     ///////////////////////////////////////////////
 
-    voltageDrop_pulses = pulses;
+    voltageDrop_pulses = encoderState.position_pulse;
     loadControlMode();
     encoderMae3[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
@@ -1198,13 +1198,13 @@ void rotationalProcess(float targetAngle)
     voltageDrop_turn = 0;
 
     // set current position from encoders //////////
-    uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
-    ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
-    uint32_t      currentSteps  = encoderPulses.TO_STEPS;
+    auto          encoderState  = positionController[currentIndex].getEncoderState();
+    ConvertValues encoderPulses = UnitConverter::convertFromPulses(encoderState.position_pulse);
+    std::int32_t  currentSteps  = encoderPulses.TO_STEPS;
     positionController[currentIndex].setCurrentPosition(currentSteps);
     ///////////////////////////////////////////////
 
-    voltageDrop_pulses = pulses;
+    voltageDrop_pulses = encoderState.position_pulse;
     loadControlMode();
     encoderMae3[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
     positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
@@ -1262,10 +1262,11 @@ void stop()
 }
 void showPositionStatus()
 {
-    uint32_t      pulses        = positionController[currentIndex].getEncoderState().position_pulse;
-    ConvertValues encoderPulses = UnitConverter::convertFromPulses(pulses);
-    Direction     direction     = positionController[currentIndex].getEncoderState().direction;
-    MotorStatus   motorStatus   = positionController[currentIndex].getMotorStatus();  // amir
+    auto encoderState = positionController[currentIndex].getEncoderState();
+
+    ConvertValues encoderPulses = UnitConverter::convertFromPulses(encoderState.position_pulse);
+    Direction     direction     = encoderState.direction;
+    MotorStatus   motorStatus   = positionController[currentIndex].getMotorStatus();
 
     if (motorStatus.currentSteps == 0)
     {
@@ -1349,7 +1350,7 @@ void showPositionStatus()
               diff,
               encoderPulses.TO_DEGREES,
               toString(direction),
-              pulses,
+              encoderState.position_pulse,
               movingStr,
               enabledStr,
               toString(motorStatus.controlMode));

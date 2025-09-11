@@ -5,13 +5,13 @@
 #include <cmath>
 
 // Physical constants for conversion calculations
-static constexpr float    PIXEL_SIZE_UM              = 5.2f;  // Size of each pixel in the camera (micrometers)
-static constexpr float    PIXEL_SIZE_MM              = (PIXEL_SIZE_UM * 1e-3f);
-static constexpr float    CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from mirror to camera in millimeters
-static constexpr float    LEAD_SCREW_PITCH_UM        = 200.0f;  // Lead screw pitch in micrometers
-static constexpr int32_t  ENCODER_RESOLUTION         = 4096;    // Encoder 12 bits
-static constexpr uint16_t MICROSTEPS_64              = 64;      // Default current in mA
-static constexpr uint16_t MICROSTEPS_32              = 32;      // Default current in mA
+static constexpr std::double_t PIXEL_SIZE_UM              = 5.2f;  // Size of each pixel in the camera (micrometers)
+static constexpr std::double_t PIXEL_SIZE_MM              = (PIXEL_SIZE_UM * 1e-3f);
+static constexpr std::double_t CAMERA_TO_MIRROR_LENGTH_MM = 195.0f;  // Distance from mirror to camera in millimeters
+static constexpr std::double_t LEAD_SCREW_PITCH_UM        = 200.0f;  // Lead screw pitch in micrometers
+static constexpr std::int32_t  ENCODER_RESOLUTION         = 4096;    // Encoder 12 bits
+static constexpr uint16_t      MICROSTEPS_64              = 64;      // Default current in mA
+static constexpr uint16_t      MICROSTEPS_32              = 32;      // Default current in mA
 
 // Motor types for conversion logic
 enum class MotorType : uint8_t
@@ -23,11 +23,11 @@ enum class MotorType : uint8_t
 // Conversion result structures
 struct ConvertValues
 {
-    float   TO_MICROMETERS;
-    int32_t TO_PULSES;
-    int32_t TO_STEPS;
-    float   TO_DEGREES;
-    int32_t TO_TURNS;
+    std::double_t TO_MICROMETERS;
+    std::double_t TO_PULSES;
+    std::int32_t  TO_STEPS;
+    std::double_t TO_DEGREES;
+    std::int32_t  TO_TURNS;
 };
 
 /**
@@ -46,32 +46,32 @@ class UnitConverter
 {
 public:
     // Conversion methods from different units
-    static ConvertValues convertFromDegrees(float degrees);
-    static ConvertValues convertFromPulses(int32_t pulses);
-    static ConvertValues convertFromSteps(int32_t steps);
-    static ConvertValues convertFromMicrometers(float umeters);
+    static ConvertValues convertFromDegrees(std::double_t degrees);
+    static ConvertValues convertFromPulses(std::double_t pulses);
+    static ConvertValues convertFromSteps(std::int32_t steps);
+    static ConvertValues convertFromMicrometers(std::double_t umeters);
 
     // Utility methods
-    static float wrapAngle(float angle);
-    static float calculateShortestPath(float currentAngle, float targetAngle);
+    static std::double_t wrapAngle(std::double_t angle);
+    static std::double_t calculateShortestPath(std::double_t currentAngle, std::double_t targetAngle);
 
     // Configuration methods
-    static void    setDefaultMotorType(MotorType motorType = MotorType::ROTATIONAL);
-    static void    setDefaultMicrosteps(int32_t microsteps);
-    static void    setDefaultResolution(int32_t resolution);
-    static void    setDefaultMicrometers(float micrometers);
-    static int32_t getDefaultMicrosteps();
-    static int32_t getDefaultResolution();
-    static float   getDefaultMicrometers();
-    static bool    isLinear();
-    static bool    isRotational();
+    static void          setDefaultMotorType(MotorType motorType = MotorType::ROTATIONAL);
+    static void          setDefaultMicrosteps(std::int32_t microsteps);
+    static void          setDefaultResolution(std::int32_t resolution);
+    static void          setDefaultMicrometers(std::double_t micrometers);
+    static std::int32_t  getDefaultMicrosteps();
+    static std::double_t getDefaultResolution();
+    static std::double_t getDefaultMicrometers();
+    static bool          isLinear();
+    static bool          isRotational();
 
 private:
     // Default configuration values
-    static MotorType _defaultMotorType;
-    static int32_t   _defaultMicrosteps;
-    static int32_t   _defaultResolution;
-    static float     _defaultMicrometers;
+    static MotorType     _defaultMotorType;
+    static std::int32_t  _defaultMicrosteps;
+    static std::double_t _defaultResolution_f;
+    static std::double_t _defaultMicrometers;
 
     // Private constructor to prevent instantiation (Singleton pattern)
     UnitConverter()                                = delete;

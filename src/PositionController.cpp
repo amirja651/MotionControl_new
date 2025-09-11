@@ -673,8 +673,8 @@ EncoderState PositionController::getEncoderState() const
 
 int32_t PositionController::getEncoderSteps()
 {
-    uint32_t pulse = getEncoderState().position_pulse;
-    return UnitConverter::convertFromPulses(pulse).TO_STEPS;
+    std::double_t pulse_f = getEncoderState().position_pulse;
+    return UnitConverter::convertFromPulses(pulse_f).TO_STEPS;
 }
 
 // Global functions for RTOS integration
