@@ -19,7 +19,7 @@ ConvertValues UnitConverter::convertFromDegrees(std::double_t degrees)
     }
 
     convert.TO_MICROMETERS = static_cast<std::double_t>(convert.TO_DEGREES * (_defaultMicrometers / 360.0f));
-    convert.TO_PULSES      = static_cast<std::int32_t>(std::round(convert.TO_DEGREES * (_defaultResolution_f / 360.0f)));
+    convert.TO_PULSES      = static_cast<std::double_t>(convert.TO_DEGREES * (_defaultResolution_f / 360.0f));
     convert.TO_STEPS       = static_cast<std::int32_t>(std::round(convert.TO_DEGREES * (static_cast<std::double_t>(_defaultMicrosteps) / 360.0f)));
 
     return convert;
@@ -28,7 +28,7 @@ ConvertValues UnitConverter::convertFromDegrees(std::double_t degrees)
 ConvertValues UnitConverter::convertFromPulses(std::double_t pulses_f)
 {
     ConvertValues convert;
-    convert.TO_TURNS  = pulses_f / _defaultResolution_f;
+    convert.TO_TURNS  = static_cast<std::int32_t>(std::floor(pulses_f / _defaultResolution_f));
     convert.TO_PULSES = pulses_f - (convert.TO_TURNS * _defaultResolution_f);
 
     if (isRotational())
@@ -55,7 +55,7 @@ ConvertValues UnitConverter::convertFromSteps(std::int32_t steps)
     }
 
     convert.TO_MICROMETERS = static_cast<std::double_t>(convert.TO_STEPS * (_defaultMicrometers / static_cast<std::double_t>(_defaultMicrosteps)));
-    convert.TO_PULSES      = static_cast<std::int32_t>(std::round(convert.TO_STEPS * (_defaultResolution_f / static_cast<std::double_t>(_defaultMicrosteps))));
+    convert.TO_PULSES      = static_cast<std::double_t>(convert.TO_STEPS * (_defaultResolution_f / static_cast<std::double_t>(_defaultMicrosteps)));
     convert.TO_DEGREES     = static_cast<std::double_t>(convert.TO_STEPS * (360.0f / static_cast<std::double_t>(_defaultMicrosteps)));
 
     return convert;
@@ -72,7 +72,7 @@ ConvertValues UnitConverter::convertFromMicrometers(std::double_t micrometers)
         convert.TO_TURNS = 0;
     }
 
-    convert.TO_PULSES  = static_cast<std::int32_t>(std::round(convert.TO_MICROMETERS * (_defaultResolution_f / _defaultMicrometers)));
+    convert.TO_PULSES  = static_cast<std::double_t>(convert.TO_MICROMETERS * (_defaultResolution_f / _defaultMicrometers));
     convert.TO_STEPS   = static_cast<std::int32_t>(std::round(convert.TO_MICROMETERS * (static_cast<std::double_t>(_defaultMicrosteps) / _defaultMicrometers)));
     convert.TO_DEGREES = static_cast<std::double_t>(convert.TO_MICROMETERS * (360.0f / _defaultMicrometers));
 

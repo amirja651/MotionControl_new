@@ -1433,16 +1433,16 @@ static void printConversionTable(float inputValue, const ConvertValues& cvfd, co
     line();
 
     // From Degrees (inputValue interpreted as degrees)
-    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Degrees", cvfd.TO_DEGREES, static_cast<long>(cvfd.TO_PULSES), static_cast<long>(cvfd.TO_STEPS), static_cast<long>(cvfd.TO_TURNS), static_cast<double>(cvfd.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Degrees", cvfd.TO_DEGREES, static_cast<double>(cvfd.TO_PULSES), static_cast<long>(cvfd.TO_STEPS), static_cast<long>(cvfd.TO_TURNS), static_cast<double>(cvfd.TO_MICROMETERS));
 
     // From Pulses (inputValue interpreted as pulses)
-    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Pulses", static_cast<double>(cvfp.TO_DEGREES), static_cast<long>(cvfp.TO_PULSES), static_cast<long>(cvfp.TO_STEPS), static_cast<long>(cvfp.TO_TURNS), static_cast<double>(cvfp.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Pulses", static_cast<double>(cvfp.TO_DEGREES), static_cast<double>(cvfp.TO_PULSES), static_cast<long>(cvfp.TO_STEPS), static_cast<long>(cvfp.TO_TURNS), static_cast<double>(cvfp.TO_MICROMETERS));
 
     // From Steps (inputValue interpreted as steps)
-    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Steps", static_cast<double>(cvfs.TO_DEGREES), static_cast<long>(cvfs.TO_PULSES), static_cast<long>(cvfs.TO_STEPS), static_cast<long>(cvfs.TO_TURNS), static_cast<double>(cvfs.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Steps", static_cast<double>(cvfs.TO_DEGREES), static_cast<double>(cvfs.TO_PULSES), static_cast<long>(cvfs.TO_STEPS), static_cast<long>(cvfs.TO_TURNS), static_cast<double>(cvfs.TO_MICROMETERS));
 
     // From Micrometers (inputValue interpreted as µm)
-    Serial.printf("| %-20s | %10.2f | %10ld | %10ld | %10ld | %12.3f |\n", "Micrometers", static_cast<double>(cvfm.TO_DEGREES), static_cast<long>(cvfm.TO_PULSES), static_cast<long>(cvfm.TO_STEPS), static_cast<long>(cvfm.TO_TURNS), static_cast<double>(cvfm.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Micrometers", static_cast<double>(cvfm.TO_DEGREES), static_cast<double>(cvfm.TO_PULSES), static_cast<long>(cvfm.TO_STEPS), static_cast<long>(cvfm.TO_TURNS), static_cast<double>(cvfm.TO_MICROMETERS));
 
     line();
 }
