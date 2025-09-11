@@ -13,35 +13,46 @@ extern "C" {
 }
 
 /// \file mae3_encoder.hpp
-/// \brief MAE3 PWM encoder capture (header-only, ISR-light, no heap in RT paths)
+/// \brief MAE3 PWM encoder capture (header-only, ISR-light, no heap in RT
+/// paths)
 ///
 /// Contracts & Assumptions
-/// - Initialization allocates/configures resources; no dynamic allocation afterwards.
-/// - ISR path is minimal: only timestamp deltas and volatile stores (no math/printf).
+/// - Initialization allocates/configures resources; no dynamic allocation
+/// afterwards.
+/// - ISR path is minimal: only timestamp deltas and volatile stores (no
+/// math/printf).
 /// - One active encoder channel at a time (per original design).
-/// - Observer callbacks must be short and non-blocking; they run from a task context.
-/// - For thread-safety: task-side critical sections use FreeRTOS portMUX spinlocks.
-/// - If cycle counter timing is enabled, CPU frequency is sampled at init (best-effort).
+/// - Observer callbacks must be short and non-blocking; they run from a task
+/// context.
+/// - For thread-safety: task-side critical sections use FreeRTOS portMUX
+/// spinlocks.
+/// - If cycle counter timing is enabled, CPU frequency is sampled at init
+/// (best-effort).
 ///
 /// Compliance highlights
 /// - MISRA C++-friendly style, RAII where applicable, no blocking in ISRs.
-/// - `enum class` instead of macros for logical constants; configuration via `constexpr`.
+/// - `enum class` instead of macros for logical constants; configuration via
+/// `constexpr`.
 /// - Avoids `noInterrupts()/interrupts()`; uses FreeRTOS critical sections.
 /// - No dynamic allocation at runtime (fixed-size arrays, atomics).
 
 namespace mae3 {
 
-// --------------------------- Configuration (constexpr) ---------------------------
+// --------------------------- Configuration (constexpr)
+// ---------------------------
 namespace cfg {
-/// Prefer direct register GPIO reads on ESP32 for speed (still guarded by platform check)
+/// Prefer direct register GPIO reads on ESP32 for speed (still guarded by
+/// platform check)
 constexpr bool UseFastRead = true;
 
 /// Use cycle counter timing (lower jitter) instead of micros().
-/// If CPU frequency may change at runtime (DFS/light-sleep), consider setting this to false.
+/// If CPU frequency may change at runtime (DFS/light-sleep), consider setting
+/// this to false.
 constexpr bool UseCycleTime = true;
 }  // namespace cfg
 
-// ------------------------------ Fast GPIO read ---------------------------------
+// ------------------------------ Fast GPIO read
+// ---------------------------------
 inline bool fastRead(int pin) noexcept {
 #if defined(ARDUINO_ARCH_ESP32)
   if constexpr (cfg::UseFastRead) {
@@ -58,9 +69,11 @@ inline bool fastRead(int pin) noexcept {
 #endif
 }
 
-// ------------------------------ Time base (ticks) ------------------------------
+// ------------------------------ Time base (ticks)
+// ------------------------------
 struct TimeStamp final {
-  // Init must be called once during system setup (EncoderManager::configure does this).
+  // Init must be called once during system setup (EncoderManager::configure
+  // does this).
   static inline void init() noexcept {
     if constexpr (cfg::UseCycleTime) {
 #if defined(ARDUINO_ARCH_ESP32)
@@ -95,7 +108,8 @@ struct TimeStamp final {
   static inline std::atomic<uint32_t> cycles_per_us_{240U};
 };
 
-// ----------------------------- Types & constants -------------------------------
+// ----------------------------- Types & constants
+// -------------------------------
 enum class Status : std::uint8_t { Ok = 0U, InvalidArg, NotInitialized, AlreadyInitialized };
 
 enum class LogicLevel : std::uint8_t { Low = 0U, High = 1U };
@@ -103,9 +117,11 @@ enum class LogicLevel : std::uint8_t { Low = 0U, High = 1U };
 struct Constants final {
   static constexpr std::uint32_t kResolutionBits = 12U;
   static constexpr std::uint32_t kResolutionSteps = (1UL << kResolutionBits);  // 4096
+  static constexpr std::uint32_t kMaxResolutionSteps = kResolutionSteps + 2U;  // 4098
   static constexpr std::uint32_t kMaxIndex = kResolutionSteps - 1U;            // 4095
 
-  // Valid PWM frame bounds for MAE3 (typical ~4.0ms period). Keep generous margins.
+  // Valid PWM frame bounds for MAE3 (typical ~4.0ms period). Keep generous
+  // margins.
   static constexpr std::float_t kMinTonUs = 0.95f;
   static constexpr std::uint32_t kMinCycleUs = 3892U;  // ~3.9 ms
   static constexpr std::uint32_t kMaxCycleUs = 4302U;  // ~4.3 ms
@@ -114,7 +130,8 @@ struct Constants final {
 struct GpioConfig final {
   int pin;
   bool pullup;
-  bool pulldown;  // Not relied upon by core logic; prefer external pulldown if needed
+  bool pulldown;  // Not relied upon by core logic; prefer external pulldown if
+                  // needed
   bool inverted;
 };
 
@@ -129,7 +146,8 @@ class IEncoderObserver {
   virtual void onPositionUpdate(std::uint8_t index, std::uint16_t position, std::uint32_t tonUs, std::uint32_t toffUs) = 0;
 };
 
-// -------------------------- EdgeCapture (per channel) --------------------------
+// -------------------------- EdgeCapture (per channel)
+// --------------------------
 class EdgeCapture {
  public:
   EdgeCapture() = default;
@@ -178,7 +196,8 @@ class EdgeCapture {
   }
 
  private:
-  // NOTE: These fields are touched from ISR; keep them trivially copyable and small.
+  // NOTE: These fields are touched from ISR; keep them trivially copyable and
+  // small.
   volatile std::uint32_t last_edge_ticks_{0U};
   volatile std::uint32_t ton_ticks_{0U};
   volatile std::uint32_t toff_ticks_{0U};
@@ -190,11 +209,12 @@ class EdgeCapture {
   static inline portMUX_TYPE s_mux_ = portMUX_INITIALIZER_UNLOCKED;
 };
 
-// ----------------------------- Mae3Encoder (per channel) -----------------------------
+// ----------------------------- Mae3Encoder (per channel)
+// -----------------------------
 class Mae3Encoder {
  public:
   Mae3Encoder() = default;
-  Mae3Encoder(std::uint8_t index, const GpioConfig& cfg) : index_{index}, cfg_{cfg} {}
+  Mae3Encoder(std::uint8_t index, const GpioConfig& cfg) : index_{index}, cfg_{cfg}, _inAbsenceOfInterruptFlag(false) {}
 
   Status init() {
     if (inited_) {
@@ -245,6 +265,9 @@ class Mae3Encoder {
 
     std::uint32_t ton_us = TimeStamp::toMicros(ton_raw);
     std::uint32_t toff_us = TimeStamp::toMicros(toff_raw);
+    Serial.println(ton_raw);
+    Serial.println(toff_us);
+    _inAbsenceOfInterruptFlag = true;
 
     if (cfg_.inverted) {
       const std::uint32_t t = ton_us;
@@ -252,6 +275,7 @@ class Mae3Encoder {
       toff_us = t;
     }
     pos_out = dutyToPosition(ton_us, toff_us);
+    Serial.println(pos_out);
     tonUs = ton_us;
     toffUs = toff_us;
     return true;
@@ -259,37 +283,72 @@ class Mae3Encoder {
 
   inline std::uint8_t index() const noexcept { return index_; }
 
+  void attachInAbsenceOfInterrupt(void (*callback)()) { _inAbsenceOfInterrupt = callback; }
+  void handleInAbsenceOfInterrupt() {
+    if (_inAbsenceOfInterruptFlag) {
+      _inAbsenceOfInterruptFlag = false;
+      if (_inAbsenceOfInterrupt) _inAbsenceOfInterrupt();
+    }
+  }
+  void setInAbsenceOfInterruptFlag(bool flag) { _inAbsenceOfInterruptFlag = flag; }
+
  private:
   static void IRAM_ATTR isrShared(void* arg) {
     auto* self = static_cast<Mae3Encoder*>(arg);
     if ((self != nullptr) && self->enabled_) {
-      // We trust hardware to supply CHANGE edges; read current level and timestamp
+      // We trust hardware to supply CHANGE edges; read current level and
+      // timestamp
       const bool level = (fastRead(self->cfg_.pin) != 0);
       self->capture_.onEdgeISR(level, TimeStamp::nowTicks());
     }
   }
 
-  // Convert PWM high/low durations (µs) to 12-bit position (0..4095)
+  // Convert PWM high/low durations (µs) to 12-bit position (0..4095)//amir
   static std::uint16_t dutyToPosition(std::uint32_t ton_us, std::uint32_t toff_us) noexcept {
     const std::uint32_t tcycle = ton_us + toff_us;
+
+    Serial.println("ton_us");
+    Serial.println(ton_us);
+    Serial.println(toff_us);
+    Serial.println(tcycle);
+
     if ((tcycle < Constants::kMinCycleUs) || (tcycle > Constants::kMaxCycleUs)) {
       // Out-of-range period -> return last valid value
       return last_valid_pos_.load(std::memory_order_relaxed);
     }
-    // Nominal: ton in [~1ms..~2ms], map into 0..4095 with clamping
-    // MAE3 nominal formula: position = round( (ton - Tmin) / (Tmax - Tmin) * 4095 )
-    constexpr std::float_t Tmin = Constants::kMinTonUs;    // µs (float threshold)
-    constexpr std::float_t Tmax = 2.0f * 1000.0f - 0.95f;  // ~2ms minus margin
-    const std::float_t tonf = static_cast<std::float_t>(ton_us);
-    std::float_t posf = ((tonf - Tmin) / (Tmax - Tmin)) * static_cast<std::float_t>(Constants::kMaxIndex);
-    // Clamp and convert
-    const int pos_i =
-        (posf < 0.0f) ? 0
-                      : (posf > static_cast<std::float_t>(Constants::kMaxIndex) ? static_cast<int>(Constants::kMaxIndex)
-                                                                                : static_cast<int>(posf + 0.5f));  // nearest
-    const std::uint16_t clamped = static_cast<std::uint16_t>(pos_i);
+
+    const std::uint32_t num = ton_us * Constants::kMaxResolutionSteps;  // Numbers in this range are safe in 32 bits
+    std::uint32_t x = (num / tcycle);                                   // floor
+    x = (x > 0) ? (x - 1U) : 0U;
+
+    std::uint16_t pos;
+    if (x <= 4094U)
+      pos = static_cast<std::uint16_t>(x);
+    else                           /* x >= 4095 */
+      pos = Constants::kMaxIndex;  // End clip according to datasheet
+
+    const std::uint16_t clamped = static_cast<std::uint16_t>(pos);
     last_valid_pos_.store(clamped, std::memory_order_relaxed);
     return clamped;
+
+    // Nominal: ton in [~1ms..~2ms], map into 0..4095 with clamping
+    // MAE3 nominal formula: position = round( (ton - Tmin) / (Tmax - Tmin) *
+    // 4095 )
+    // constexpr std::float_t Tmin = Constants::kMinTonUs;  // µs (float
+    // threshold) constexpr std::float_t Tmax = 2.0f * 1000.0f - 0.95f;  // ~2ms
+    // minus margin const std::float_t tonf = static_cast<std::float_t>(ton_us);
+    // std::float_t posf = ((tonf - Tmin) / (Tmax - Tmin)) *
+    // static_cast<std::float_t>(Constants::kMaxIndex);
+    // Clamp and convert
+
+    // Serial.println(posf);
+    // const int pos_i =
+    //   (posf < 0.0f) ? 0
+    //               : (posf > static_cast<std::float_t>(Constants::kMaxIndex)
+    //                    ? static_cast<int>(Constants::kMaxIndex)
+    //                  : static_cast<int>(posf + 0.5f));  // nearest
+
+    // Pure integer calculation, no float
   }
 
   static inline std::atomic<std::uint16_t> last_valid_pos_{0U};
@@ -299,9 +358,14 @@ class Mae3Encoder {
   bool inited_{false};
   volatile bool enabled_{false};
   EdgeCapture capture_{};
+
+  // Optional movement complete callback
+  volatile bool _inAbsenceOfInterruptFlag;
+  void (*_inAbsenceOfInterrupt)();
 };
 
-// ---------------- Manager (templated N; fixed capacity; one-active-at-a-time) ----------------
+// ---------------- Manager (templated N; fixed capacity; one-active-at-a-time)
+// ----------------
 template <std::size_t N>
 class EncoderManager {
  public:
@@ -356,7 +420,8 @@ class EncoderManager {
     std::uint32_t toff{0U};
 
     if (active_->tryGetPosition(pos, ton, toff)) {
-      // Snapshot observer pointers under lock, then notify without holding the lock.
+      // Snapshot observer pointers under lock, then notify without holding the
+      // lock.
       IEncoderObserver* local[N]{};
       portENTER_CRITICAL(&s_mux_);
       for (std::size_t i = 0; i < N; ++i) {

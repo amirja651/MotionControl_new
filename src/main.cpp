@@ -14,6 +14,7 @@
 #include "UnitConverter.h"
 #include "VoltageMonitor.h"
 #include "esp_log.h"
+#include "mae3_encoder.hpp"
 
 CommandHistory<16> history;
 const char* commands[] = {"Q", "L", "K", "J"};
@@ -63,21 +64,26 @@ DirMultiplexer dirMultiplexer(MultiplexerPins::S0, MultiplexerPins::S1,
                               MultiplexerPins::DIR);
 
 // MAE3 Encoders for position feedback (read-only, not used for control)
-MAE3Encoder encoder[4] = {MAE3Encoder(EncoderPins::SIGNAL[0], 0),
-                          MAE3Encoder(EncoderPins::SIGNAL[1], 1),
-                          MAE3Encoder(EncoderPins::SIGNAL[2], 2),
-                          MAE3Encoder(EncoderPins::SIGNAL[3], 3)};
+mae3::GpioConfig pins[4] = {
+    {36, true, false, false},
+    {39, true, false, false},
+    {34, true, false, false},
+    {35, true, false, false},
+};
 
+mae3::Mae3Encoder encoderMae3[4] = {
+    mae3::Mae3Encoder(0, pins[0]), mae3::Mae3Encoder(1, pins[1]),
+    mae3::Mae3Encoder(2, pins[2]), mae3::Mae3Encoder(3, pins[3])};
 // Position controllers for precise movement control
 PositionController positionController[4] = {
     PositionController(0, driver[0], dirMultiplexer, DriverPins::STEP[0],
-                       DriverPins::EN[0], encoder[0]),
+                       DriverPins::EN[0], encoderMae3[0]),
     PositionController(1, driver[1], dirMultiplexer, DriverPins::STEP[1],
-                       DriverPins::EN[1], encoder[1]),
+                       DriverPins::EN[1], encoderMae3[1]),
     PositionController(2, driver[2], dirMultiplexer, DriverPins::STEP[2],
-                       DriverPins::EN[2], encoder[2]),
+                       DriverPins::EN[2], encoderMae3[2]),
     PositionController(3, driver[3], dirMultiplexer, DriverPins::STEP[3],
-                       DriverPins::EN[3], encoder[3])};
+                       DriverPins::EN[3], encoderMae3[3])};
 
 static constexpr uint32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 TaskHandle_t serialReadTaskHandle = NULL;
@@ -204,11 +210,12 @@ void setup() {
     // Initialize position controllers and encoders
     if (driverEnabled[index]) {
       positionController[index].begin();
-      encoder[index].begin();
-      encoder[index].disable();  // Enable encoder for reading
+      encoderMae3[index].init();
+      encoderMae3[index].disable();  // Enable encoder for reading
     }
   }
-
+  encoderMae3[0].init();
+  encoderMae3[0].enable();
   // Initialize position control system
   initializePositionControllers();
   startPositionControlSystem();
@@ -241,7 +248,7 @@ void setup() {
 
 void loop() {
   // Handle movement complete outside ISR
-  encoder[currentIndex].handleInAbsenceOfInterrupt();
+  encoderMae3[currentIndex].handleInAbsenceOfInterrupt();
   positionController[currentIndex].handleMovementComplete();
   voltageMonitor.update();
 
@@ -378,7 +385,7 @@ void storeToMemory() {
   interrupts();
 
   // Clear the "absence of interrupt" flag (post-write)
-  encoder[currentIndex].setInAbsenceOfInterruptFlag(false);
+  encoderMae3[currentIndex].setInAbsenceOfInterruptFlag(false);
 }
 
 uint32_t loadOriginPosition() {
@@ -511,7 +518,7 @@ void setMotorId(String motorId) {
   // Initialize position controllers and encoders
   for (uint8_t index = 0; index < 4; index++) {
     if (driverEnabled[index]) {
-      encoder[index].disable();  // Enable encoder for reading
+      encoderMae3[index].disable();  // Enable encoder for reading
     }
   }
 
@@ -528,7 +535,7 @@ void setMotorId(String motorId) {
     UnitConverter::setDefaultMicrosteps((MICROSTEPS_32 - 1) * 200);
   }
 
-  encoder[currentIndex].enable();
+  encoderMae3[currentIndex].enable();
   log_i("Motor %d selected and enabled", currentIndex + 1);
 }
 
@@ -642,22 +649,11 @@ void serialReadTask(void* pvParameters) {
           if (currentIndex >= 4 || !driverEnabled[currentIndex]) {
             log_e("Invalid motor index or driver not enabled");
           } else {
-            // Get interrupt counters
-            uint32_t totalInterrupts =
-                encoder[currentIndex].getInterruptCount();
-            uint32_t highEdges = encoder[currentIndex].getHighEdgeCount();
-            uint32_t lowEdges = encoder[currentIndex].getLowEdgeCount();
-
-            Serial.print(F("  Total Interrupts: "));
-            Serial.println(totalInterrupts);
-            Serial.print(F("  Rising Edges (High): "));
-            Serial.println(highEdges);
-            Serial.print(F("  Falling Edges (Low): "));
-            Serial.println(lowEdges);
-            Serial.print(F("  Encoder Enabled: "));
-            Serial.println(encoder[currentIndex].isEnabled() ? F("YES")
-                                                             : F("NO"));
-            if (encoder[currentIndex].isEnabled()) {
+            Serial.println(encoderMae3[currentIndex].enable() ==
+                                   mae3::Status::Ok
+                               ? F("YES")
+                               : F("NO"));
+            if (encoderMae3[currentIndex].enable() == mae3::Status::Ok) {
               uint32_t pulses = positionController[currentIndex]
                                     .getEncoderState()
                                     .position_pulse;
@@ -680,10 +676,6 @@ void serialReadTask(void* pvParameters) {
             } else {
               Serial.println(F("  Time since last K press: First press"));
             }
-
-            // Reset counters after displaying
-            encoder[currentIndex].resetInterruptCounters();
-            Serial.println(F("  [Counters Reset]"));
 
             // Update last K press time
             lastKPressTime = currentTime;
@@ -711,15 +703,9 @@ void serialReadTask(void* pvParameters) {
           }
 
           // Snapshot / reads
-          const uint32_t totalInterrupts =
-              encoder[currentIndex].getInterruptCount();
-          const uint32_t highEdges = encoder[currentIndex].getHighEdgeCount();
-          const uint32_t lowEdges = encoder[currentIndex].getLowEdgeCount();
-          const bool enabled = encoder[currentIndex].isEnabled();
+          const bool enabled =
+              encoderMae3[currentIndex].enable() == mae3::Status::Ok;
 
-          Serial.printf("  Total Interrupts      : %u\n", totalInterrupts);
-          Serial.printf("  Rising Edges (High)   : %u\n", highEdges);
-          Serial.printf("  Falling Edges (Low)   : %u\n", lowEdges);
           Serial.printf("  Encoder Enabled       : %s\n",
                         enabled ? "YES" : "NO");
 
@@ -740,10 +726,6 @@ void serialReadTask(void* pvParameters) {
           } else {
             Serial.println(F("  Time since last J     : First press"));
           }
-
-          // Reset counters after displaying
-          encoder[currentIndex].resetInterruptCounters();
-          Serial.println(F("  [Counters Reset]"));
 
           // Update last press time
           lastKPressTime = currentTime;
@@ -858,7 +840,7 @@ void serialReadTask(void* pvParameters) {
           String motorIdStr = c.getArgument("n").getValue();
           setMotorId(motorIdStr);
 
-          if (encoder[currentIndex].isEnabled()) {
+          if (encoderMae3[currentIndex].enable() == mae3::Status::Ok) {
             uint32_t pulses = positionController[currentIndex]
                                   .getEncoderState()
                                   .position_pulse;
@@ -1034,7 +1016,7 @@ void linearProcess(float targetMicrometers)  // amir
 
   voltageDrop_pulses = pulses;
   loadControlMode();
-  encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
+  encoderMae3[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
   positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
   ConvertValues target =
       UnitConverter::convertFromMicrometers(targetMicrometers);
@@ -1092,7 +1074,7 @@ void rotationalProcess(float targetAngle) {
 
   voltageDrop_pulses = pulses;
   loadControlMode();
-  encoder[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
+  encoderMae3[currentIndex].attachInAbsenceOfInterrupt(storeToMemory);
   positionController[currentIndex].attachOnComplete(checkDifferenceCorrection);
   int32_t targetSteps = UnitConverter::convertFromDegrees(targetAngle).TO_STEPS;
 
