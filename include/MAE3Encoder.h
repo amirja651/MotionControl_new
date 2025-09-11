@@ -31,10 +31,10 @@ enum class Direction
 
 struct EncoderState
 {
-    volatile uint32_t width_high;
-    volatile uint32_t width_low;
+    volatile double_t width_high;
+    volatile double_t width_low;
     volatile uint32_t width_interval;
-    uint32_t          position_pulse;
+    double_t          position_pulse;
     uint32_t          lap_id;
     Direction         direction;
 };
