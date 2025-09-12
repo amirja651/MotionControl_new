@@ -4,7 +4,7 @@
 #include <esp_task_wdt.h>
 
 #include "DirMultiplexer-lean.h"
-#include "Pins.h"
+#include "Pins-lean.h"
 #include "SystemDiagnostics_lean.h"
 #include "TMC5160Manager_lean.h"
 #include "UnitConverter-lean.h"
@@ -14,18 +14,26 @@ static constexpr std::int32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
 bool voltageMonitorFirstTime = false;
 
-VoltageMonitor vm(VoltageMonitorPins::POWER_3_3, MonitorMode::DIGITAL_, 0, 10);
+//------------------------------------------------
+
+using namespace pins_helpers;
+
+VoltageMonitor vm(power_3v3(), MonitorMode::DIGITAL_, 0, 10);
 
 static bool    driverEnabled[4] = {false, false, false, false};
-TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4]        = {TMC5160Manager(0, cs(Chan::M0)), TMC5160Manager(1, cs(Chan::M1)), TMC5160Manager(2, cs(Chan::M2)), TMC5160Manager(3, cs(Chan::M3))};
 
-DirMultiplexer dirmux(MultiplexerPins::S0, MultiplexerPins::S1, MultiplexerPins::DIR);
+DirMultiplexer dirmux(mux_s0(), mux_s1(), mux_dir());
+
+//------------------------------------------------
 
 static void printConversionTable(const ConvertValues& cvfd, const ConvertValues& cvfp, const ConvertValues& cvfs, const ConvertValues& cvfm);
 
+//------------------------------------------------
+
 void setup()
 {
-    SPI.begin(SPIPins::SCK, SPIPins::MISO, SPIPins::MOSI);
+    SPI.begin(spi_sck(), spi_miso(), spi_mosi());
     SPI.setFrequency(SPI_CLOCK);
     SPI.setDataMode(SPI_MODE3);
     Serial.begin(115200);
@@ -58,10 +66,10 @@ void setup()
 
     // for disable all drivers pins - for avoid conflict in SPI bus
     // Initialize CS pins and turn them off with safety checks
-    for (std::size_t i = 0U; i < 4; ++i)
+    for (auto ch : {Chan::M0, Chan::M1, Chan::M2, Chan::M3})
     {
-        pinMode(DriverPins::CS[i], OUTPUT);
-        digitalWrite(DriverPins::CS[i], HIGH);
+        pinMode(cs(ch), OUTPUT);
+        digitalWrite(cs(ch), HIGH);
     }
 
     //------------------------------------------------
