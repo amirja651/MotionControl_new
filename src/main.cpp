@@ -1,13 +1,20 @@
+#include <Arduino.h>
+#include <SPI.h>
+#include <esp_log.h>
+#include <esp_task_wdt.h>
+
 #include "DirMultiplexer-lean.h"
 #include "Pins.h"
 #include "SystemDiagnostics_lean.h"
 #include "TMC5160Manager_lean.h"
 #include "UnitConverter-lean.h"
-#include "esp_log.h"
-#include <Arduino.h>
-#include <SPI.h>
+#include "VoltageMonitor_lean.h"
 
 static constexpr std::int32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
+
+bool voltageMonitorFirstTime = false;
+
+VoltageMonitor vm(VoltageMonitorPins::POWER_3_3, MonitorMode::DIGITAL_, 0, 10);
 
 static bool    driverEnabled[4] = {false, false, false, false};
 TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
@@ -111,11 +118,34 @@ void setup()
     Serial.println();
 
     //------------------------------------------------
+
+    // Initialize quick monitor
+    if (vm.begin())
+    {
+        voltageMonitorFirstTime = true;
+        vm.setHysteresis(50);  // Optional: ±50 window
+        vm.onDrop([]() { /* Power off/log/alarm */ });
+        log_d("Voltage monitor initialized!");
+    }
+
+    //------------------------------------------------
 }
 
 void loop()
 {
-    delay(10);
+    vm.update();
+
+    // Example: Check for drop detection manually
+    if (vm.wasDropDetected())
+    {
+        log_d("Power drop was detected!");
+        vm.resetDropDetection();
+    }
+
+    voltageMonitorFirstTime = !vm.isVoltageOK();
+
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(10));
 }
 
 // Pretty-print a fixed-width ASCII table of conversions

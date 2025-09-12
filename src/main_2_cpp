@@ -3,6 +3,7 @@
 #include <CLIManager.h>
 #include <Preferences.h>
 #include <SPI.h>
+#include <esp_log.h>
 #include <esp_task_wdt.h>
 
 #include "CommandHistory.h"
@@ -13,8 +14,7 @@
 #include "TMC5160Manager.h"
 #include "UnitConverter.h"
 #include "VoltageMonitor.h"
-#include "esp_log.h"
-#include "mae3_encoder.hpp"
+#include "mae3_encoder.h"
 
 CommandHistory<16> history;
 const char*        commands[] = {"Q", "L", "K", "J"};
