@@ -58,7 +58,8 @@
         "mae3encoder copy_cpp": "cpp",
         "list": "cpp",
         "regex": "cpp",
-        "main_2_cpp": "cpp"
+        "main_2_cpp": "cpp",
+        "unitconverter_cpp": "cpp"
     },
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"
