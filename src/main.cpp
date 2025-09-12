@@ -1,4 +1,5 @@
 #include "Pins.h"
+#include "SystemDiagnostics_lean.h"
 #include "TMC5160Manager_lean.h"
 #include "esp_log.h"
 #include <Arduino.h>
@@ -23,11 +24,23 @@ void setup()
     }
 
     //------------------------------------------------
+
+    auto s = SystemDiagnostics::read();  // Collection only
+    SystemDiagnostics::printCompact(s);  // Fast one-liner
+
+    // Or:
+    // SystemDiagnostics::printPretty(s); // Full table
+    // SystemDiagnostics::printCsvHeader(); // Once in setup
+    // SystemDiagnostics::printCsvRow(s); // For logging
+
+    //------------------------------------------------
+
     const char* txt = "**NOT**";
 #ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
     txt = "";
 #endif
     log_d("Stack overflow checking %s enabled", txt);
+
     //------------------------------------------------
 
     // for disable all drivers pins - for avoid conflict in SPI bus
@@ -37,6 +50,8 @@ void setup()
         pinMode(DriverPins::CS[i], OUTPUT);
         digitalWrite(DriverPins::CS[i], HIGH);
     }
+
+    //------------------------------------------------
 
     for (std::size_t i = 0U; i < 4; ++i)
     {
@@ -65,6 +80,8 @@ void setup()
             }
         }
     }
+
+    //------------------------------------------------
 }
 
 void loop()
