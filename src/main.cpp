@@ -1,3 +1,4 @@
+#include "DirMultiplexer-lean.h"
 #include "Pins.h"
 #include "SystemDiagnostics_lean.h"
 #include "TMC5160Manager_lean.h"
@@ -8,7 +9,13 @@
 static constexpr std::int32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock
 
 static bool    driverEnabled[4] = {false, false, false, false};
-TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager driver[4]        = {TMC5160Manager(0, DriverPins::CS[0]),
+                                   TMC5160Manager(1, DriverPins::CS[1]),
+                                   TMC5160Manager(2, DriverPins::CS[2]),
+                                   TMC5160Manager(3, DriverPins::CS[3])};
+
+DirMultiplexer
+    dirmux(MultiplexerPins::S0, MultiplexerPins::S1, MultiplexerPins::DIR);
 
 void setup()
 {
@@ -80,6 +87,12 @@ void setup()
             }
         }
     }
+
+    //------------------------------------------------
+
+    (void)dirmux.begin();  // Safe mode: Motor0, DIR=LOW
+    // dirmux.setMotorDirection(2, 1);  // Select Motor2 and DIR=HIGH
+    // dirmux.selectMotor(3); // Quickly switch between motors
 
     //------------------------------------------------
 }
