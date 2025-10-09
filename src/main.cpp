@@ -7,6 +7,7 @@
 #include <Preferences.h>
 #include <SimpleCLI.h>
 
+#include "CommandHistory.h"
 #include "DirMultiplexer_lean.h"     // fast DIR mux
 #include "MAE3Encoder_lean.h"        // MAE3 PWM encoder (lean)
 #include "Pins_lean.h"               // pin maps
@@ -34,11 +35,25 @@ Command cmdTest;
 
 using namespace pins_helpers;
 
+// ---------- History & Hotkeys ----------
+CommandHistory<16> history;
+const char*        kHotkeys[] = {"Q", "L", "K", "J"};
+enum class CommandKey : uint8_t
+{
+    Q = 0,
+    L = 1,
+    K = 2,
+    J = 3
+};
+// To display the time interval between K/Js
+static uint32_t gLastKPressMs = 0;
+
 // ---------- Project constants ----------
 static constexpr uint8_t  kMotorCount         = 4;
-static constexpr uint8_t  kLinearMotorIndex   = 0;      // M1 (index 0)
-static constexpr uint8_t  kFirstRotaryIndex   = 1;      // M2..M4
-static constexpr double   kDefaultLeadPitchUm = 200.0;  // default: 0.2 mm/rev = 200 µm
+static constexpr uint8_t  kLinearMotorIndex   = 0;        // M1 (index 0)
+static constexpr uint8_t  kFirstRotaryIndex   = 1;        // M2..M4
+static constexpr double   kDefaultLeadPitchUm = 200.0;    // default: 0.2 mm/rev = 200 µm
+static constexpr int32_t  SPI_CLOCK           = 1000000;  // 1MHz SPI clock
 static constexpr uint32_t kSerialBaud         = 115200;
 static constexpr uint32_t kWatchdogSeconds    = 15;
 
@@ -111,10 +126,44 @@ static void attachCli();
 static void serviceCLI();
 static void initializeCLI();
 
+// Helper Read EncoderPosition
+static bool readEncoderPosition(uint8_t idx, double& pos_pulses);
+static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, double& toff_us);
+
+#pragma region "Small helper functions for the command line"
+// Clear the current line and unhide the prompt
+static void clearLine(size_t nChars)
+{
+    Serial.print("\r");  // Return to the beginning of the line
+    for (size_t i = 0; i < nChars + 2; ++i)
+        Serial.print(' ');
+    Serial.print("\r> ");
+}
+
+static void redrawPrompt(const String& buf)
+{
+    clearLine(buf.length());
+    Serial.print(buf);
+}
+
+static inline void printPrompt()
+{
+    Serial.print("> ");
+}
+#pragma endregion
+
 void setup()
 {
+    SPI.begin(spi_sck(), spi_miso(), spi_mosi());
+    SPI.setFrequency(SPI_CLOCK);
+    SPI.setDataMode(SPI_MODE3);
     Serial.begin(kSerialBaud);
-    delay(50);
+    esp_log_level_set("*", ESP_LOG_INFO);
+    delay(1000);
+    while (!Serial)
+    {
+        delay(10);
+    }
 
     // NVS
     gPrefs.begin("motion", false /*rw*/);
@@ -123,14 +172,51 @@ void setup()
     // Diagnostics (optional pretty print)
     SystemDiagnostics::printSystemStatus();
 
+    const char* txt = "**NOT**";
+#ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
+    txt = "";
+#endif
+    log_d("Stack overflow checking %s enabled", txt);
+
     // GPIO safe init
     gDirMux.begin();
+
+    // for disable all drivers pins - for avoid conflict in SPI bus
+    // Initialize CS pins and turn them off with safety checks
+    for (auto ch : {Chan::M0, Chan::M1, Chan::M2, Chan::M3})
+    {
+        pinMode(cs(ch), OUTPUT);
+        digitalWrite(cs(ch), HIGH);
+    }
 
     // SPI drivers
     for (uint8_t i = 0; i < kMotorCount; ++i)
     {
         gDriver[i].begin();
-        gDriver[i].configureDriver_All_Motors(true /*StealthChop*/);
+        // Initialize TMC5160 drivers
+        log_d("TMC5160 init:");
+        if (!gDriver[i].begin())
+        {
+            log_e("--- Driver[%d] init ❌ failed", i);
+        }
+        else
+        {
+            gDriver[i].configureDriver_All_Motors(true);  // true = StealthChop
+            gDriver[i].setRmsCurrent(350);                // mA
+            gDriver[i].setIrun(16);
+            gDriver[i].setIhold(8);
+            gDriver[i].setMicrosteps(32);
+
+            // Optional: quick sanity check
+            if (!gDriver[i].testConnection(true))
+            {
+                log_e("--- SPI/driver[%d] ⚠️ not responding", i);
+            }
+            else
+            {
+                log_d("--- SPI/driver[%d] is 👍 OK", i);
+            }
+        }
     }
 
     // Encoders
@@ -161,8 +247,13 @@ void setup()
     }
 
     // Voltage monitor
-    gVmon.begin();
-    gVmon.onDrop(onVoltageDropISR);
+    // Initialize quick monitor
+    if (gVmon.begin())
+    {
+        gVmon.setHysteresis(50);  // Optional: ±50 window
+        gVmon.onDrop(onVoltageDropISR);
+        log_d("Voltage monitor initialized!");
+    }
 
     // Load stable positions; ensure each motor is at its stable before new moves
     for (uint8_t i = 0; i < kMotorCount; ++i)
@@ -245,6 +336,11 @@ static inline bool isRotary(uint8_t idx)
 
 static void applyUnitDefaults(uint8_t idx)
 {
+    // Typical defaults (adjust if yours differ)
+    UnitConverter::setDefaultResolution(4096);      // pulses per rev
+    UnitConverter::setDefaultMicrometers(200.0);    // µm per rev (0.2 mm lead)
+    UnitConverter::setDefaultMicrosteps(200 * 64);  // 200 steps * 64 µsteps = 12800
+
     if (isLinear(idx))
     {
         UnitConverter::setDefaultMotorType(MotorType::LINEAR);
@@ -316,6 +412,7 @@ static void configureByDistance(PositionController& pc, int32_t current, int32_t
     pc.configureSpeedForDistanceSteps(d);
 }
 
+#pragma region "CLI"
 // ---------- CLI handlers ----------
 static void handleMotor(cmd* c)
 {
@@ -351,14 +448,32 @@ static void handleMove(cmd* c)
     }
 
     // Before any move, go to stable position (if not already there)
-    const int32_t stable = loadStableSteps(n);
-    const int32_t cur    = gPC[n]->getCurrentSteps();
+    int32_t stable = loadStableSteps(n);  // amir
+
+    // --- Clamp stable range for rotary motors ---
+    if (isRotary(n))
+    {
+        // Convert steps → degrees, clamp to [0.05°, 359.95°], then back to steps
+        auto   stableConv = UnitConverter::convertFromSteps(stable);
+        double deg        = stableConv.TO_DEGREES;
+
+        if (deg < 0.05)  // amirrrr
+            deg = 0.05;
+        if (deg > 359.95)
+            deg = 359.95;
+
+        stable = UnitConverter::convertFromDegrees(deg).TO_STEPS;
+    }
+
+    const int32_t cur = gPC[n]->getCurrentSteps();
     if (cur != stable)
     {
         configureByDistance(*gPC[n], cur, stable);
         gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
         // NOTE: We return after queuing homing-to-stable; user can issue move again or wait.
-        Serial.printf("[INFO] Homing to stable first: %ld steps\r\n", static_cast<long>(stable));
+        Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n",
+                      static_cast<long>(stable),
+                      static_cast<long>(cur));
         return;
     }
 
@@ -588,7 +703,7 @@ static void attachCli()
     cmdConf.setCallback(handleConfPitch);
 }
 
-static void serviceCLI()
+static void serviceCLI_2()
 {
     // Non-blocking read
     while (Serial.available())
@@ -603,6 +718,209 @@ static void serviceCLI()
                 Serial.printf("[CLI ERR] %s %s\r\n", e.toString(), e.getCommand().toString());
             }
         }
+    }
+}
+
+// --- ESC processing for ↑/↓ ---
+static void serviceCLI()
+{
+    static String  inputBuffer;
+    static uint8_t escState = 0;  // 0: normal, 1: got ESC, 2: got '['
+
+    while (Serial.available())
+    {
+        char c = Serial.read();
+
+        // --- ESC processing for ↑/↓ ---
+        if (escState == 0 && c == '\x1b')
+        {
+            escState = 1;
+            continue;
+        }
+        if (escState == 1)
+        {
+            if (c == '[')
+            {
+                escState = 2;
+                continue;
+            }
+            escState = 0;
+        }
+        if (escState == 2)
+        {
+            if (c == 'A')
+            {  // Up
+                inputBuffer = history.up();
+                redrawPrompt(inputBuffer);
+            }
+            else if (c == 'B')
+            {  // Down
+                inputBuffer = history.down();
+                redrawPrompt(inputBuffer);
+            }
+            escState = 0;
+            continue;
+        }
+
+        // --- Enter ---
+        if (c == '\r' || c == '\n')
+        {
+            if (inputBuffer.length() > 0)
+            {
+                Serial.print("\r\n# ");
+                Serial.println(inputBuffer);
+                cli.parse(inputBuffer);  // SimpleCLI
+                history.push(inputBuffer);
+                history.resetCursor();
+                inputBuffer = "";
+            }
+            else
+            {
+                Serial.println();
+            }
+            printPrompt();
+            continue;
+        }
+
+        // --- Backspace ---
+        if (c == '\b' || c == 127)
+        {
+            if (inputBuffer.length() > 0)
+            {
+                inputBuffer.remove(inputBuffer.length() - 1);
+                Serial.print("\b \b");
+            }
+            continue;
+        }
+
+        // --- Hotkeys: Q / L / K / J ---
+        const char upper = (c >= 'a' && c <= 'z') ? (c - 32) : c;
+
+        // Q: Go to the last stable position
+        if (upper == kHotkeys[(int)CommandKey::Q][0])
+        {
+            const uint8_t n = gCurrentMotor;
+            if (gPC[n] && !gPC[n]->isMoving())
+            {
+                const int32_t stable = loadStableSteps(n);
+                const int32_t cur    = gPC[n]->getCurrentSteps();
+                configureByDistance(*gPC[n], cur, stable);
+                gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+                Serial.printf("\r\n[LAST] M%d -> stable %ld\r\n", n + 1, (long)stable);
+                printPrompt();
+            }
+            continue;
+        }
+
+        // L: Display position status
+        if (upper == kHotkeys[(int)CommandKey::L][0])
+        {
+            const int n = gCurrentMotor;
+            if (gPC[n])
+            {
+                const int32_t cur = gPC[n]->getCurrentSteps();
+                const int32_t tgt = gPC[n]->getTargetSteps();
+                if (isLinear(n))
+                {
+                    const auto cvals = UnitConverter::convertFromSteps(cur);
+                    const auto tvals = UnitConverter::convertFromSteps(tgt);
+                    Serial.printf("\r\n[POS] M%d cur=%.3f µm  tgt=%.3f µm  (steps %ld -> %ld)\r\n",
+                                  n + 1,
+                                  cvals.TO_MICROMETERS,
+                                  tvals.TO_MICROMETERS,
+                                  (long)cur,
+                                  (long)tgt);
+                }
+                else
+                {
+                    const auto cvals = UnitConverter::convertFromSteps(cur);
+                    const auto tvals = UnitConverter::convertFromSteps(tgt);
+                    Serial.printf("\r\n[POS] M%d cur=%.3f°  tgt=%.3f°  (steps %ld -> %ld)\r\n",
+                                  n + 1,
+                                  cvals.TO_DEGREES,
+                                  tvals.TO_DEGREES,
+                                  (long)cur,
+                                  (long)tgt);
+                }
+                printPrompt();
+                Serial.print(inputBuffer);
+            }
+            continue;
+        }
+
+        // K: Show encoder status + time interval between presses
+        if (upper == kHotkeys[(int)CommandKey::K][0])
+        {
+            const uint32_t now = millis();
+            const uint32_t dt  = (gLastKPressMs == 0) ? 0 : (now - gLastKPressMs);
+            gLastKPressMs      = now;
+
+            const int n = gCurrentMotor;
+
+            double     pos_f = 0.0, ton = 0.0, toff = 0.0;
+            const bool enabled = readEncoderPulses(n, pos_f, ton, toff);
+
+            Serial.printf("\r\n[ENC] M%d enabled=%s", n + 1, enabled ? "YES" : "NO");
+            if (enabled)
+            {
+                const float encoderAngle = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
+                Serial.print(F("  Encoder Position: "));
+                Serial.print(encoderAngle);
+                Serial.print(F("° ("));
+                Serial.print(pos_f, 0);
+                Serial.println(F(" pulses)"));
+            }
+            else
+            {
+                log_w("Encoder not enabled or no new data");
+            }
+
+            Serial.printf("  dt=%u ms\r\n", dt);
+            printPrompt();
+            Serial.print(inputBuffer);
+            continue;
+        }
+
+        // J
+        if (upper == kHotkeys[(int)CommandKey::J][0])
+        {
+            const uint32_t now = millis();
+            const uint32_t dt  = (gLastKPressMs == 0) ? 0 : (now - gLastKPressMs);
+            gLastKPressMs      = now;
+
+            const int n = gCurrentMotor;
+
+            double     pos_f = 0.0, ton = 0.0, toff = 0.0;
+            const bool enabled = readEncoderPulses(n, pos_f, ton, toff);
+
+            Serial.printf("  Encoder Enabled       : %s\n", enabled ? "YES" : "NO");
+            if (enabled)
+            {
+                const float angle = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
+                Serial.printf("  Encoder Position      : %.2f° (%.0f pulses)\n", angle, pos_f);
+            }
+            else
+            {
+                log_w("Encoder not enabled or no new data");
+            }
+
+            Serial.printf("  dt=%u ms\r\n", dt);
+            printPrompt();
+            Serial.print(inputBuffer);
+            continue;
+        }
+
+        // --- Normal character: append to buffer and echo ---
+        inputBuffer += c;
+        Serial.print(c);
+    }
+
+    // CLI error report (if parse was invalid)
+    if (cli.errored())
+    {
+        CommandError e = cli.getError();
+        Serial.printf("[CLI ERR] %s %s\r\n", e.toString().c_str(), e.getCommand());
+        printPrompt();
     }
 }
 
@@ -661,4 +979,32 @@ static void initializeCLI()
     cmdTest = cli.addCmd("test");
     cmdTest.addArg("p", "0.0");  // positional argument (um or deg)
     cmdTest.setDescription("Test the conversion functions");
+}
+
+#pragma endregion
+
+// Read the current position from the encoder (degrees or micrometers)
+static bool readEncoderPosition(uint8_t idx, double& pos_pulses)
+{
+    double ton = 0, toff = 0;
+    if (!(gEnc[idx].enable() == mae3::Status::Ok))
+        gEnc[idx].enable();
+    if (gEnc[idx].tryGetPosition(pos_pulses, ton, toff))
+    {
+        return true;
+    }
+    return false;
+}
+
+static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, double& toff_us)
+{
+    // Only one encoder is active (optional but recommended)
+    for (uint8_t i = 0; i < kMotorCount; ++i)
+    {
+        if (i == idx)
+            gEnc[i].enable();
+        else
+            gEnc[i].disable();
+    }
+    return gEnc[idx].tryGetPosition(pulses, ton_us, toff_us);
 }

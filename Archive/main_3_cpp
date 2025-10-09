@@ -21,13 +21,19 @@ using namespace pins_helpers;
 VoltageMonitor vm(power_3v3(), MonitorMode::DIGITAL_, 0, 10);
 
 static bool    driverEnabled[4] = {false, false, false, false};
-TMC5160Manager driver[4]        = {TMC5160Manager(0, cs(Chan::M0)), TMC5160Manager(1, cs(Chan::M1)), TMC5160Manager(2, cs(Chan::M2)), TMC5160Manager(3, cs(Chan::M3))};
+TMC5160Manager driver[4]        = {TMC5160Manager(0, cs(Chan::M0)),
+                                   TMC5160Manager(1, cs(Chan::M1)),
+                                   TMC5160Manager(2, cs(Chan::M2)),
+                                   TMC5160Manager(3, cs(Chan::M3))};
 
 DirMultiplexer dirmux(mux_s0(), mux_s1(), mux_dir());
 
 //------------------------------------------------
 
-static void printConversionTable(const ConvertValues& cvfd, const ConvertValues& cvfp, const ConvertValues& cvfs, const ConvertValues& cvfm);
+static void printConversionTable(const ConvertValues& cvfd,
+                                 const ConvertValues& cvfp,
+                                 const ConvertValues& cvfs,
+                                 const ConvertValues& cvfm);
 
 //------------------------------------------------
 
@@ -157,7 +163,10 @@ void loop()
 }
 
 // Pretty-print a fixed-width ASCII table of conversions
-static void printConversionTable(const ConvertValues& cvfd, const ConvertValues& cvfp, const ConvertValues& cvfs, const ConvertValues& cvfm)
+static void printConversionTable(const ConvertValues& cvfd,
+                                 const ConvertValues& cvfp,
+                                 const ConvertValues& cvfs,
+                                 const ConvertValues& cvfm)
 {
     auto line = []()
     {
@@ -165,20 +174,50 @@ static void printConversionTable(const ConvertValues& cvfd, const ConvertValues&
                        "-----+--------------+");
     };
     line();
-    Serial.printf("| %-20s | %10s | %10s | %10s | %10s | %12s |\n", "From (unit)", "Degrees", "Pulses", "Steps", "Turns", "Micrometers");
+    Serial.printf("| %-20s | %10s | %10s | %10s | %10s | %12s |\n",
+                  "From (unit)",
+                  "Degrees",
+                  "Pulses",
+                  "Steps",
+                  "Turns",
+                  "Micrometers");
     line();
 
     // From Degrees (inputValue interpreted as degrees)
-    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Degrees", cvfd.TO_DEGREES, static_cast<double>(cvfd.TO_PULSES), static_cast<long>(cvfd.TO_STEPS), static_cast<long>(cvfd.TO_TURNS), static_cast<double>(cvfd.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n",
+                  "Degrees",
+                  cvfd.TO_DEGREES,
+                  static_cast<double>(cvfd.TO_PULSES),
+                  static_cast<long>(cvfd.TO_STEPS),
+                  static_cast<long>(cvfd.TO_TURNS),
+                  static_cast<double>(cvfd.TO_MICROMETERS));
 
     // From Pulses (inputValue interpreted as pulses)
-    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Pulses", static_cast<double>(cvfp.TO_DEGREES), static_cast<double>(cvfp.TO_PULSES), static_cast<long>(cvfp.TO_STEPS), static_cast<long>(cvfp.TO_TURNS), static_cast<double>(cvfp.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n",
+                  "Pulses",
+                  static_cast<double>(cvfp.TO_DEGREES),
+                  static_cast<double>(cvfp.TO_PULSES),
+                  static_cast<long>(cvfp.TO_STEPS),
+                  static_cast<long>(cvfp.TO_TURNS),
+                  static_cast<double>(cvfp.TO_MICROMETERS));
 
     // From Steps (inputValue interpreted as steps)
-    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Steps", static_cast<double>(cvfs.TO_DEGREES), static_cast<double>(cvfs.TO_PULSES), static_cast<long>(cvfs.TO_STEPS), static_cast<long>(cvfs.TO_TURNS), static_cast<double>(cvfs.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n",
+                  "Steps",
+                  static_cast<double>(cvfs.TO_DEGREES),
+                  static_cast<double>(cvfs.TO_PULSES),
+                  static_cast<long>(cvfs.TO_STEPS),
+                  static_cast<long>(cvfs.TO_TURNS),
+                  static_cast<double>(cvfs.TO_MICROMETERS));
 
     // From Micrometers (inputValue interpreted as µm)
-    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n", "Micrometers", static_cast<double>(cvfm.TO_DEGREES), static_cast<double>(cvfm.TO_PULSES), static_cast<long>(cvfm.TO_STEPS), static_cast<long>(cvfm.TO_TURNS), static_cast<double>(cvfm.TO_MICROMETERS));
+    Serial.printf("| %-20s | %10.2f | %10.2f | %10ld | %10ld | %12.3f |\n",
+                  "Micrometers",
+                  static_cast<double>(cvfm.TO_DEGREES),
+                  static_cast<double>(cvfm.TO_PULSES),
+                  static_cast<long>(cvfm.TO_STEPS),
+                  static_cast<long>(cvfm.TO_TURNS),
+                  static_cast<double>(cvfm.TO_MICROMETERS));
 
     line();
 }

@@ -59,7 +59,8 @@
         "list": "cpp",
         "regex": "cpp",
         "main_2_cpp": "cpp",
-        "unitconverter_cpp": "cpp"
+        "unitconverter_cpp": "cpp",
+        "main_3_cpp": "cpp"
     },
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"
