@@ -1,19 +1,21 @@
 #pragma once
-#include <Arduino.h>
+#ifndef MAE3_ENCODER2_H
+    #define MAE3_ENCODER2_H
+    #include <Arduino.h>
 
-#include <atomic>
-#include <cstdint>
+    #include <atomic>
+    #include <cstdint>
 
 extern "C"
 {
-#include "driver/gpio.h"  // ESP-IDF GPIO ISR service
-#include "esp_intr_alloc.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/portmacro.h"
-#include "soc/gpio_reg.h"
+    #include "driver/gpio.h"  // ESP-IDF GPIO ISR service
+    #include "esp_intr_alloc.h"
+    #include "freertos/FreeRTOS.h"
+    #include "freertos/portmacro.h"
+    #include "soc/gpio_reg.h"
 }
 
-/// \file mae3_encoder.hpp
+/// \file MAE3Encoder_lean.hpp
 /// \brief MAE3 PWM encoder capture (header-only, ISR-light, no heap in RT
 /// paths)
 ///
@@ -60,9 +62,13 @@ namespace mae3
 
         static inline std::double_t toMicros(uint32_t v) noexcept
         {
-            const uint32_t      c           = cycles_per_us_.load(std::memory_order_relaxed);
-            const std::uint32_t cyclesPerUs = c == 0U ? 240U : c;                            // If cycles_per_us_ has not been initialized yet, fall back to 240 (ESP32 @ 240 MHz)
-            return static_cast<std::double_t>(v) / static_cast<std::double_t>(cyclesPerUs);  // Convert CPU cycles (ticks) into microseconds with fractional precision
+            const uint32_t      c = cycles_per_us_.load(std::memory_order_relaxed);
+            const std::uint32_t cyclesPerUs =
+                c == 0U ? 240U
+                        : c;  // If cycles_per_us_ has not been initialized yet, fall back to 240 (ESP32 @ 240 MHz)
+            return static_cast<std::double_t>(v) /
+                   static_cast<std::double_t>(
+                       cyclesPerUs);  // Convert CPU cycles (ticks) into microseconds with fractional precision
         }
 
     private:
@@ -86,11 +92,12 @@ namespace mae3
 
     struct Constants final
     {
-        static constexpr std::uint32_t kResolutionBits     = 12U;
-        static constexpr std::uint32_t kResolutionSteps    = (1UL << kResolutionBits);                           // 4096
-        static constexpr std::double_t kMaxResolutionSteps = static_cast<std::double_t>(kResolutionSteps + 2U);  // 4098.0f
-        static constexpr std::double_t kMaxIndex           = static_cast<std::double_t>(kResolutionSteps - 1U);  // 4095.0f
-        static constexpr std::double_t kBorderIndex        = static_cast<std::double_t>(kResolutionSteps - 2U);  // 4094.0f
+        static constexpr std::uint32_t kResolutionBits  = 12U;
+        static constexpr std::uint32_t kResolutionSteps = (1UL << kResolutionBits);  // 4096
+        static constexpr std::double_t kMaxResolutionSteps =
+            static_cast<std::double_t>(kResolutionSteps + 2U);                                            // 4098.0f
+        static constexpr std::double_t kMaxIndex    = static_cast<std::double_t>(kResolutionSteps - 1U);  // 4095.0f
+        static constexpr std::double_t kBorderIndex = static_cast<std::double_t>(kResolutionSteps - 2U);  // 4094.0f
 
         // Valid PWM frame bounds for MAE3 (typical ~4.0ms period). Keep generous margins.
         static constexpr std::double_t kMinTonUs   = 0.95f;
@@ -117,7 +124,8 @@ namespace mae3
         /// \param position 0..4095 (12-bit)
         /// \param tonUs_f High-time (µs)
         /// \param toffUs_f Low-time (µs)
-        virtual void onPositionUpdate(std::uint8_t index, std::double_t position, std::double_t tonUs_f, std::double_t toffUs_f) = 0;
+        virtual void
+        onPositionUpdate(std::uint8_t index, std::double_t position, std::double_t tonUs_f, std::double_t toffUs_f) = 0;
     };
 
     // -------------------------- EdgeCapture (per channel) --------------------------
@@ -197,7 +205,10 @@ namespace mae3
     {
     public:
         Mae3Encoder() = default;
-        Mae3Encoder(std::uint8_t index, const GpioConfig& cfg) : index_{index}, cfg_{cfg}, _inAbsenceOfInterruptFlag(false) {}
+        Mae3Encoder(std::uint8_t index, const GpioConfig& cfg)
+            : index_{index}, cfg_{cfg}, _inAbsenceOfInterruptFlag(false)
+        {
+        }
 
         Status init()
         {
@@ -326,7 +337,8 @@ namespace mae3
                 return last_valid_pos_.load(std::memory_order_relaxed);
             }
 
-            const std::double_t num_f = ton_us_f * Constants::kMaxResolutionSteps;  // Numbers in this range are safe in 32 bits
+            const std::double_t num_f =
+                ton_us_f * Constants::kMaxResolutionSteps;  // Numbers in this range are safe in 32 bits
 
             std::double_t x_f = (num_f / tcycle_f);  // floor
             x_f               = (x_f > 0.0f) ? (x_f - 1.0f) : 0.0f;
@@ -456,3 +468,4 @@ namespace mae3
     };
 
 }  // namespace mae3
+#endif

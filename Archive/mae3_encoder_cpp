@@ -1,6 +1,6 @@
 // Layer: mae3_encoder.cpp — Driver/Manager implementation + ISR + no heap
 
-#include "mae3_encoder.hpp"
+#include "MAE3Encoder_lean.hpp"
 
 #include <new>
 

@@ -9,12 +9,12 @@
 #include "CommandHistory.h"
 #include "DirMultiplexer.h"
 #include "MAE3Encoder.h"
+#include "MAE3Encoder_lean.h"
 #include "PositionController.h"
 #include "SystemDiagnostics.h"
 #include "TMC5160Manager.h"
 #include "UnitConverter.h"
 #include "VoltageMonitor.h"
-#include "mae3_encoder.h"
 
 CommandHistory<16> history;
 const char*        commands[] = {"Q", "L", "K", "J"};

@@ -1,7 +1,7 @@
 #ifndef TMC5160_MANAGER_H
 #define TMC5160_MANAGER_H
 
-#include "Pins.h"
+#include "Pins_lean.h"
 #include <Arduino.h>
 #include <TMCStepper.h>
 #include <cstdint>

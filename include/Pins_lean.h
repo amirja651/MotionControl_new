@@ -1,7 +1,8 @@
 // =============================
 // File: Pins.h  (header-only, API-compatible)
 // Lean, allocation-free, RT-friendly pin map for ESP32 (Arduino)
-// - 100% compatible with your existing Pins.h names (DriverPins, SPIPins, EncoderPins, MultiplexerPins, VoltageMonitorPins)
+// - 100% compatible with your existing Pins.h names (DriverPins, SPIPins, EncoderPins, MultiplexerPins,
+// VoltageMonitorPins)
 // - Replaces need for Pins.cpp by using C++17 inline constexprs (no linker errors)
 // - Adds small helpers and compile-time sanity checks
 // =============================
@@ -151,7 +152,8 @@ static_assert(_all_lt_34(DriverPins::DIR, PINS_CHANNELS), "DIR pins must be outp
 static_assert(_all_lt_34(DriverPins::STEP, PINS_CHANNELS), "STEP pins must be output-capable (<34)");
 static_assert(_all_lt_34(DriverPins::EN, PINS_CHANNELS), "EN pins must be output-capable (<34)");
 static_assert(_all_lt_34(DriverPins::CS, PINS_CHANNELS), "CS pins must be output-capable (<34)");
-static_assert(MultiplexerPins::S0 < 34 && MultiplexerPins::S1 < 34 && MultiplexerPins::DIR < 34, "Multiplexer S0/S1/DIR must be output-capable (<34)");
+static_assert(MultiplexerPins::S0 < 34 && MultiplexerPins::S1 < 34 && MultiplexerPins::DIR < 34,
+              "Multiplexer S0/S1/DIR must be output-capable (<34)");
 // Encoder pins (34..39) are input-only by design → OK.
 
 #endif  // PINS_H
@@ -176,7 +178,8 @@ Optional helpers (readability):
 // =============================
 // File: Pins.h  (header-only, API-compatible)
 // Lean, allocation-free, RT-friendly pin map for ESP32 (Arduino)
-// - 100% compatible with your existing Pins.h names (DriverPins, SPIPins, EncoderPins, MultiplexerPins, VoltageMonitorPins)
+// - 100% compatible with your existing Pins.h names (DriverPins, SPIPins, EncoderPins, MultiplexerPins,
+// VoltageMonitorPins)
 // - Replaces need for Pins.cpp by using C++17 inline constexprs (no linker errors)
 // - Adds small helpers and compile-time sanity checks
 // =============================
@@ -312,7 +315,8 @@ static_assert(_all_lt_34(DriverPins::DIR, PINS_CHANNELS), "DIR pins must be outp
 static_assert(_all_lt_34(DriverPins::STEP, PINS_CHANNELS), "STEP pins must be output-capable (<34)");
 static_assert(_all_lt_34(DriverPins::EN, PINS_CHANNELS), "EN pins must be output-capable (<34)");
 static_assert(_all_lt_34(DriverPins::CS, PINS_CHANNELS), "CS pins must be output-capable (<34)");
-static_assert(MultiplexerPins::S0 < 34 && MultiplexerPins::S1 < 34 && MultiplexerPins::DIR < 34, "Multiplexer S0/S1/DIR must be output-capable (<34)");
+static_assert(MultiplexerPins::S0 < 34 && MultiplexerPins::S1 < 34 && MultiplexerPins::DIR < 34,
+              "Multiplexer S0/S1/DIR must be output-capable (<34)");
 // Encoder pins (34..39) are input-only by design → OK.
 
 #endif  // PINS_H

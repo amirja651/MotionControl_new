@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
 #include "UserConsole.hpp"
-#include "mae3_encoder.hpp"
+#include "MAE3Encoder_lean.hpp"
 
 using namespace mae3;
 

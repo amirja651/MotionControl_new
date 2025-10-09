@@ -3,11 +3,11 @@
 #include <esp_log.h>
 #include <esp_task_wdt.h>
 
-#include "DirMultiplexer-lean.h"
-#include "Pins-lean.h"
+#include "DirMultiplexer_lean.h"
+#include "Pins_lean.h"
 #include "SystemDiagnostics_lean.h"
 #include "TMC5160Manager_lean.h"
-#include "UnitConverter-lean.h"
+#include "UnitConverter_lean.h"
 #include "VoltageMonitor_lean.h"
 
 static constexpr std::int32_t SPI_CLOCK = 1000000;  // 1MHz SPI clock

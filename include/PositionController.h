@@ -8,12 +8,11 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
-#include "DirMultiplexer.h"
-#include "MAE3Encoder.h"
-#include "Pins.h"
-#include "TMC5160Manager.h"
-#include "UnitConverter.h"
-#include "mae3_encoder.h"
+#include "DirMultiplexer_lean.h"
+#include "MAE3Encoder_lean.h"
+#include "Pins_lean.h"
+#include "TMC5160Manager_lean.h"
+#include "UnitConverter_lean.h"
 
 // Motor configuration constants
 static constexpr int32_t POSITION_ACCURACY_STEPS = 3;  // Target accuracy in steps (0.05° ≈ 3 steps)
@@ -78,8 +77,17 @@ class PositionController
 {
 public:
     // Constructor
-    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin, mae3::Mae3Encoder& encoderMae3);
-    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin);  // Constructor without encoder (for demo)
+    PositionController(uint8_t            motorId,
+                       TMC5160Manager&    driver,
+                       DirMultiplexer&    dirMultiplexer,
+                       uint16_t           stepPin,
+                       uint16_t           enPin,
+                       mae3::Mae3Encoder& encoderMae3);
+    PositionController(uint8_t         motorId,
+                       TMC5160Manager& driver,
+                       DirMultiplexer& dirMultiplexer,
+                       uint16_t        stepPin,
+                       uint16_t        enPin);  // Constructor without encoder (for demo)
     ~PositionController();
 
     // Initialization
@@ -90,8 +98,12 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToSteps(int32_t targetSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
-    bool moveRelativeSteps(int32_t deltaSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveToSteps(int32_t      targetSteps,
+                     MovementType movementType = MovementType::MEDIUM_RANGE,
+                     ControlMode  controlMode  = ControlMode::OPEN_LOOP);
+    bool moveRelativeSteps(int32_t      deltaSteps,
+                           MovementType movementType = MovementType::MEDIUM_RANGE,
+                           ControlMode  controlMode  = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -120,8 +132,8 @@ public:
     static void stopPositionControlTask();
     static bool queueMovementCommand(const MovementCommand& command);
 
-    int32_t      getEncoderSteps();
-    EncoderState getEncoderState() const;
+    int32_t getEncoderSteps();
+    // EncoderState getEncoderState() const;
 
     void attachOnComplete(void (*callback)());
     void handleMovementComplete();

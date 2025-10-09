@@ -79,8 +79,6 @@ public:
 // =============================
 // File: SystemDiagnostics.cpp
 // =============================
-#include "SystemDiagnostics.h"
-
 static inline uint32_t get_stack_high_water_bytes(TaskHandle_t t) noexcept
 {
     // uxTaskGetStackHighWaterMark returns words; convert to bytes.
@@ -193,7 +191,11 @@ void SystemDiagnostics::printPretty(const SysSnapshot& s) noexcept
     Serial.printf("│ Reset       │ Uptime      │ Free Stack  │ Task        │\n");
     Serial.printf("│ Reason      │ (seconds)   │ HighWater   │ Count       │\n");
     Serial.printf("├─────────────┼─────────────┼─────────────┼─────────────┤\n");
-    Serial.printf("│ %-11s │ %-11lu │ %-11u │ %-11u │\n", s.reset_reason_str, static_cast<unsigned long>(s.uptime_s), static_cast<unsigned>(s.stack_high_water_bytes), static_cast<unsigned>(s.task_count));
+    Serial.printf("│ %-11s │ %-11lu │ %-11u │ %-11u │\n",
+                  s.reset_reason_str,
+                  static_cast<unsigned long>(s.uptime_s),
+                  static_cast<unsigned>(s.stack_high_water_bytes),
+                  static_cast<unsigned>(s.task_count));
     Serial.printf("└─────────────┴─────────────┴─────────────┴─────────────┘\n");
 
     Serial.println();
@@ -205,18 +207,33 @@ void SystemDiagnostics::printPretty(const SysSnapshot& s) noexcept
     Serial.printf("└─────────────┴─────────────┴─────────────┴──────────────┘\n");
 
     Serial.println();
-    Serial.printf("┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐\n");
-    Serial.printf("│ Chip Model  │ Chip Rev.   │ CPU Cores   │ CPU Freq.   │ Flash Size  │ Flash Speed │ SDK Version │\n");
-    Serial.printf("├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤\n");
-    Serial.printf("│ %-11s │ %-11u │ %-11u │ %-11u │ %-11u │ %-11u │ %-11s │\n", s.chip_model_str, static_cast<unsigned>(s.chip_revision), static_cast<unsigned>(s.cpu_cores), s.cpu_freq_mhz, s.flash_size_mb, s.flash_speed_mhz, s.sdk_version);
-    Serial.printf("└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘\n");
+    Serial.printf(
+        "┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐\n");
+    Serial.printf(
+        "│ Chip Model  │ Chip Rev.   │ CPU Cores   │ CPU Freq.   │ Flash Size  │ Flash Speed │ SDK Version │\n");
+    Serial.printf(
+        "├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤\n");
+    Serial.printf("│ %-11s │ %-11u │ %-11u │ %-11u │ %-11u │ %-11u │ %-11s │\n",
+                  s.chip_model_str,
+                  static_cast<unsigned>(s.chip_revision),
+                  static_cast<unsigned>(s.cpu_cores),
+                  s.cpu_freq_mhz,
+                  s.flash_size_mb,
+                  s.flash_speed_mhz,
+                  s.sdk_version);
+    Serial.printf(
+        "└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘\n");
     #else
     // ASCII variant
     Serial.println();
     Serial.printf("+------------+------------+------------+------------+\n");
     Serial.printf("| Reset      | Uptime(s)  | StackHW(B) | Tasks      |\n");
     Serial.printf("+------------+------------+------------+------------+\n");
-    Serial.printf("| %-10s | %-10lu | %-10u | %-10u |\n", s.reset_reason_str, static_cast<unsigned long>(s.uptime_s), static_cast<unsigned>(s.stack_high_water_bytes), static_cast<unsigned>(s.task_count));
+    Serial.printf("| %-10s | %-10lu | %-10u | %-10u |\n",
+                  s.reset_reason_str,
+                  static_cast<unsigned long>(s.uptime_s),
+                  static_cast<unsigned>(s.stack_high_water_bytes),
+                  static_cast<unsigned>(s.task_count));
     Serial.printf("+------------+------------+------------+------------+\n");
 
     Serial.println();
@@ -230,14 +247,23 @@ void SystemDiagnostics::printPretty(const SysSnapshot& s) noexcept
     Serial.printf("+------------+------------+------------+------------+------------+------------+------------+\n");
     Serial.printf("| ChipModel  | ChipRev    | Cores      | CPU(MHz)   | Flash(MB)  | Flash(MHz) | SDK        |\n");
     Serial.printf("+------------+------------+------------+------------+------------+------------+------------+\n");
-    Serial.printf("| %-10s | %-10u | %-10u | %-10u | %-10u | %-10u | %-10s |\n", s.chip_model_str, static_cast<unsigned>(s.chip_revision), static_cast<unsigned>(s.cpu_cores), s.cpu_freq_mhz, s.flash_size_mb, s.flash_speed_mhz, s.sdk_version);
+    Serial.printf("| %-10s | %-10u | %-10u | %-10u | %-10u | %-10u | %-10s |\n",
+                  s.chip_model_str,
+                  static_cast<unsigned>(s.chip_revision),
+                  static_cast<unsigned>(s.cpu_cores),
+                  s.cpu_freq_mhz,
+                  s.flash_size_mb,
+                  s.flash_speed_mhz,
+                  s.sdk_version);
     Serial.printf("+------------+------------+------------+------------+------------+------------+------------+\n");
     #endif
 }
 
 void SystemDiagnostics::printCompact(const SysSnapshot& s) noexcept
 {
-    log_d("\n\n--- reset = %s \n--- uptime_s = %lu \n--- stackHW_B = %u \n--- tasks = %u \n--- freeHeap = %u \n--- freePSRAM = %u \n--- minHeap = %u \n--- maxAlloc = %u \n--- cpu = %uMHz \n--- flash = %uMB @ %uMHz \n--- sdk = %s\n",
+    log_d("\n\n--- reset = %s \n--- uptime_s = %lu \n--- stackHW_B = %u \n--- tasks = %u \n--- freeHeap = %u \n--- "
+          "freePSRAM = %u \n--- minHeap = %u \n--- maxAlloc = %u \n--- cpu = %uMHz \n--- flash = %uMB @ %uMHz \n--- "
+          "sdk = %s\n",
           s.reset_reason_str,
           static_cast<unsigned long>(s.uptime_s),
           static_cast<unsigned>(s.stack_high_water_bytes),
@@ -254,7 +280,8 @@ void SystemDiagnostics::printCompact(const SysSnapshot& s) noexcept
 
 void SystemDiagnostics::printCsvHeader() noexcept
 {
-    Serial.println("uptime_s,reset_reason,stackHW_B,tasks,freeHeap,freePSRAM,minHeap,maxAlloc,cpu_MHz,flash_MB,flash_MHz,sdk,chip,rev,cores");
+    Serial.println("uptime_s,reset_reason,stackHW_B,tasks,freeHeap,freePSRAM,minHeap,maxAlloc,cpu_MHz,flash_MB,flash_"
+                   "MHz,sdk,chip,rev,cores");
 }
 
 void SystemDiagnostics::printCsvRow(const SysSnapshot& s) noexcept

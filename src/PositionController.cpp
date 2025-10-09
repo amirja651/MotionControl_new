@@ -29,7 +29,12 @@ PositionController* PositionController::_instances[4]              = {nullptr};
 // -----------------------------
 // Constructors / Destructor
 // -----------------------------
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin, mae3::Mae3Encoder& encoderMae3)
+PositionController::PositionController(uint8_t            motorId,
+                                       TMC5160Manager&    driver,
+                                       DirMultiplexer&    dirMultiplexer,
+                                       uint16_t           stepPin,
+                                       uint16_t           enPin,
+                                       mae3::Mae3Encoder& encoderMae3)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, 0 /*dir via multiplexer*/),
       _encoderMae3(&encoderMae3),
@@ -70,7 +75,8 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)]  = {8000.0f, 16000.0f, 640};
 }
 
-PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
+PositionController::PositionController(
+    uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, 0 /*dir via multiplexer*/),
       _encoderMae3(nullptr),
@@ -262,9 +268,13 @@ bool PositionController::isAtTarget() const
 {
     if (!_enabled || !_initialized)
         return false;
-    const auto&   stepper = const_cast<AccelStepper&>(_stepper);
-    const int32_t cur     = static_cast<int32_t>(stepper.currentPosition());
-    const int32_t tgt     = static_cast<int32_t>(stepper.targetPosition());
+
+    auto&   stepper = _stepper;
+    int32_t cur     = static_cast<int32_t>(stepper.currentPosition());
+
+    // const auto&   stepper = const_cast<AccelStepper&>(_stepper);
+    // const int32_t cur     = static_cast<int32_t>(stepper.currentPosition());
+    const int32_t tgt = static_cast<int32_t>(stepper.targetPosition());
     return std::abs(cur - tgt) <= POSITION_ACCURACY_STEPS;
 }
 
@@ -340,7 +350,8 @@ void PositionController::startPositionControlTask()
         }
     }
 
-    const BaseType_t res = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
+    const BaseType_t res = xTaskCreatePinnedToCore(
+        positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
     if (res == pdPASS)
     {
         log_d("Position control task started");
@@ -526,9 +537,10 @@ ControlMode PositionController::getControlMode() const
 bool PositionController::isHybridModeEnabled() const
 {
     // Keep original semantics; avoid repeated heavy work here if possible
-    return _controlMode == ControlMode::HYBRID && _encoderMae3 != nullptr && (_encoderMae3->enable() == mae3::Status::Ok);
+    return _controlMode == ControlMode::HYBRID && _encoderMae3 != nullptr &&
+           (_encoderMae3->enable() == mae3::Status::Ok);
 }
-
+/*
 EncoderState PositionController::getEncoderState() const
 {
     if (_encoderMae3 != nullptr)
@@ -544,10 +556,10 @@ EncoderState PositionController::getEncoderState() const
     }
     return {0, 0, 0, 0, 0, Direction::UNKNOWN};
 }
-
+*/
 int32_t PositionController::getEncoderSteps()
 {
-    const std::double_t pulse_f = getEncoderState().position_pulse;
+    const std::double_t pulse_f = 333;  // getEncoderState().position_pulse;
     return UnitConverter::convertFromPulses(pulse_f).TO_STEPS;
 }
 

@@ -1,4 +1,4 @@
-// Layers: mae3_encoder.hpp — API and contracts (Driver + Domain layer)
+// Layers: MAE3Encoder_lean.hpp — API and contracts (Driver + Domain layer)
 
 #ifndef MAE3_ENCODER_HPP_
 #define MAE3_ENCODER_HPP_
