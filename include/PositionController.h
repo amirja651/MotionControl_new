@@ -181,6 +181,10 @@ private:
 
 public:
     static PositionController* _instances[4];  // Made public for global access
+
+    // Control mode methods
+    void setControlMode(ControlMode mode);
+
 private:
     // Private methods
     void  updateStatus();
@@ -190,7 +194,6 @@ private:
     float calculateOptimalSpeedSteps(int32_t distanceSteps, MovementType type);
 
     // Control mode methods
-    void        setControlMode(ControlMode mode);
     ControlMode getControlMode() const;
     bool        isHybridModeEnabled() const;
 

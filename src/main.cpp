@@ -5,8 +5,8 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <SimpleCLI.h>
 
-#include "CLIManager.h"              // your CLI schema (commands & args)
 #include "DirMultiplexer_lean.h"     // fast DIR mux
 #include "MAE3Encoder_lean.h"        // MAE3 PWM encoder (lean)
 #include "Pins_lean.h"               // pin maps
@@ -15,6 +15,22 @@
 #include "TMC5160Manager_lean.h"     // driver manager
 #include "UnitConverter_lean.h"      // unit conversions
 #include "VoltageMonitor_lean.h"     // voltage monitor
+
+SimpleCLI cli;
+
+Command cmdMotor;
+Command cmdMove;
+Command cmdControlMode;
+Command cmdStop;
+Command cmdEnable;
+Command cmdDisable;
+Command cmdCurrentPosition;
+Command cmdLastPosition;
+Command cmdSave;
+Command cmdRestart;
+Command cmdShow;
+Command cmdHelp;
+Command cmdTest;
 
 using namespace pins_helpers;
 
@@ -79,20 +95,21 @@ static void onMovementComplete();
 static void configureByDistance(PositionController& pc, int32_t current, int32_t target);
 
 // CLI handlers
-static void handleMotor(const Command& c);
-static void handleMove(const Command& c);
-static void handleControl(const Command& c);
-static void handleStop(const Command& c);
-static void handleEnable(const Command& c);
-static void handleDisable(const Command& c);
-static void handlePosition(const Command& c);
-static void handleSaveOrigin(const Command& c);
-static void handleLast(const Command& c);
-static void handleConfPitch(const Command& c);
+static void handleMotor(cmd* c);
+static void handleMove(cmd* c);
+static void handleControl(cmd* c);
+static void handleStop(cmd* c);
+static void handleEnable(cmd* c);
+static void handleDisable(cmd* c);
+static void handlePosition(cmd* c);
+static void handleSaveOrigin(cmd* c);
+static void handleLast(cmd* c);
+static void handleConfPitch(cmd* c);
 
 // CLI wiring + service
 static void attachCli();
 static void serviceCLI();
+static void initializeCLI();
 
 void setup()
 {
@@ -300,12 +317,14 @@ static void configureByDistance(PositionController& pc, int32_t current, int32_t
 }
 
 // ---------- CLI handlers ----------
-static void handleMotor(const Command& c)
+static void handleMotor(cmd* c)
 {
-    auto arg = c.getArg("n");
-    if (!arg.isSet())
+    Command cmd(c);  // Create wrapper object
+
+    Argument numberArg = cmd.getArg("n");
+    if (!numberArg.isSet())
         return;
-    int n = arg.getValue().toInt();
+    int n = numberArg.getValue().toInt();
     if (n < 1 || n > kMotorCount)
         return;
     gCurrentMotor = static_cast<uint8_t>(n - 1);
@@ -313,13 +332,15 @@ static void handleMotor(const Command& c)
     Serial.printf("[CLI] Current motor = %d\r\n", n);
 }
 
-static void handleMove(const Command& c)
+static void handleMove(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     // n (optional uses current), p (µm for linear, deg for rotary)
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -344,7 +365,7 @@ static void handleMove(const Command& c)
     // Seed current from encoder as reference in the *current* revolution
     seedCurrentFromEncoder(n);
 
-    const double p           = c.getArg("p").getValue().toDouble();
+    const double p           = cmd.getArg("p").getValue().toDouble();
     int32_t      targetSteps = 0;
 
     if (isLinear(n))
@@ -378,12 +399,14 @@ static void handleMove(const Command& c)
     }
 }
 
-static void handleControl(const Command& c)
+static void handleControl(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -391,19 +414,21 @@ static void handleControl(const Command& c)
         return;
 
     ControlMode m = ControlMode::OPEN_LOOP;
-    if (c.getArg("h").isSet())
+    if (cmd.getArg("h").isSet())
         m = ControlMode::HYBRID;
     gPC[n]->setControlMode(m);
     gPrefs.putInt(keyMode(n).c_str(), toInt(m));
     Serial.printf("[CTRL] motor %d mode=%s\r\n", n + 1, (m == ControlMode::HYBRID ? "HYBRID" : "OPEN_LOOP"));
 }
 
-static void handleStop(const Command& c)
+static void handleStop(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -414,12 +439,14 @@ static void handleStop(const Command& c)
     Serial.printf("[STOP] motor %d\r\n", n + 1);
 }
 
-static void handleEnable(const Command& c)
+static void handleEnable(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -429,12 +456,14 @@ static void handleEnable(const Command& c)
     Serial.printf("[EN] motor %d enabled\r\n", n + 1);
 }
 
-static void handleDisable(const Command& c)
+static void handleDisable(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -444,12 +473,14 @@ static void handleDisable(const Command& c)
     Serial.printf("[EN] motor %d disabled\r\n", n + 1);
 }
 
-static void handlePosition(const Command& c)
+static void handlePosition(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -482,8 +513,10 @@ static void handlePosition(const Command& c)
     }
 }
 
-static void handleSaveOrigin(const Command& c)
+static void handleSaveOrigin(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     // Save current as stable (origin or checkpoint)
     const int n = gCurrentMotor;
     if (!gPC[n])
@@ -493,13 +526,15 @@ static void handleSaveOrigin(const Command& c)
     Serial.printf("[SAVE] M%d stable_steps=%ld\r\n", n + 1, static_cast<long>(cur));
 }
 
-static void handleLast(const Command& c)
+static void handleLast(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     // Move to last stable
     int n = gCurrentMotor;
-    if (c.getArg("n").isSet())
+    if (cmd.getArg("n").isSet())
     {
-        const int nv = c.getArg("n").getValue().toInt();
+        const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
             n = nv - 1;
     }
@@ -512,10 +547,12 @@ static void handleLast(const Command& c)
     Serial.printf("[LAST] M%d -> stable %ld\r\n", n + 1, static_cast<long>(stable));
 }
 
-static void handleConfPitch(const Command& c)
+static void handleConfPitch(cmd* c)
 {
+    Command cmd(c);  // Create wrapper object
+
     // conf pitch p=<micrometers_per_rev>  (affects linear motor only)
-    const double p = c.getArg("p").getValue().toDouble();
+    const double p = cmd.getArg("p").getValue().toDouble();
     if (p > 0.0)
     {
         gLeadPitchUm = p;
@@ -563,8 +600,65 @@ static void serviceCLI()
             if (cli.errored())
             {
                 CommandError e = cli.getError();
-                Serial.printf("[CLI ERR] %s %s\r\n", e.toString().c_str(), e.getHelp().c_str());
+                Serial.printf("[CLI ERR] %s %s\r\n", e.toString(), e.getCommand().toString());
             }
         }
     }
+}
+
+static void initializeCLI()
+{
+    cmdMotor = cli.addCmd("motor", handleMotor);
+    cmdMotor.addArg("n", "1");  // motor number argument
+    cmdMotor.setDescription("Select the motor");
+
+    cmdMove = cli.addCmd("move", handleMove);
+    cmdMove.addArg("n", "1");    // motor number argument
+    cmdMove.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdMove.setDescription("Move the current motor to the target position");
+
+    cmdControlMode = cli.addCmd("control", handleControl);
+    cmdControlMode.addArg("n", "1");  // motor number argument
+    cmdControlMode.addFlagArg("o");   // open loop
+    cmdControlMode.addFlagArg("h");   // hybrid
+    cmdControlMode.setDescription("Set control mode for current motor (open-loop or hybrid)");
+
+    cmdStop = cli.addCmd("stop", handleStop);
+    cmdStop.addArg("n", "1");  // motor number argument
+    cmdStop.setDescription("Stop the current motor.");
+
+    cmdEnable = cli.addCmd("enable", handleEnable);
+    cmdEnable.addArg("n", "1");  // motor number argument
+    cmdEnable.setDescription("Enable the current motor.");
+
+    cmdDisable = cli.addCmd("disable", handleDisable);
+    cmdDisable.addArg("n", "1");  // motor number argument
+    cmdDisable.setDescription("Disable the current motor.");
+
+    cmdCurrentPosition = cli.addCmd("position", handlePosition);
+    cmdCurrentPosition.addArg("n", "1");  // motor number argument
+    cmdCurrentPosition.setDescription("Show the current position of the current motor");
+
+    cmdLastPosition = cli.addCmd("last", handleLast);
+    cmdLastPosition.addArg("n", "1");  // motor number argument
+    cmdLastPosition.setDescription("Show the last position of the current motor");
+
+    cmdSave = cli.addCmd("save", handleSaveOrigin);
+    cmdSave.addArg("n", "1");  // motor number argument
+    cmdSave.addFlagArg("o");   // orgin
+    cmdSave.setDescription("Save the current position as origin of current motor");
+
+    cmdRestart = cli.addCmd("restart");
+    cmdRestart.setDescription("Restart the ESP32 system");
+
+    cmdShow = cli.addCmd("show");
+    cmdShow.addArg("n", "1");  // motor number argument
+    cmdShow.setDescription("Show the encoder and motor status");
+
+    cmdHelp = cli.addCmd("help");
+    cmdHelp.setDescription("Show help information");
+
+    cmdTest = cli.addCmd("test");
+    cmdTest.addArg("p", "0.0");  // positional argument (um or deg)
+    cmdTest.setDescription("Test the conversion functions");
 }
