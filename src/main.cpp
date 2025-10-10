@@ -17,6 +17,8 @@
 #include "UnitConverter_lean.h"      // unit conversions
 #include "VoltageMonitor_lean.h"     // voltage monitor
 
+#pragma region "Define Variables"
+
 SimpleCLI cli;
 
 Command cmdMotor;
@@ -34,6 +36,10 @@ Command cmdHelp;
 Command cmdTest;
 
 using namespace pins_helpers;
+//---------- Used in onHomingComplete ----
+// Define globals for chaining
+static bool    gPendingTargetAfterHoming = false;
+static int32_t gPendingTargetSteps       = 0;
 
 // ---------- History & Hotkeys ----------
 CommandHistory<16> history;
@@ -64,17 +70,12 @@ Preferences gPrefs;  // namespace: "motion"
 DirMultiplexer gDirMux(MultiplexerPins::S0, MultiplexerPins::S1, MultiplexerPins::DIR);
 
 // Drivers (CS per channel)
-TMC5160Manager gDriver[kMotorCount] = {TMC5160Manager(0, DriverPins::CS[0]),
-                                       TMC5160Manager(1, DriverPins::CS[1]),
-                                       TMC5160Manager(2, DriverPins::CS[2]),
-                                       TMC5160Manager(3, DriverPins::CS[3])};
+TMC5160Manager gDriver[kMotorCount] = {TMC5160Manager(0, DriverPins::CS[0]), TMC5160Manager(1, DriverPins::CS[1]), TMC5160Manager(2, DriverPins::CS[2]), TMC5160Manager(3, DriverPins::CS[3])};
 
 // Encoders (MAE3): one per channel; contract = one active at a time
 // Pin, pullup=false, pulldown=false (external if you have), inverted=false
-mae3::Mae3Encoder gEnc[kMotorCount] = {mae3::Mae3Encoder(0, {EncoderPins::SIGNAL[0], false, false, false}),
-                                       mae3::Mae3Encoder(1, {EncoderPins::SIGNAL[1], false, false, false}),
-                                       mae3::Mae3Encoder(2, {EncoderPins::SIGNAL[2], false, false, false}),
-                                       mae3::Mae3Encoder(3, {EncoderPins::SIGNAL[3], false, false, false})};
+mae3::Mae3Encoder gEnc[kMotorCount] = {
+    mae3::Mae3Encoder(0, {EncoderPins::SIGNAL[0], false, false, false}), mae3::Mae3Encoder(1, {EncoderPins::SIGNAL[1], false, false, false}), mae3::Mae3Encoder(2, {EncoderPins::SIGNAL[2], false, false, false}), mae3::Mae3Encoder(3, {EncoderPins::SIGNAL[3], false, false, false})};
 
 // Position controllers
 PositionController* gPC[kMotorCount] = {nullptr, nullptr, nullptr, nullptr};
@@ -129,6 +130,11 @@ static void initializeCLI();
 // Helper Read EncoderPosition
 static bool readEncoderPosition(uint8_t idx, double& pos_pulses);
 static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, double& toff_us);
+
+// Used for handleMove() method
+static void onHomingComplete();
+
+#pragma endregion
 
 #pragma region "Small helper functions for the command line"
 // Clear the current line and unhide the prompt
@@ -447,39 +453,7 @@ static void handleMove(cmd* c)
         return;
     }
 
-    // Before any move, go to stable position (if not already there)
-    int32_t stable = loadStableSteps(n);  // amir
-
-    // --- Clamp stable range for rotary motors ---
-    if (isRotary(n))
-    {
-        // Convert steps → degrees, clamp to [0.05°, 359.95°], then back to steps
-        auto   stableConv = UnitConverter::convertFromSteps(stable);
-        double deg        = stableConv.TO_DEGREES;
-
-        if (deg < 0.05)  // amirrrr
-            deg = 0.05;
-        if (deg > 359.95)
-            deg = 359.95;
-
-        stable = UnitConverter::convertFromDegrees(deg).TO_STEPS;
-    }
-
-    const int32_t cur = gPC[n]->getCurrentSteps();
-    if (cur != stable)
-    {
-        configureByDistance(*gPC[n], cur, stable);
-        gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
-        // NOTE: We return after queuing homing-to-stable; user can issue move again or wait.
-        Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n",
-                      static_cast<long>(stable),
-                      static_cast<long>(cur));
-        return;
-    }
-
-    // Seed current from encoder as reference in the *current* revolution
-    seedCurrentFromEncoder(n);
-
+    //-----------------------------------------------------------------
     const double p           = cmd.getArg("p").getValue().toDouble();
     int32_t      targetSteps = 0;
 
@@ -494,6 +468,57 @@ static void handleMove(cmd* c)
         targetSteps = UnitConverter::convertFromDegrees(p).TO_STEPS;
     }
 
+    //-----------------------------------------------------------------
+    // Before any move, go to stable position (if not already there)
+    int32_t stable = loadStableSteps(n);  // amir
+    Serial.printf("[INFO] Stable: (%ld steps)\r\n", static_cast<long>(stable));
+
+    if (isRotary(n))
+    {
+        // Convert steps → degrees, clamp to [0.05°, 359.95°], then back to steps
+        double deg = UnitConverter::convertFromSteps(stable).TO_DEGREES;
+
+#if false        
+            // --- Clamp stable range for rotary motors ---
+            if (deg < 0.05)
+                deg = 0.05;
+            if (deg > 359.95)
+                deg = 359.95;
+#endif
+
+        // wrap-around behavior (e.g., 370° → 10° instead of 359.95°):
+        deg = fmod(deg, 360.0);
+        if (deg < 0.0)
+            deg += 360.0;
+
+        stable = UnitConverter::convertFromDegrees(deg).TO_STEPS;
+        Serial.printf("[INFO] Stable with wrap-around: (%ld steps)\r\n", static_cast<long>(stable));
+    }
+
+    //-----------------------------------------------------------------
+    const int32_t cur = gPC[n]->getCurrentSteps();
+    if (cur != stable)
+    {
+        configureByDistance(*gPC[n], cur, stable);
+
+        // 1. Move to stable
+        gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+
+        // 2. When the motor reaches 'stable', automatically move to the requested target
+        // Prepare next target for after homing
+        gPendingTargetAfterHoming = true;
+        gPendingTargetSteps       = targetSteps;
+        gPC[n]->attachOnComplete(onHomingComplete);
+
+        // NOTE: We return after queuing homing-to-stable; user can issue move again or wait.
+        Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(cur));
+        return;
+    }
+
+    //-----------------------------------------------------------------
+    // Seed current from encoder as reference in the *current* revolution
+    seedCurrentFromEncoder(n);
+
     const int32_t nowSteps = gPC[n]->getCurrentSteps();
     configureByDistance(*gPC[n], nowSteps, targetSteps);
 
@@ -503,14 +528,40 @@ static void handleMove(cmd* c)
     // Open-loop move (per your logic). Hybrid path is available via CLI control command.
     if (gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
     {
-        Serial.printf("[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n",
-                      n + 1,
-                      static_cast<long>(targetSteps),
-                      static_cast<long>(nowSteps));
+        Serial.printf("\r\n[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n", n + 1, static_cast<long>(targetSteps), static_cast<long>(nowSteps));
     }
     else
     {
         Serial.println("[ERR] move command rejected");
+    }
+}
+
+static void onHomingComplete()
+{
+    if (gPendingTargetAfterHoming && gPC[gCurrentMotor])
+    {
+        gPendingTargetAfterHoming = false;
+
+        // Seed current from encoder as reference in the *current* revolution
+        seedCurrentFromEncoder(gCurrentMotor);
+
+        const int32_t nowSteps = gPC[gCurrentMotor]->getCurrentSteps();
+        configureByDistance(*gPC[gCurrentMotor], nowSteps, gPendingTargetSteps);
+
+        // Persist "start position" immediately — used if power drops mid-move
+        saveStableSteps(gCurrentMotor, nowSteps);
+
+        // Open-loop move (per your logic). Hybrid path is available via CLI control command.
+        if (gPC[gCurrentMotor]->moveToSteps(gPendingTargetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
+        {
+            Serial.printf("[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n", gCurrentMotor + 1, static_cast<long>(gPendingTargetSteps), static_cast<long>(nowSteps));
+        }
+        else
+        {
+            Serial.println("[ERR] move command rejected");
+        }
+
+        Serial.printf("[INFO] After homing, moving to new target (%ld steps)\r\n", (long)gPendingTargetSteps);
     }
 }
 
@@ -608,23 +659,13 @@ static void handlePosition(cmd* c)
     {
         const auto cvals = UnitConverter::convertFromSteps(cur);
         const auto tvals = UnitConverter::convertFromSteps(tgt);
-        Serial.printf("[POS] M%d cur=%.3f µm tgt=%.3f µm steps=(%ld -> %ld)\r\n",
-                      n + 1,
-                      cvals.TO_MICROMETERS,
-                      tvals.TO_MICROMETERS,
-                      static_cast<long>(cur),
-                      static_cast<long>(tgt));
+        Serial.printf("[POS] M%d cur=%.3f µm tgt=%.3f µm steps=(%ld -> %ld)\r\n", n + 1, cvals.TO_MICROMETERS, tvals.TO_MICROMETERS, static_cast<long>(cur), static_cast<long>(tgt));
     }
     else
     {
         const auto cvals = UnitConverter::convertFromSteps(cur);
         const auto tvals = UnitConverter::convertFromSteps(tgt);
-        Serial.printf("[POS] M%d cur=%.3f deg tgt=%.3f deg steps=(%ld -> %ld)\r\n",
-                      n + 1,
-                      cvals.TO_DEGREES,
-                      tvals.TO_DEGREES,
-                      static_cast<long>(cur),
-                      static_cast<long>(tgt));
+        Serial.printf("[POS] M%d cur=%.3f deg tgt=%.3f deg steps=(%ld -> %ld)\r\n", n + 1, cvals.TO_DEGREES, tvals.TO_DEGREES, static_cast<long>(cur), static_cast<long>(tgt));
     }
 }
 
@@ -824,23 +865,13 @@ static void serviceCLI()
                 {
                     const auto cvals = UnitConverter::convertFromSteps(cur);
                     const auto tvals = UnitConverter::convertFromSteps(tgt);
-                    Serial.printf("\r\n[POS] M%d cur=%.3f µm  tgt=%.3f µm  (steps %ld -> %ld)\r\n",
-                                  n + 1,
-                                  cvals.TO_MICROMETERS,
-                                  tvals.TO_MICROMETERS,
-                                  (long)cur,
-                                  (long)tgt);
+                    Serial.printf("\r\n[POS] M%d cur=%.3f µm  tgt=%.3f µm  (steps %ld -> %ld)\r\n", n + 1, cvals.TO_MICROMETERS, tvals.TO_MICROMETERS, (long)cur, (long)tgt);
                 }
                 else
                 {
                     const auto cvals = UnitConverter::convertFromSteps(cur);
                     const auto tvals = UnitConverter::convertFromSteps(tgt);
-                    Serial.printf("\r\n[POS] M%d cur=%.3f°  tgt=%.3f°  (steps %ld -> %ld)\r\n",
-                                  n + 1,
-                                  cvals.TO_DEGREES,
-                                  tvals.TO_DEGREES,
-                                  (long)cur,
-                                  (long)tgt);
+                    Serial.printf("\r\n[POS] M%d cur=%.3f°  tgt=%.3f°  (steps %ld -> %ld)\r\n", n + 1, cvals.TO_DEGREES, tvals.TO_DEGREES, (long)cur, (long)tgt);
                 }
                 printPrompt();
                 Serial.print(inputBuffer);
@@ -884,29 +915,6 @@ static void serviceCLI()
         // J
         if (upper == kHotkeys[(int)CommandKey::J][0])
         {
-            const uint32_t now = millis();
-            const uint32_t dt  = (gLastKPressMs == 0) ? 0 : (now - gLastKPressMs);
-            gLastKPressMs      = now;
-
-            const int n = gCurrentMotor;
-
-            double     pos_f = 0.0, ton = 0.0, toff = 0.0;
-            const bool enabled = readEncoderPulses(n, pos_f, ton, toff);
-
-            Serial.printf("  Encoder Enabled       : %s\n", enabled ? "YES" : "NO");
-            if (enabled)
-            {
-                const float angle = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
-                Serial.printf("  Encoder Position      : %.2f° (%.0f pulses)\n", angle, pos_f);
-            }
-            else
-            {
-                log_w("Encoder not enabled or no new data");
-            }
-
-            Serial.printf("  dt=%u ms\r\n", dt);
-            printPrompt();
-            Serial.print(inputBuffer);
             continue;
         }
 
