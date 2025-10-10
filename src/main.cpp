@@ -51,6 +51,7 @@ enum class CommandKey : uint8_t
     K = 2,
     J = 3
 };
+
 // To display the time interval between K/Js
 static uint32_t gLastKPressMs = 0;
 
@@ -62,6 +63,18 @@ static constexpr double   kDefaultLeadPitchUm = 200.0;    // default: 0.2 mm/rev
 static constexpr int32_t  SPI_CLOCK           = 1000000;  // 1MHz SPI clock
 static constexpr uint32_t kSerialBaud         = 115200;
 static constexpr uint32_t kWatchdogSeconds    = 15;
+
+// --- Rotary touch-window and speed profiles ---
+static constexpr double kTouchWindowDeg = 1.0;    // final window near target in degrees
+static constexpr float  kFastMaxSpeed   = 16000;  // steps/s for Rapid
+static constexpr float  kFastAccel      = 24000;  // steps/s^2 for Rapid
+static constexpr float  kTouchMaxSpeed  = 600;    // steps/s for Touch
+static constexpr float  kTouchAccel     = 1200;   // steps/s^2 for Touch
+
+// --- Chaining state (Rapid -> Touch) ---
+static volatile bool    gPendingTouch    = false;
+static volatile uint8_t gTouchMotorIdx   = 0;
+static volatile int32_t gTouchFinalSteps = 0;
 
 // ---------- Persistence (NVS/Preferences) ----------
 Preferences gPrefs;  // namespace: "motion"
@@ -134,34 +147,16 @@ static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, doubl
 // Used for handleMove() method
 static void onHomingComplete();
 
+// --- Two-phase motion (Rapid -> Touch) declarations ---
+static void        onRapidArrived();  // raw function pointer (no lambda)
+static void        planTouch(uint8_t idx, int32_t finalSteps);
 static inline void setCustomProfile(PositionController& pc, float vmax, float amax);
 
-static void planTouch(uint8_t idx, int32_t finalSteps);
-
-static void onRapidArrived();
-
-#pragma endregion
-
-#pragma region "Small helper functions for the command line"
 // Clear the current line and unhide the prompt
-static void clearLine(size_t nChars)
-{
-    Serial.print("\r");  // Return to the beginning of the line
-    for (size_t i = 0; i < nChars + 2; ++i)
-        Serial.print(' ');
-    Serial.print("\r> ");
-}
+static void        clearLine(size_t nChars);
+static void        redrawPrompt(const String& buf);
+static inline void printPrompt();
 
-static void redrawPrompt(const String& buf)
-{
-    clearLine(buf.length());
-    Serial.print(buf);
-}
-
-static inline void printPrompt()
-{
-    Serial.print("> ");
-}
 #pragma endregion
 
 void setup()
@@ -347,35 +342,6 @@ static inline ControlMode toMode(int v)
     return v == 1 ? ControlMode::HYBRID : ControlMode::OPEN_LOOP;
 }
 
-// ---------- Helpers ----------
-static inline bool isLinear(uint8_t idx)
-{
-    return idx == kLinearMotorIndex;
-}
-static inline bool isRotary(uint8_t idx)
-{
-    return idx >= kFirstRotaryIndex && idx < kMotorCount;
-}
-
-static void applyUnitDefaults(uint8_t idx)
-{
-    // Typical defaults (adjust if yours differ)
-    UnitConverter::setDefaultResolution(4096);      // pulses per rev
-    UnitConverter::setDefaultMicrometers(200.0);    // µm per rev (0.2 mm lead)
-    UnitConverter::setDefaultMicrosteps(200 * 64);  // 200 steps * 64 µsteps = 12800
-
-    if (isLinear(idx))
-    {
-        UnitConverter::setDefaultMotorType(MotorType::LINEAR);
-        UnitConverter::setDefaultMicrometers(gLeadPitchUm);
-    }
-    else
-    {
-        UnitConverter::setDefaultMotorType(MotorType::ROTATIONAL);
-        // For rotary, micrometers not used; keep default resolution & microsteps
-    }
-}
-
 // Read encoder once and set current step reference for the controller
 static void seedCurrentFromEncoder_2(uint8_t idx)
 {
@@ -469,43 +435,6 @@ static void configureByDistance(PositionController& pc, int32_t current, int32_t
     const int32_t d = abs(target - current);
     // Distance-type thresholds and speed tables are embedded in PositionController lean
     pc.configureSpeedForDistanceSteps(d);
-}
-
-// Add near the top (config)
-static constexpr double kTouchWindowDeg = 1.0;      // final window in degrees
-static constexpr float  kFastMaxSpeed   = 16000.0;  // steps/s for rapid
-static constexpr float  kFastAccel      = 24000.0;  // steps/s^2 for rapid
-static constexpr float  kTouchMaxSpeed  = 600.0;    // steps/s for touch
-static constexpr float  kTouchAccel     = 1200.0;   // steps/s^2 for touch
-
-// Utility: set a custom speed profile quickly
-static inline void setCustomProfile(PositionController& pc, float vmax, float amax)
-{
-    pc.setMaxSpeed(vmax);
-    pc.setAcceleration(amax);
-}
-
-// Globals for chaining
-static bool    gPendingTouch    = false;
-static uint8_t gTouchMotorIdx   = 0;
-static int32_t gTouchFinalSteps = 0;
-
-static void planTouch(uint8_t idx, int32_t finalSteps)
-{
-    setCustomProfile(*gPC[idx], kTouchMaxSpeed, kTouchAccel);
-    gPC[idx]->moveToSteps(finalSteps, MovementType::SHORT_RANGE, ControlMode::OPEN_LOOP);
-    // After touch completes, restore your generic on-complete callback if needed
-    gPC[idx]->attachOnComplete(onMovementComplete);  // so stable is persisted at the end
-}
-
-static void onRapidArrived()
-{
-    if (!gPendingTouch)
-        return;
-    const uint8_t idx = gTouchMotorIdx;
-    const int32_t tgt = gTouchFinalSteps;
-    gPendingTouch     = false;
-    planTouch(idx, tgt);
 }
 
 #pragma region "CLI"
@@ -1176,3 +1105,97 @@ static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, doubl
     }
     return gEnc[idx].tryGetPosition(pulses, ton_us, toff_us);
 }
+
+#pragma region "Small helper functions for the command line"
+// ---------- Helpers ----------
+static inline bool isLinear(uint8_t idx)
+{
+    return idx == kLinearMotorIndex;
+}
+static inline bool isRotary(uint8_t idx)
+{
+    return idx >= kFirstRotaryIndex && idx < kMotorCount;
+}
+
+static void applyUnitDefaults(uint8_t idx)
+{
+    // Typical defaults (adjust if yours differ)
+    UnitConverter::setDefaultResolution(4096);      // pulses per rev
+    UnitConverter::setDefaultMicrometers(200.0);    // µm per rev (0.2 mm lead)
+    UnitConverter::setDefaultMicrosteps(200 * 64);  // 200 steps * 64 µsteps = 12800
+
+    if (isLinear(idx))
+    {
+        UnitConverter::setDefaultMotorType(MotorType::LINEAR);
+        UnitConverter::setDefaultMicrometers(gLeadPitchUm);
+    }
+    else
+    {
+        UnitConverter::setDefaultMotorType(MotorType::ROTATIONAL);
+        // For rotary, micrometers not used; keep default resolution & microsteps
+    }
+}
+
+// Clear the current line and unhide the prompt
+static void clearLine(size_t nChars)
+{
+    Serial.print("\r");  // Return to the beginning of the line
+    for (size_t i = 0; i < nChars + 2; ++i)
+        Serial.print(' ');
+    Serial.print("\r> ");
+}
+
+static void redrawPrompt(const String& buf)
+{
+    clearLine(buf.length());
+    Serial.print(buf);
+}
+
+static inline void printPrompt()
+{
+    Serial.print("> ");
+}
+
+// Utility: set a custom speed profile quickly
+// Set a custom speed profile quickly (max speed + acceleration)
+static inline void setCustomProfile(PositionController& pc, float vmax, float amax)
+{
+    pc.setMaxSpeed(vmax);
+    pc.setAcceleration(amax);
+}
+
+// Schedule the final gentle "Touch" move to the exact target
+static void planTouch(uint8_t idx, int32_t finalSteps)
+{
+    if (!gPC[idx])
+        return;
+
+    // Gentle profile for precise approach
+    setCustomProfile(*gPC[idx], kTouchMaxSpeed, kTouchAccel);
+
+    // Optional: enable HYBRID just for the final touch window (comment out if not desired)
+    // gPC[idx]->setControlMode(ControlMode::HYBRID);
+
+    gPC[idx]->moveToSteps(finalSteps, MovementType::SHORT_RANGE, ControlMode::OPEN_LOOP);
+
+    // After Touch completes, restore your normal completion callback so stable is persisted
+    gPC[idx]->attachOnComplete(onMovementComplete);
+}
+
+// Callback executed when the Rapid phase reaches the pre-target
+static void onRapidArrived()
+{
+    if (!gPendingTouch)
+        return;
+
+    const uint8_t idx = gTouchMotorIdx;
+    const int32_t tgt = gTouchFinalSteps;
+
+    gPendingTouch = false;
+
+    // Plan the gentle Touch phase now
+    planTouch(idx, tgt);
+    Serial.printf("[CHAIN] Rapid arrived -> Touch scheduled (M%d)\r\n", idx + 1);
+}
+
+#pragma endregion
