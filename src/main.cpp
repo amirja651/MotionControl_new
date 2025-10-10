@@ -454,7 +454,7 @@ static void handleMotor(cmd* c)
     Serial.printf("[CLI] Current motor = %d\r\n", n);
 }
 
-static void handleMove(cmd* c)
+static void handleMove_2(cmd* c)
 {
     Command cmd(c);  // Create wrapper object
 
@@ -614,6 +614,182 @@ static void handleMove(cmd* c)
     if (gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
     {
         Serial.printf("\r\n[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n", n + 1, static_cast<long>(targetSteps), static_cast<long>(nowSteps2));
+    }
+    else
+    {
+        Serial.println("[ERR] move command rejected");
+    }
+}
+
+static void handleMove(cmd* c)
+{
+    Command  cmd(c);
+    Argument aN = cmd.getArg("n");
+    Argument aP = cmd.getArg("p");
+
+    // ---- Resolve motor index (default: current selection) ----
+    uint8_t n = gCurrentMotor;
+    if (aN.isSet())
+    {
+        const int nv = aN.getValue().toInt();
+        if (nv < 1 || nv > kMotorCount)
+        {
+            Serial.println("[ERR] motor id out of range (1..4)");
+            return;
+        }
+        n             = static_cast<uint8_t>(nv - 1);
+        gCurrentMotor = static_cast<uint8_t>(n);
+    }
+    if (!gPC[n])
+    {
+        Serial.println("[ERR] motor controller not initialized");
+        return;
+    }
+    if (!gPC[n]->isEnabled())
+    {
+        Serial.println("[ERR] motor is disabled");
+        return;
+    }
+
+    // ---- Make unit defaults consistent with motor type ----
+    applyUnitDefaults(n);
+
+    // ---- Load stable; for rotary clamp to [0.05°, 359.95°] ----
+    int32_t stable = loadStableSteps(n);
+    if (isRotary(n))
+    {
+        auto   cv  = UnitConverter::convertFromSteps(stable);
+        double deg = cv.TO_DEGREES;
+        if (deg < 0.05)
+            deg = 0.05;
+        if (deg > 359.95)
+            deg = 359.95;
+        stable = UnitConverter::convertFromDegrees(deg).TO_STEPS;
+    }
+    Serial.printf("[INFO] Stable: (%ld steps)\r\n", static_cast<long>(stable));
+
+    // ---- Seed current position: turns from stepper, within-turn from encoder ----
+    const int32_t ms          = UnitConverter::getDefaultMicrosteps();
+    int32_t       curStepsRaw = gPC[n]->getCurrentSteps();
+    int32_t       seedSteps   = curStepsRaw;
+
+    // For linear: keep turns from stepper; for rotary: force turns = 0
+    int32_t turns = isLinear(n) ? (curStepsRaw / ms) : 0;
+
+    // Enable only the selected encoder to reduce ISR load, then try to read it
+    for (uint8_t i = 0; i < kMotorCount; ++i)
+    {
+        if (i == n)
+            gEnc[i].enable();
+        else
+            gEnc[i].disable();
+    }
+    double pos_f = 0.0, ton = 0.0, toff = 0.0;
+    if (gEnc[n].tryGetPosition(pos_f, ton, toff))
+    {
+        const int32_t withinSteps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
+        seedSteps                 = (turns * ms) + withinSteps;  // rotary: turns==0 → withinSteps
+        gPC[n]->setCurrentPosition(seedSteps);                   // align stepper to encoder within-turn
+        Serial.printf("pos_f: %.2f\r\n", pos_f);
+    }
+
+    // ---- If not at stable, go to stable first (single move) ----
+    if (seedSteps != stable)
+    {
+        configureByDistance(*gPC[n], seedSteps, stable);
+        if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
+        {
+            Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(seedSteps));
+        }
+        else
+        {
+            Serial.println("[ERR] homing-to-stable rejected");
+        }
+        return;  // user may issue the move again after homing completes
+    }
+
+    // ---- Parse target argument ----
+    if (!aP.isSet())
+    {
+        Serial.println("[ERR] missing argument p=<position> (µm for linear, deg for rotary)");
+        return;
+    }
+    const double p = aP.getValue().toDouble();
+
+    // ---- Compute target steps based on motor type ----
+    int32_t targetSteps = 0;
+    if (isLinear(n))
+    {
+        // p in micrometers
+        targetSteps = UnitConverter::convertFromMicrometers(p).TO_STEPS;
+    }
+    else
+    {
+        // p in degrees
+        targetSteps = UnitConverter::convertFromDegrees(p).TO_STEPS;
+    }
+
+    // ---- Rotary two-phase motion: Rapid -> Touch (window) ----
+    const int32_t nowSteps = gPC[n]->getCurrentSteps();  // after seeding: equals 'stable'
+    if (isRotary(n))
+    {
+        const auto   curCV = UnitConverter::convertFromSteps(nowSteps);
+        const auto   tgtCV = UnitConverter::convertFromSteps(targetSteps);
+        const double ddeg  = fabs(tgtCV.TO_DEGREES - curCV.TO_DEGREES);
+
+        if (ddeg > kTouchWindowDeg)
+        {
+            // Phase 1: Rapid to pre-target (target -/+ window)
+            const double  dir      = (tgtCV.TO_DEGREES >= curCV.TO_DEGREES) ? +1.0 : -1.0;
+            const double  preDeg   = tgtCV.TO_DEGREES - dir * kTouchWindowDeg;
+            const int32_t preSteps = UnitConverter::convertFromDegrees(preDeg).TO_STEPS;
+
+            // Persist start in case of power drop
+            saveStableSteps(n, nowSteps);
+
+            // Fast profile for Rapid
+            setCustomProfile(*gPC[n], kFastMaxSpeed, kFastAccel);
+
+            // Queue Rapid move and chain Touch via onRapidArrived()
+            if (gPC[n]->moveToSteps(preSteps, MovementType::LONG_RANGE, ControlMode::OPEN_LOOP))
+            {
+                gPendingTouch    = true;
+                gTouchMotorIdx   = n;
+                gTouchFinalSteps = targetSteps;
+
+                // IMPORTANT: set Rapid-arrival callback (raw function pointer)
+                gPC[n]->attachOnComplete(onRapidArrived);
+
+                Serial.printf("[MOVE] Rapid to pre-target (deg window=%.2f)\r\n", kTouchWindowDeg);
+            }
+            else
+            {
+                Serial.println("[ERR] Rapid move rejected");
+            }
+            return;  // Touch will be scheduled in onRapidArrived()
+        }
+
+        // Small distance: single-phase Touch only
+        setCustomProfile(*gPC[n], kTouchMaxSpeed, kTouchAccel);
+    }
+
+    // ---- Linear (or small rotary): single-phase with distance-based profile ----
+    configureByDistance(*gPC[n], nowSteps, targetSteps);
+
+    // Persist start in case of power drop (store the start point)
+    saveStableSteps(n, nowSteps);
+
+    // Queue final move
+    if (gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
+    {
+        if (isLinear(n))
+        {
+            Serial.printf("[MOVE] linear: target=%.3f µm (steps %ld)\r\n", p, static_cast<long>(targetSteps));
+        }
+        else
+        {
+            Serial.printf("[MOVE] rotary: target=%.3f° (steps %ld)\r\n", p, static_cast<long>(targetSteps));
+        }
     }
     else
     {
