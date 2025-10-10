@@ -15,15 +15,15 @@
 #endif
 
 #if TMC_LOG
-    #define TMC_LOGI(fmt, ...)                                                                                         \
-        do                                                                                                             \
-        {                                                                                                              \
-            Serial.printf((fmt), ##__VA_ARGS__);                                                                       \
+    #define TMC_LOGI(fmt, ...)                                                                                                                                                                                                                                                         \
+        do                                                                                                                                                                                                                                                                             \
+        {                                                                                                                                                                                                                                                                              \
+            Serial.printf((fmt), ##__VA_ARGS__);                                                                                                                                                                                                                                       \
         } while (0)
-    #define TMC_LOGLN(s)                                                                                               \
-        do                                                                                                             \
-        {                                                                                                              \
-            Serial.println((s));                                                                                       \
+    #define TMC_LOGLN(s)                                                                                                                                                                                                                                                               \
+        do                                                                                                                                                                                                                                                                             \
+        {                                                                                                                                                                                                                                                                              \
+            Serial.println((s));                                                                                                                                                                                                                                                       \
         } while (0)
 #else
     #define TMC_LOGI(...)  ((void)0)
@@ -120,7 +120,8 @@ private:
     float                  _RS{R_SENSE};
     MotorConfig            _cfg{};
 
-    static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H = 350;  // mA
+    static constexpr uint16_t DEFAULT_CURRENT_NEMA11_1004H   = 350;  // mA
+    static constexpr uint16_t DEFAULT_CURRENT_NEMA11_PANCAKE = 350;  // mA
 };
 
 #endif  // TMC5160_MANAGER_H

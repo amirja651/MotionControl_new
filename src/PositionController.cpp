@@ -29,12 +29,7 @@ PositionController* PositionController::_instances[4]              = {nullptr};
 // -----------------------------
 // Constructors / Destructor
 // -----------------------------
-PositionController::PositionController(uint8_t            motorId,
-                                       TMC5160Manager&    driver,
-                                       DirMultiplexer&    dirMultiplexer,
-                                       uint16_t           stepPin,
-                                       uint16_t           enPin,
-                                       mae3::Mae3Encoder& encoderMae3)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin, mae3::Mae3Encoder& encoderMae3)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, 0 /*dir via multiplexer*/),
       _encoderMae3(&encoderMae3),
@@ -75,8 +70,7 @@ PositionController::PositionController(uint8_t            motorId,
     _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)]  = {8000.0f, 16000.0f, 640};
 }
 
-PositionController::PositionController(
-    uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
+PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
     : _driver(driver),
       _stepper(AccelStepper::DRIVER, stepPin, 0 /*dir via multiplexer*/),
       _encoderMae3(nullptr),
@@ -350,8 +344,7 @@ void PositionController::startPositionControlTask()
         }
     }
 
-    const BaseType_t res = xTaskCreatePinnedToCore(
-        positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
+    const BaseType_t res = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
     if (res == pdPASS)
     {
         log_d("Position control task started");
@@ -425,7 +418,9 @@ void PositionController::setDirection(bool dir)
 {
     if (!_initialized)
         return;
-    _dirMultiplexer.setMotorDirection(_motorId, dir);
+
+    gpio_set_level(static_cast<gpio_num_t>(DriverPins::DIR[_motorId]), dir ? 1 : 0);  // amir temp
+    //_dirMultiplexer.setMotorDirection(_motorId, dir);
 }
 
 bool PositionController::executeMovement(const MovementCommand& cmd)
@@ -537,8 +532,7 @@ ControlMode PositionController::getControlMode() const
 bool PositionController::isHybridModeEnabled() const
 {
     // Keep original semantics; avoid repeated heavy work here if possible
-    return _controlMode == ControlMode::HYBRID && _encoderMae3 != nullptr &&
-           (_encoderMae3->enable() == mae3::Status::Ok);
+    return _controlMode == ControlMode::HYBRID && _encoderMae3 != nullptr && (_encoderMae3->enable() == mae3::Status::Ok);
 }
 /*
 EncoderState PositionController::getEncoderState() const

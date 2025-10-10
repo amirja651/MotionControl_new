@@ -208,10 +208,10 @@ void setup()
         else
         {
             gDriver[i].configureDriver_All_Motors(true);  // true = StealthChop
-            gDriver[i].setRmsCurrent(350);                // mA
-            gDriver[i].setIrun(16);
-            gDriver[i].setIhold(8);
-            gDriver[i].setMicrosteps(32);
+            // gDriver[i].setRmsCurrent(350);                 // mA
+            // gDriver[i].setIrun(16);
+            // gDriver[i].setIhold(8);
+            // gDriver[i].setMicrosteps(32);
 
             // Optional: quick sanity check
             if (!gDriver[i].testConnection(true))
@@ -360,7 +360,7 @@ static void applyUnitDefaults(uint8_t idx)
 }
 
 // Read encoder once and set current step reference for the controller
-static void seedCurrentFromEncoder(uint8_t idx)
+static void seedCurrentFromEncoder_2(uint8_t idx)
 {
     if (!gPC[idx])
         return;
@@ -381,6 +381,42 @@ static void seedCurrentFromEncoder(uint8_t idx)
             steps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
         }
         gPC[idx]->setCurrentPosition(steps);
+    }
+}
+
+// Read encoder once and set current step reference for the controller
+static void seedCurrentFromEncoder(uint8_t idx)
+{
+    if (!gPC[idx])
+        return;
+
+    const int32_t curSteps  = gPC[idx]->getCurrentSteps();
+    int32_t       seedSteps = curSteps;
+    const int32_t ms        = UnitConverter::getDefaultMicrosteps();
+    int32_t       turns     = isLinear(idx) ? (curSteps / ms) : 0;  // rotary → force 0 turns
+
+    // Optional: enable only the selected encoder to reduce ISR load
+    for (uint8_t i = 0; i < kMotorCount; ++i)
+    {
+        if (i == idx)
+            gEnc[i].enable();
+        else
+            gEnc[i].disable();
+    }
+
+    double pos_f = 0.0, ton = 0.0, toff = 0.0;
+    if (gEnc[idx].tryGetPosition(pos_f, ton, toff))
+    {
+        // Convert encoder pulses (0..4095) to steps within 1 revolution
+        const int32_t withinSteps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
+
+        // Rebuild absolute seed:
+        //  - linear:  (turns * ms) + withinSteps
+        //  - rotary:  (0 * ms)     + withinSteps
+        seedSteps = (turns * ms) + withinSteps;
+
+        // Set precise current position before any movement
+        gPC[idx]->setCurrentPosition(seedSteps);
     }
 }
 
@@ -484,22 +520,25 @@ static void handleMove(cmd* c)
                 deg = 0.05;
             if (deg > 359.95)
                 deg = 359.95;
-#endif
+
 
         // wrap-around behavior (e.g., 370° → 10° instead of 359.95°):
         deg = fmod(deg, 360.0);
         if (deg < 0.0)
             deg += 360.0;
-
+#endif
         stable = UnitConverter::convertFromDegrees(deg).TO_STEPS;
         Serial.printf("[INFO] Stable with wrap-around: (%ld steps)\r\n", static_cast<long>(stable));
     }
 
     //-----------------------------------------------------------------
-    const int32_t cur = gPC[n]->getCurrentSteps();
-    if (cur != stable)
+    // Seed current from encoder as reference in the *current* revolution
+    seedCurrentFromEncoder(n);
+    const int32_t curSteps = gPC[n]->getCurrentSteps();
+
+    if (curSteps != stable)
     {
-        configureByDistance(*gPC[n], cur, stable);
+        configureByDistance(*gPC[n], curSteps, stable);
 
         // 1. Move to stable
         gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
@@ -508,10 +547,10 @@ static void handleMove(cmd* c)
         // Prepare next target for after homing
         gPendingTargetAfterHoming = true;
         gPendingTargetSteps       = targetSteps;
-        gPC[n]->attachOnComplete(onHomingComplete);
+        // gPC[n]->attachOnComplete(onHomingComplete);
 
         // NOTE: We return after queuing homing-to-stable; user can issue move again or wait.
-        Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(cur));
+        Serial.printf("\r\n[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n\r\n", static_cast<long>(stable), static_cast<long>(curSteps));
         return;
     }
 
@@ -677,6 +716,10 @@ static void handleSaveOrigin(cmd* c)
     const int n = gCurrentMotor;
     if (!gPC[n])
         return;
+
+    // Seed current from encoder as reference in the *current* revolution
+    seedCurrentFromEncoder(n);
+
     const int32_t cur = gPC[n]->getCurrentSteps();
     saveStableSteps(n, cur);
     Serial.printf("[SAVE] M%d stable_steps=%ld\r\n", n + 1, static_cast<long>(cur));

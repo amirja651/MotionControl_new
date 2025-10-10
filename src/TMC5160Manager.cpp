@@ -10,8 +10,7 @@ static inline void tiny_delay_us(uint32_t us)
         delayMicroseconds(us);
 }
 
-TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) noexcept
-    : _driver(pinCS, RS), _driverIndex(driverIndex), _pinCS(pinCS), _RS(RS)
+TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) noexcept : _driver(pinCS, RS), _driverIndex(driverIndex), _pinCS(pinCS), _RS(RS)
 {
     // Select sane defaults per driver index
     if (driverIndex == 0)
@@ -24,7 +23,7 @@ TMC5160Manager::TMC5160Manager(uint8_t driverIndex, uint16_t pinCS, float RS) no
     }
     else
     {
-        _cfg.rms_current_mA = 500;
+        _cfg.rms_current_mA = DEFAULT_CURRENT_NEMA11_PANCAKE;
         _cfg.microsteps     = 64;
         _cfg.irun           = 12;
         _cfg.ihold          = 4;
@@ -222,13 +221,7 @@ void TMC5160Manager::logDriverStatus() noexcept
     const uint16_t tpwmthrs = _driver.TPWMTHRS();
 
     TMC_LOGLN("[TMC5160] ---- status ----");
-    TMC_LOGI("id=%u ver=0x%08X enabled=%u stealth=%u drv=0x%08X gconf=0x%08X\n",
-             static_cast<unsigned>(_driverIndex + 1),
-             version,
-             enabled,
-             stealth,
-             drv_stat,
-             gconf);
+    TMC_LOGI("id=%u ver=0x%08X enabled=%u stealth=%u drv=0x%08X gconf=0x%08X\n", static_cast<unsigned>(_driverIndex + 1), version, enabled, stealth, drv_stat, gconf);
     TMC_LOGI("rms=%u irun=%u ihold=%u tpwm=%u\n", current, irun, ihold, tpwmthrs);
 #endif
 }
