@@ -134,6 +134,12 @@ static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, doubl
 // Used for handleMove() method
 static void onHomingComplete();
 
+static inline void setCustomProfile(PositionController& pc, float vmax, float amax);
+
+static void planTouch(uint8_t idx, int32_t finalSteps);
+
+static void onRapidArrived();
+
 #pragma endregion
 
 #pragma region "Small helper functions for the command line"
@@ -221,6 +227,17 @@ void setup()
             else
             {
                 log_d("--- SPI/driver[%d] is 👍 OK", i);
+            }
+
+            // Set a reasonable value for the rotary (start experimentally; the smaller → the faster the SpreadCycle):
+            const bool isRot = (i != kLinearMotorIndex);
+            if (isRot)
+            {
+                gDriver[i].setTPWMTHRS(400);  // switch to SpreadCycle at higher speed
+            }
+            else
+            {
+                gDriver[i].setTPWMTHRS(0xFFFF);  // keep StealthChop for linear quiet moves
             }
         }
     }
@@ -454,6 +471,43 @@ static void configureByDistance(PositionController& pc, int32_t current, int32_t
     pc.configureSpeedForDistanceSteps(d);
 }
 
+// Add near the top (config)
+static constexpr double kTouchWindowDeg = 1.0;      // final window in degrees
+static constexpr float  kFastMaxSpeed   = 16000.0;  // steps/s for rapid
+static constexpr float  kFastAccel      = 24000.0;  // steps/s^2 for rapid
+static constexpr float  kTouchMaxSpeed  = 600.0;    // steps/s for touch
+static constexpr float  kTouchAccel     = 1200.0;   // steps/s^2 for touch
+
+// Utility: set a custom speed profile quickly
+static inline void setCustomProfile(PositionController& pc, float vmax, float amax)
+{
+    pc.setMaxSpeed(vmax);
+    pc.setAcceleration(amax);
+}
+
+// Globals for chaining
+static bool    gPendingTouch    = false;
+static uint8_t gTouchMotorIdx   = 0;
+static int32_t gTouchFinalSteps = 0;
+
+static void planTouch(uint8_t idx, int32_t finalSteps)
+{
+    setCustomProfile(*gPC[idx], kTouchMaxSpeed, kTouchAccel);
+    gPC[idx]->moveToSteps(finalSteps, MovementType::SHORT_RANGE, ControlMode::OPEN_LOOP);
+    // After touch completes, restore your generic on-complete callback if needed
+    gPC[idx]->attachOnComplete(onMovementComplete);  // so stable is persisted at the end
+}
+
+static void onRapidArrived()
+{
+    if (!gPendingTouch)
+        return;
+    const uint8_t idx = gTouchMotorIdx;
+    const int32_t tgt = gTouchFinalSteps;
+    gPendingTouch     = false;
+    planTouch(idx, tgt);
+}
+
 #pragma region "CLI"
 // ---------- CLI handlers ----------
 static void handleMotor(cmd* c)
@@ -481,13 +535,19 @@ static void handleMove(cmd* c)
     {
         const int nv = cmd.getArg("n").getValue().toInt();
         if (nv >= 1 && nv <= kMotorCount)
-            n = nv - 1;
+        {
+            n             = nv - 1;
+            gCurrentMotor = static_cast<uint8_t>(n);
+            applyUnitDefaults(gCurrentMotor);
+        }
     }
     if (!gPC[n] || !gPC[n]->isEnabled())
     {
         Serial.println("[ERR] Motor not enabled");
         return;
     }
+
+    //-----------------------------------------------------------------
 
     //-----------------------------------------------------------------
     const double p           = cmd.getArg("p").getValue().toDouble();
@@ -536,6 +596,63 @@ static void handleMove(cmd* c)
     seedCurrentFromEncoder(n);
     const int32_t curSteps = gPC[n]->getCurrentSteps();
 
+    // In handleMove(cmd) after computing `targetSteps`:
+    const int32_t nowSteps = gPC[n]->getCurrentSteps();
+
+    // Rotary two-phase logic
+    if (isRotary(n))
+    {
+        const auto curCV = UnitConverter::convertFromSteps(nowSteps);
+        const auto tgtCV = UnitConverter::convertFromSteps(targetSteps);
+        double     ddeg  = fabs(tgtCV.TO_DEGREES - curCV.TO_DEGREES);
+
+        if (ddeg > kTouchWindowDeg)
+        {
+            // Phase 1: Rapid to pre-target (target - sign*window)
+            const double  dir      = (tgtCV.TO_DEGREES >= curCV.TO_DEGREES) ? +1.0 : -1.0;
+            const double  preD     = tgtCV.TO_DEGREES - dir * kTouchWindowDeg;
+            const int32_t preSteps = UnitConverter::convertFromDegrees(preD).TO_STEPS;
+
+            // Save start point in case of power drop
+            saveStableSteps(n, nowSteps);
+
+            // Rapid profile
+            setCustomProfile(*gPC[n], kFastMaxSpeed, kFastAccel);
+            gPC[n]->moveToSteps(preSteps, MovementType::LONG_RANGE, ControlMode::OPEN_LOOP);
+
+            // Chain Phase 2 (Touch) after homing-to-pre target:
+            // Use a static callback (no lambdas) because attachOnComplete takes void(*)()
+            static bool    s_pendingTouch = false;
+            static uint8_t s_motorIdx     = 0;
+            static int32_t s_finalTarget  = 0;
+
+            s_pendingTouch = true;
+            s_motorIdx     = n;
+            s_finalTarget  = targetSteps;
+
+            gPC[n]->attachOnComplete(
+                []()
+                {
+                    // NOTE: if your attachOnComplete only accepts function pointers, replace this
+                    // lambda with a static function and use globals: see previous message for pattern.
+                });
+
+            // If your PositionController requires a raw function pointer:
+            extern void onRapidArrived();  // forward-declare a static function
+            gPC[n]->attachOnComplete(onRapidArrived);
+
+            Serial.printf("[MOVE] Rapid to pre-target (deg window=%.2f)\r\n", kTouchWindowDeg);
+            return;
+        }
+        // Else small move → do single-phase touch:
+        setCustomProfile(*gPC[n], kTouchMaxSpeed, kTouchAccel);
+    }
+
+    // Linear: normal distance-based config
+    configureByDistance(*gPC[n], nowSteps, targetSteps);
+    saveStableSteps(n, nowSteps);
+    gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+
     if (curSteps != stable)
     {
         configureByDistance(*gPC[n], curSteps, stable);
@@ -558,16 +675,16 @@ static void handleMove(cmd* c)
     // Seed current from encoder as reference in the *current* revolution
     seedCurrentFromEncoder(n);
 
-    const int32_t nowSteps = gPC[n]->getCurrentSteps();
+    const int32_t nowSteps2 = gPC[n]->getCurrentSteps();
     configureByDistance(*gPC[n], nowSteps, targetSteps);
 
     // Persist "start position" immediately — used if power drops mid-move
-    saveStableSteps(n, nowSteps);
+    saveStableSteps(n, nowSteps2);
 
     // Open-loop move (per your logic). Hybrid path is available via CLI control command.
     if (gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
     {
-        Serial.printf("\r\n[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n", n + 1, static_cast<long>(targetSteps), static_cast<long>(nowSteps));
+        Serial.printf("\r\n[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n", n + 1, static_cast<long>(targetSteps), static_cast<long>(nowSteps2));
     }
     else
     {

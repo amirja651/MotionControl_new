@@ -110,6 +110,7 @@ public:
     void                   setSGTHRS(uint32_t threshold) noexcept;  // 0x40
     [[nodiscard]] uint32_t getSG_RESULT() noexcept;                 // 0x41
 
+    void setTPWMTHRS(uint16_t val) noexcept;
 private:
     bool configureDriver() noexcept;
 

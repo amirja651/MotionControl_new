@@ -261,3 +261,9 @@ void TMC5160Manager::applyCurrentSettings() noexcept
     _driver.ihold(static_cast<uint8_t>(_cfg.ihold));
     tiny_delay_us(20);
 }
+
+void TMC5160Manager::setTPWMTHRS(uint16_t val) noexcept
+{
+    _driver.TPWMTHRS(val);
+    tiny_delay_us(20);
+}

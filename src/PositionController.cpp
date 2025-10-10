@@ -57,7 +57,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.encoderSteps       = 0;
 
     _instances[motorId] = this;
-
+#if false
     _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {2000.0f, 4000.0f};
     _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};
@@ -68,6 +68,18 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)]     = {2000.0f, 4000.0f, 64};
     _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)]       = {4000.0f, 8000.0f, 320};
     _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)]  = {8000.0f, 16000.0f, 640};
+#else
+    // PositionController.cpp (or where you define distance-speed tables)
+    _speedProfiles[(int)MovementType::LONG_RANGE]   = {16000.0f, 24000.0f};
+    _speedProfiles[(int)MovementType::MEDIUM_RANGE] = {6000.0f, 12000.0f};
+    _speedProfiles[(int)MovementType::SHORT_RANGE]  = {600.0f, 1200.0f};
+
+    // Optionally refine distance thresholds for rotary:
+    _distanceSpeedProfiles[(int)DistanceType::SHORT]     = {800.0f, 1600.0f, 32};
+    _distanceSpeedProfiles[(int)DistanceType::MEDIUM]    = {3000.0f, 8000.0f, 128};
+    _distanceSpeedProfiles[(int)DistanceType::LONG]      = {8000.0f, 16000.0f, 640};
+    _distanceSpeedProfiles[(int)DistanceType::VERY_LONG] = {16000.0f, 24000.0f, 960};
+#endif
 }
 
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
@@ -95,7 +107,7 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.totalMovementTime = 0;
 
     _instances[motorId] = this;
-
+#if false
     _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {2000.0f, 4000.0f};
     _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};
     _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};
@@ -106,6 +118,18 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)]     = {2000.0f, 4000.0f, 64};
     _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)]       = {4000.0f, 8000.0f, 320};
     _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)]  = {8000.0f, 16000.0f, 640};
+#else
+    // PositionController.cpp (or where you define distance-speed tables)
+    _speedProfiles[(int)MovementType::LONG_RANGE]   = {16000.0f, 24000.0f};
+    _speedProfiles[(int)MovementType::MEDIUM_RANGE] = {6000.0f, 12000.0f};
+    _speedProfiles[(int)MovementType::SHORT_RANGE]  = {600.0f, 1200.0f};
+
+    // Optionally refine distance thresholds for rotary:
+    _distanceSpeedProfiles[(int)DistanceType::SHORT]     = {800.0f, 1600.0f, 32};
+    _distanceSpeedProfiles[(int)DistanceType::MEDIUM]    = {3000.0f, 8000.0f, 128};
+    _distanceSpeedProfiles[(int)DistanceType::LONG]      = {8000.0f, 16000.0f, 640};
+    _distanceSpeedProfiles[(int)DistanceType::VERY_LONG] = {16000.0f, 24000.0f, 960};
+#endif
 }
 
 PositionController::~PositionController()
@@ -462,7 +486,7 @@ void PositionController::positionControlTask(void* /*parameter*/)
 {
     MovementCommand  cmd{};
     TickType_t       lastWake = xTaskGetTickCount();
-    const TickType_t period   = pdMS_TO_TICKS(10);  // 10 ms
+    const TickType_t period   = pdMS_TO_TICKS(1);  // was 10 -> now 1 ms
 
     log_d("Position control task running");
 
