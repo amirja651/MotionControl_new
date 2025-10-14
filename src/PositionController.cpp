@@ -153,12 +153,12 @@ bool PositionController::begin()
 
     if (!_dirMultiplexer.begin())
     {
-        printf("--- Failed to init DirMux for motor[%d]\r\n", _motorId + 1);
+        Serial.printf("--- Failed to init DirMux for motor[%d]\r\n", _motorId + 1);
         return false;
     }
     if (!_dirMultiplexer.selectMotor(_motorId))
     {
-        printf("--- Failed to select motor[%d] in DirMux\r\n", _motorId + 1);
+        Serial.printf("--- Failed to select motor[%d] in DirMux\r\n", _motorId + 1);
         return false;
     }
 
@@ -195,7 +195,7 @@ void PositionController::disable()
     _stepper.disableOutputs();
     _enabled          = false;
     _status.isEnabled = false;
-    log_i("Motor %d disabled", _motorId + 1);
+    Serial.printf("Motor[%d] disabled\r\n", _motorId + 1);
 }
 
 bool PositionController::isEnabled() const
@@ -216,8 +216,8 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
     const int32_t dist    = std::abs(delta);
 
     if (!isValidMovementDistanceSteps(dist))
-    {
-        log_w("Motor %d: distance %d < 6 steps → ignore", _motorId + 1, dist);
+    {  // amir e
+        Serial.printf("Motor[%d]: distance %d < 6 steps → ignore\r\n", _motorId + 1, dist);
         return false;
     }
 
@@ -241,7 +241,7 @@ bool PositionController::moveRelativeSteps(int32_t deltaSteps, MovementType move
     const int32_t dist = std::abs(deltaSteps);
     if (!isValidMovementDistanceSteps(dist))
     {
-        log_w("Motor %d: distance %d < 6 steps → ignore", _motorId + 1, dist);
+        Serial.printf("Motor[%d]: distance %d < 6 steps → ignore\r\n", _motorId + 1, dist);
         return false;
     }
 
@@ -271,7 +271,7 @@ void PositionController::stop()
         _status.totalMovementTime = now_ms() - _status.movementStartTime;
         xSemaphoreGive(_statusMutex);
     }
-    log_i("Motor %d stopped", _motorId + 1);
+    Serial.printf("Motor %d stopped\r\n", _motorId + 1);
 }
 
 bool PositionController::isMoving() const
@@ -353,7 +353,7 @@ void PositionController::startPositionControlTask()
         _movementCommandQueue = xQueueCreate(10, sizeof(MovementCommand));
         if (!_movementCommandQueue)
         {
-            log_e("Failed to create command queue");
+            Serial.printf("Failed to create command queue\r\n");
             return;
         }
     }
@@ -362,7 +362,7 @@ void PositionController::startPositionControlTask()
         _statusMutex = xSemaphoreCreateMutex();
         if (!_statusMutex)
         {
-            log_e("Failed to create status mutex");
+            Serial.printf("Failed to create status mutex\r\n");
             return;
         }
     }
@@ -370,12 +370,12 @@ void PositionController::startPositionControlTask()
     const BaseType_t res = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
     if (res == pdPASS)
     {
-        // log_d("Position control task started");
+        // Serial.printf("Position control task started\r\n");
         esp_task_wdt_add(_positionControlTaskHandle);
     }
     else
     {
-        log_e("Failed to create position control task");
+        Serial.printf("Failed to create position control task\r\n");
     }
 }
 
@@ -396,7 +396,7 @@ void PositionController::stopPositionControlTask()
         vSemaphoreDelete(_statusMutex);
         _statusMutex = nullptr;
     }
-    log_d("Position control task stopped");
+    Serial.printf("Position control task stopped\r\n");
 }
 
 bool PositionController::queueMovementCommand(const MovementCommand& c)
@@ -487,7 +487,7 @@ void PositionController::positionControlTask(void* /*parameter*/)
     TickType_t       lastWake = xTaskGetTickCount();
     const TickType_t period   = pdMS_TO_TICKS(1);  // was 10 -> now 1 ms
 
-    // log_d("Position control task running");
+    // Serial.printf("Position control task running\r\n");
 
     for (;;)
     {
@@ -543,7 +543,7 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
         _movementCompleteFlag = true;
-        log_i("Motor %d reached target", _motorId + 1);
+        Serial.printf("Motor[%d] reached target\r\n", _motorId + 1);
     }
 }
 
@@ -625,11 +625,11 @@ void PositionController::setControlMode(ControlMode mode)
                 _status.controlMode    = ControlMode::HYBRID;
                 const int32_t encSteps = getEncoderSteps();
                 _status.encoderSteps   = encSteps;
-                log_d("Motor %d: HYBRID start at encoder=%d steps", _motorId + 1, encSteps);
+                Serial.printf("Motor %d: HYBRID start at encoder=%d steps\r\n", _motorId + 1, encSteps);
             }
             else
             {
-                log_w("Motor %d: HYBRID unavailable → OPEN_LOOP", _motorId + 1);
+                Serial.printf("Motor[%d]: HYBRID unavailable → OPEN_LOOP\r\n", _motorId + 1);
                 _controlMode        = ControlMode::OPEN_LOOP;
                 _status.controlMode = ControlMode::OPEN_LOOP;
             }
@@ -750,7 +750,7 @@ void PositionController::configureSpeedForDistanceSteps(int32_t d)
     const float a = calculateOptimalAccelerationForDistanceSteps(d);
     _stepper.setMaxSpeed(v);
     _stepper.setAcceleration(a);
-    log_d("Motor %d: d=%d -> v=%.0f st/s, a=%.0f st/s^2", _motorId + 1, d, v, a);
+    Serial.printf("Motor %d: d=%d -> v=%.0f st/s, a=%.0f st/s^2\r\n", _motorId + 1, d, v, a);
 }
 
 void PositionController::attachOnComplete(void (*cb)())

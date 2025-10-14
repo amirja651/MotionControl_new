@@ -77,17 +77,9 @@ class PositionController
 {
 public:
     // Constructor
-    PositionController(uint8_t            motorId,
-                       TMC5160Manager&    driver,
-                       DirMultiplexer&    dirMultiplexer,
-                       uint16_t           stepPin,
-                       uint16_t           enPin,
-                       mae3::Mae3Encoder& encoderMae3);
-    PositionController(uint8_t         motorId,
-                       TMC5160Manager& driver,
-                       DirMultiplexer& dirMultiplexer,
-                       uint16_t        stepPin,
-                       uint16_t        enPin);  // Constructor without encoder (for demo)
+    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin, mae3::Mae3Encoder& encoderMae3);
+    PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin,
+                       uint16_t enPin);  // Constructor without encoder (for demo)
     ~PositionController();
 
     // Initialization
@@ -98,12 +90,8 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToSteps(int32_t      targetSteps,
-                     MovementType movementType = MovementType::MEDIUM_RANGE,
-                     ControlMode  controlMode  = ControlMode::OPEN_LOOP);
-    bool moveRelativeSteps(int32_t      deltaSteps,
-                           MovementType movementType = MovementType::MEDIUM_RANGE,
-                           ControlMode  controlMode  = ControlMode::OPEN_LOOP);
+    bool moveToSteps(int32_t targetSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveRelativeSteps(int32_t deltaSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -135,7 +123,7 @@ public:
     int32_t getEncoderSteps();
     // EncoderState getEncoderState() const;
 
-    void attachOnComplete(void (*callback)());
+    void attachOnComplete(void (*cb)());
     void handleMovementComplete();
     void setMovementCompleteFlag(bool flag);
 
