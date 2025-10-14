@@ -15,7 +15,11 @@
 #include "UnitConverter_lean.h"
 
 // Motor configuration constants
-static constexpr int32_t POSITION_ACCURACY_STEPS = 3;  // Target accuracy in steps (0.05° ≈ 3 steps)
+static constexpr int32_t  POSITION_ACCURACY_STEPS       = 3;  // Target accuracy in steps (0.05° ≈ 3 steps)
+static constexpr int32_t  VALID_MOVEMENT_DISTANCE_STEPS = 6;
+static constexpr uint8_t  POSITION_CONTROL_COUNT        = 4;
+static constexpr uint32_t REOLUTION_BITS                = 12U;
+static constexpr uint32_t RESOLUTION_STEPS              = (1UL << REOLUTION_BITS);  // 4096
 
 // Movement types
 enum class MovementType

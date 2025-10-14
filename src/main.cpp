@@ -35,8 +35,6 @@ Command cmdShow;
 Command cmdHelp;
 Command cmdTest;
 
-static cmd* currentCmd = nullptr;
-
 using namespace pins_helpers;
 
 //---------- Used in onHomingComplete ----
@@ -101,8 +99,9 @@ PositionController* gPC[kMotorCount] = {nullptr, nullptr, nullptr, nullptr};
 VoltageMonitor gVmon(VoltageMonitorPins::POWER_3_3, MonitorMode::DIGITAL_, /*thr*/ 1, /*debounceMs*/ 5);
 
 // Runtime state
-volatile bool gVoltageDrop  = false;
-uint8_t       gCurrentMotor = 0;
+volatile bool   gVoltageDrop     = false;
+uint8_t         gCurrentMotor    = 0;
+volatile double gCurrentPosition = 0.0f;
 
 // Lead pitch (µm per revolution) — configurable at runtime
 double gLeadPitchUm = kDefaultLeadPitchUm;
@@ -318,8 +317,11 @@ void loop()
     // Handle encoder absence-of-interrupt hooks (light)
     for (uint8_t i = 0; i < kMotorCount; ++i)
     {
-        gEnc[i].handleInAbsenceOfInterrupt();
-        gPC[i]->handleMovementComplete();
+        if (gPC[i]->isEnabled())
+        {
+            gEnc[i].handleInAbsenceOfInterrupt();
+            gPC[i]->handleMovementComplete();
+        }
     }
 
     // Voltage monitor debounce & edge handling
@@ -617,7 +619,6 @@ static void handleMove_2(cmd* c)
 
 static void handleMove(cmd* c)
 {
-    currentCmd = c;
     Command  cmd(c);
     Argument aN = cmd.getArg("n");
     Argument aP = cmd.getArg("p");
@@ -635,7 +636,16 @@ static void handleMove(cmd* c)
 
         n             = static_cast<uint8_t>(nv - 1);
         gCurrentMotor = static_cast<uint8_t>(n);
+        gCurrentMotor = gCurrentMotor;
     }
+
+    // ---- Parse target argument ----
+    if (!aP.isSet())
+    {
+        Serial.println("[ERR] missing argument p=<position> (µm for linear, deg for rotary)");
+        return;
+    }
+    gCurrentPosition = aP.getValue().toDouble();
 
     if (!gPC[n])
     {
@@ -1098,6 +1108,35 @@ static void serviceCLI()
         // J
         if (upper == kHotkeys[(int)CommandKey::J][0])
         {
+            const uint8_t n = gCurrentMotor;
+            if ((n + 1) < 1 || (n + 1) > kMotorCount)
+            {
+                Serial.printf("[ERR] M%d id out of range (1..4) ❌\r\n", n + 1);
+                return;
+            }
+            // ---- Load stable; for rotary clamp to [0.05°, 359.95°] ----
+            double  deg             = 0.0f;  // amir
+            int32_t stableWithClamp = 0;
+            int32_t stable          = loadStableSteps(n);
+            if (isRotary(n))
+            {
+                double deg = UnitConverter::convertFromSteps(stable).TO_DEGREES;
+                if (deg < 0.01)
+                    deg = 0.01;
+                if (deg > 359.955)
+                    deg = 359.955;
+                stableWithClamp = UnitConverter::convertFromDegrees(deg).TO_STEPS;
+                // print
+                Serial.printf("[INFO] Stable:\r\n");
+                Serial.printf("--- before %ld steps\r\n", static_cast<long>(stable));
+                Serial.printf("--- after clamp %ld steps or %.2f°\r\n", static_cast<long>(stableWithClamp), deg);
+                stable = stableWithClamp;
+            }
+            else
+            {
+                Serial.printf("[INFO] Stable: %ld steps (%.2f°)\r\n", static_cast<long>(stable), deg);
+            }
+
             continue;
         }
 
@@ -1323,36 +1362,8 @@ static void onRapidArrived()
 
 static void goToTargetSteps()
 {
-    Serial.printf("\r\nStart\r\n");
-    Command  cmd(currentCmd);
-    Argument aN = cmd.getArg("n");
-    Argument aP = cmd.getArg("p");
-
-    // ---- Resolve motor index (default: current selection) ----
-    uint8_t n = gCurrentMotor;
-    if (aN.isSet())
-    {
-        const int nv = aN.getValue().toInt();
-        if (nv < 1 || nv > kMotorCount)
-        {
-            Serial.printf("[ERR] M%d id out of range (1..4) ❌\r\n", nv);
-            return;
-        }
-
-        n = static_cast<uint8_t>(nv - 1);
-    }
-
-    Serial.printf("\r\nStart 2\r\n");
-
-    // ---- Parse target argument ----
-    if (!aP.isSet())
-    {
-        Serial.println("[ERR] missing argument p=<position> (µm for linear, deg for rotary)");
-        return;
-    }
-    const double p = aP.getValue().toDouble();
-
-    Serial.printf("\r\nStart 3\r\n");
+    const uint8_t n = gCurrentMotor;
+    const double  p = gCurrentPosition;
 
     // ---- Compute target steps based on motor type ----
     int32_t targetSteps = 0;
@@ -1406,7 +1417,6 @@ static void goToTargetSteps()
             return;  // Touch will be scheduled in onRapidArrived()
         }
 
-        Serial.printf("\r\nStart 4\r\n");
         // Small distance: single-phase Touch only
         setCustomProfile(*gPC[n], kTouchMaxSpeed, kTouchAccel);
     }
@@ -1433,7 +1443,5 @@ static void goToTargetSteps()
     {
         Serial.println("[ERR] move command rejected");
     }
-
-    Serial.printf("\r\nEnd\r\n");
 }
 #pragma endregion

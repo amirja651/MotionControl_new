@@ -21,10 +21,10 @@ static inline uint32_t now_ms() noexcept
 }
 
 // Static member initialization
-TaskHandle_t        PositionController::_positionControlTaskHandle = nullptr;
-QueueHandle_t       PositionController::_movementCommandQueue      = nullptr;
-SemaphoreHandle_t   PositionController::_statusMutex               = nullptr;
-PositionController* PositionController::_instances[4]              = {nullptr};
+TaskHandle_t        PositionController::_positionControlTaskHandle         = nullptr;
+QueueHandle_t       PositionController::_movementCommandQueue              = nullptr;
+SemaphoreHandle_t   PositionController::_statusMutex                       = nullptr;
+PositionController* PositionController::_instances[POSITION_CONTROL_COUNT] = {nullptr};
 
 // -----------------------------
 // Constructors / Destructor
@@ -217,7 +217,7 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
 
     if (!isValidMovementDistanceSteps(dist))
     {  // amir e
-        Serial.printf("Motor[%d]: distance %d < 6 steps → ignore\r\n", _motorId + 1, dist);
+        Serial.printf("Motor[%d]: distance %d < %d steps → ignore\r\n", _motorId + 1, dist, VALID_MOVEMENT_DISTANCE_STEPS);
         return false;
     }
 
@@ -241,7 +241,8 @@ bool PositionController::moveRelativeSteps(int32_t deltaSteps, MovementType move
     const int32_t dist = std::abs(deltaSteps);
     if (!isValidMovementDistanceSteps(dist))
     {
-        Serial.printf("Motor[%d]: distance %d < 6 steps → ignore\r\n", _motorId + 1, dist);
+        Serial.printf("Motor[%d]: distance %d < %d steps → ignore\r\n", _motorId + 1, dist, VALID_MOVEMENT_DISTANCE_STEPS);
+
         return false;
     }
 
@@ -367,7 +368,7 @@ void PositionController::startPositionControlTask()
         }
     }
 
-    const BaseType_t res = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
+    const BaseType_t res = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", RESOLUTION_STEPS, nullptr, 3, &_positionControlTaskHandle, 1);
     if (res == pdPASS)
     {
         // Serial.printf("Position control task started\r\n");
@@ -416,7 +417,7 @@ void PositionController::updateStatus()
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(5)) == pdTRUE)
     {
         _status.currentSteps = static_cast<int32_t>(_stepper.currentPosition());
-        _status.isMoving     = (const_cast<AccelStepper&>(_stepper).distanceToGo() != 0);
+        //_status.isMoving     = (const_cast<AccelStepper&>(_stepper).distanceToGo() != 0);
         xSemaphoreGive(_statusMutex);
     }
 }
@@ -493,13 +494,13 @@ void PositionController::positionControlTask(void* /*parameter*/)
     {
         if (_movementCommandQueue && xQueueReceive(_movementCommandQueue, &cmd, 0) == pdTRUE)
         {
-            if (cmd.motorId < 4 && _instances[cmd.motorId])
+            if (cmd.motorId < POSITION_CONTROL_COUNT && _instances[cmd.motorId])
             {
                 _instances[cmd.motorId]->executeMovement(cmd);
             }
         }
 
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < POSITION_CONTROL_COUNT; ++i)
         {
             if (_instances[i])
             {
@@ -588,14 +589,14 @@ void initializePositionControllers()
 
 void startPositionControlSystem()
 {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < POSITION_CONTROL_COUNT; ++i)
         if (PositionController::_instances[i])
             PositionController::_instances[i]->enable();
 }
 
 void stopPositionControlSystem()
 {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < POSITION_CONTROL_COUNT; ++i)
         if (PositionController::_instances[i])
         {
             PositionController::_instances[i]->stop();
@@ -655,7 +656,7 @@ DistanceType PositionController::calculateDistanceTypeSteps(int32_t d)
 
 bool PositionController::isValidMovementDistanceSteps(int32_t d)
 {
-    return d >= 6;
+    return d >= VALID_MOVEMENT_DISTANCE_STEPS;
 }
 
 void PositionController::setDistanceBasedSpeedProfile(DistanceType t)
