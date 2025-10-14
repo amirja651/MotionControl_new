@@ -201,14 +201,14 @@ void setup()
     }
 
     // SPI drivers
+    log_d("TMC5160 init:");
     for (uint8_t i = 0; i < kMotorCount; ++i)
     {
-        gDriver[i].begin();
-        // Initialize TMC5160 drivers
-        log_d("TMC5160 init:");
+        // gDriver[i].begin();
+        //  Initialize TMC5160 drivers
         if (!gDriver[i].begin())
         {
-            log_e("--- Driver[%d] init ❌ failed", i);
+            printf("--- SPI/driver[%d] init ❌ failed\r\n", i + 1);
         }
         else
         {
@@ -221,11 +221,11 @@ void setup()
             // Optional: quick sanity check
             if (!gDriver[i].testConnection(true))
             {
-                log_e("--- SPI/driver[%d] ⚠️ not responding", i);
+                printf("--- SPI/driver[%d] ⚠️ not responding\r\n", i + 1);
             }
             else
             {
-                log_d("--- SPI/driver[%d] is 👍 OK", i);
+                printf("--- SPI/driver[%d] is 👍 OK\r\n", i + 1);
             }
 
             // Set a reasonable value for the rotary (start experimentally; the smaller → the faster the SpreadCycle):
@@ -248,12 +248,20 @@ void setup()
     }
 
     // Position controllers
+    log_d("Position Controller init:");
     for (uint8_t i = 0; i < kMotorCount; ++i)
     {
         applyUnitDefaults(i);
         // With/without encoder pointer: we pass encoder for all; hybrid optional
         gPC[i] = new PositionController(i, gDriver[i], gDirMux, DriverPins::STEP[i], DriverPins::EN[i], gEnc[i]);
-        gPC[i]->begin();
+        if (!gPC[i]->begin())
+        {
+            printf("--- Motor[%d] init ❌ failed\r\n", i + 1);
+        }
+        else
+        {
+            printf("--- Motor[%d] initialized\r\n", i + 1);
+        }
     }
 
     // RT task for all controllers
@@ -274,9 +282,10 @@ void setup()
     {
         gVmon.setHysteresis(50);  // Optional: ±50 window
         gVmon.onDrop(onVoltageDropISR);
-        log_d("Voltage monitor initialized!");
+        // log_d("Voltage monitor initialized!");
     }
 
+#if false
     // Load stable positions; ensure each motor is at its stable before new moves
     for (uint8_t i = 0; i < kMotorCount; ++i)
     {
@@ -288,6 +297,7 @@ void setup()
             gPC[i]->moveToSteps(stable, MovementType::SHORT_RANGE, ControlMode::OPEN_LOOP);
         }
     }
+#endif
 
     // CLI
     attachCli();

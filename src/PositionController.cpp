@@ -153,12 +153,12 @@ bool PositionController::begin()
 
     if (!_dirMultiplexer.begin())
     {
-        log_e("Failed to init DirMux for motor %d", _motorId + 1);
+        printf("--- Failed to init DirMux for motor[%d]\r\n", _motorId + 1);
         return false;
     }
     if (!_dirMultiplexer.selectMotor(_motorId))
     {
-        log_e("Failed to select motor %d in DirMux", _motorId + 1);
+        printf("--- Failed to select motor[%d] in DirMux\r\n", _motorId + 1);
         return false;
     }
 
@@ -169,7 +169,6 @@ bool PositionController::begin()
     setCurrentPosition(0);
 
     _initialized = true;
-    log_d("Motor %d initialized", _motorId + 1);
     return true;
 }
 
@@ -371,7 +370,7 @@ void PositionController::startPositionControlTask()
     const BaseType_t res = xTaskCreatePinnedToCore(positionControlTask, "PositionControl", 4096, nullptr, 3, &_positionControlTaskHandle, 1);
     if (res == pdPASS)
     {
-        log_d("Position control task started");
+        // log_d("Position control task started");
         esp_task_wdt_add(_positionControlTaskHandle);
     }
     else
@@ -488,7 +487,7 @@ void PositionController::positionControlTask(void* /*parameter*/)
     TickType_t       lastWake = xTaskGetTickCount();
     const TickType_t period   = pdMS_TO_TICKS(1);  // was 10 -> now 1 ms
 
-    log_d("Position control task running");
+    // log_d("Position control task running");
 
     for (;;)
     {
