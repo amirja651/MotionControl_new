@@ -36,6 +36,7 @@ Command cmdHelp;
 Command cmdTest;
 
 using namespace pins_helpers;
+
 //---------- Used in onHomingComplete ----
 // Define globals for chaining
 static bool    gPendingTargetAfterHoming = false;
@@ -105,6 +106,9 @@ double gLeadPitchUm = kDefaultLeadPitchUm;
 
 static const char* kKeyPitchUm = "sys.pitch_um";
 
+#pragma endregion
+
+#pragma region "Forward declarations"
 // ---------- Forward declarations (place before setup()) ----------
 static String             keyStable(uint8_t i);
 static String             keyMode(uint8_t i);
@@ -322,26 +326,6 @@ void loop()
     delay(1);
 }
 
-// Keys: "m<idx>.stable_steps", "m<idx>.mode", "sys.pitch_um"
-static String keyStable(uint8_t i)
-{
-    return String("m") + String(i) + ".stable_steps";
-}
-static String keyMode(uint8_t i)
-{
-    return String("m") + String(i) + ".mode";
-}
-
-// Control modes persisted as int (OPEN_LOOP=0, HYBRID=1) for future-proofing
-static inline int toInt(ControlMode m)
-{
-    return (m == ControlMode::HYBRID) ? 1 : 0;
-}
-static inline ControlMode toMode(int v)
-{
-    return v == 1 ? ControlMode::HYBRID : ControlMode::OPEN_LOOP;
-}
-
 // Read encoder once and set current step reference for the controller
 static void seedCurrentFromEncoder_2(uint8_t idx)
 {
@@ -437,7 +421,7 @@ static void configureByDistance(PositionController& pc, int32_t current, int32_t
     pc.configureSpeedForDistanceSteps(d);
 }
 
-#pragma region "CLI"
+#pragma region "CLI handlers"
 // ---------- CLI handlers ----------
 static void handleMotor(cmd* c)
 {
@@ -986,6 +970,9 @@ static void handleConfPitch(cmd* c)
     }
 }
 
+#pragma endregion
+
+#pragma region "CLI"
 // ---------- Setup & Loop ----------
 static void attachCli()
 {
@@ -1282,8 +1269,28 @@ static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, doubl
     return gEnc[idx].tryGetPosition(pulses, ton_us, toff_us);
 }
 
-#pragma region "Small helper functions for the command line"
+#pragma region "Helpers"
 // ---------- Helpers ----------
+// Keys: "m<idx>.stable_steps", "m<idx>.mode", "sys.pitch_um"
+static String keyStable(uint8_t i)
+{
+    return String("m") + String(i) + ".stable_steps";
+}
+static String keyMode(uint8_t i)
+{
+    return String("m") + String(i) + ".mode";
+}
+
+// Control modes persisted as int (OPEN_LOOP=0, HYBRID=1) for future-proofing
+static inline int toInt(ControlMode m)
+{
+    return (m == ControlMode::HYBRID) ? 1 : 0;
+}
+static inline ControlMode toMode(int v)
+{
+    return v == 1 ? ControlMode::HYBRID : ControlMode::OPEN_LOOP;
+}
+
 static inline bool isLinear(uint8_t idx)
 {
     return idx == kLinearMotorIndex;
