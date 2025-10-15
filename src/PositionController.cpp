@@ -40,7 +40,6 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
       _status{},
       _enabled(false),
       _initialized(false),
-      _controlMode(ControlMode::OPEN_LOOP),
       _movementCompleteFlag(false),
       _onComplete(nullptr)
 {
@@ -52,7 +51,6 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.lastMovementType   = MovementType::MEDIUM_RANGE;
     _status.movementStartTime  = 0;
     _status.totalMovementTime  = 0;
-    _status.controlMode        = ControlMode::OPEN_LOOP;
     _status.positionErrorSteps = 0;
     _status.encoderSteps       = 0;
 
@@ -93,7 +91,6 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
       _status{},
       _enabled(false),
       _initialized(false),
-      _controlMode(ControlMode::OPEN_LOOP),
       _movementCompleteFlag(false),
       _onComplete(nullptr)
 {
@@ -206,7 +203,7 @@ bool PositionController::isEnabled() const
 // -----------------------------
 // Positioning API
 // -----------------------------
-bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementType, ControlMode controlMode)
+bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementType)
 {
     if (!_enabled || !_initialized)
         return false;
@@ -228,12 +225,11 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
     cmd.distanceType          = calculateDistanceTypeSteps(dist);
     cmd.relative              = false;
     cmd.priority              = 1;
-    cmd.controlMode           = controlMode;
     cmd.movementDistanceSteps = dist;
     return queueMovementCommand(cmd);
 }
 
-bool PositionController::moveRelativeSteps(int32_t deltaSteps, MovementType movementType, ControlMode controlMode)
+bool PositionController::moveRelativeSteps(int32_t deltaSteps, MovementType movementType)
 {
     if (!_enabled || !_initialized)
         return false;
@@ -253,7 +249,6 @@ bool PositionController::moveRelativeSteps(int32_t deltaSteps, MovementType move
     cmd.distanceType          = calculateDistanceTypeSteps(dist);
     cmd.relative              = true;
     cmd.priority              = 1;
-    cmd.controlMode           = controlMode;
     cmd.movementDistanceSteps = dist;
     return queueMovementCommand(cmd);
 }
@@ -410,7 +405,7 @@ bool PositionController::queueMovementCommand(const MovementCommand& c)
 // -----------------------------
 // Internals
 // -----------------------------
-void PositionController::updateStatus()  // amir
+void PositionController::updateStatus()  // amir2
 {
     if (!_initialized)
         return;
@@ -452,7 +447,6 @@ bool PositionController::executeMovement(const MovementCommand& cmd)
     if (!_enabled || !_initialized)
         return false;
 
-    setControlMode(cmd.controlMode);
     const int32_t target = cmd.targetSteps;
 
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(50)) == pdTRUE)
@@ -461,7 +455,6 @@ bool PositionController::executeMovement(const MovementCommand& cmd)
         _status.isMoving          = true;
         _status.movementStartTime = now_ms();
         _status.lastMovementType  = cmd.movementType;
-        _status.controlMode       = cmd.controlMode;
         xSemaphoreGive(_statusMutex);
     }
 
@@ -527,14 +520,16 @@ void PositionController::runPositionControl()
 
     stepper.run();
 
-    if (_status.isMoving && isHybridModeEnabled())
+    // Update status every tick (cheap) to avoid shared static timer between instances
+    // Update status periodically
+    static int32_t lastStatusUpdate = 0;
+    if (millis() - lastStatusUpdate > 100)  // Update every 100ms
     {
-        applyHybridModeCorrection();
+        updateStatus();  // amir2
+        lastStatusUpdate = millis();
     }
 
-    // Update status every tick (cheap) to avoid shared static timer between instances
-    updateStatus();  // amir
-
+    // Check if movement is complete
     if (_status.isMoving && const_cast<AccelStepper&>(stepper).distanceToGo() == 0)
     {
         if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(5)) == pdTRUE)
@@ -544,19 +539,8 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
         _movementCompleteFlag = true;
-        Serial.printf("Motor[%d] reached target\r\n", _motorId + 1);
+        Serial.printf("Motor[%d] reached target 🎯\r\n", _motorId + 1);
     }
-}
-
-ControlMode PositionController::getControlMode() const
-{
-    return _controlMode;
-}
-
-bool PositionController::isHybridModeEnabled() const
-{
-    // Keep original semantics; avoid repeated heavy work here if possible
-    return _controlMode == ControlMode::HYBRID && _encoderMae3 != nullptr && (_encoderMae3->enable() == mae3::Status::Ok);
 }
 
 int32_t PositionController::getEncoderSteps()
@@ -587,39 +571,6 @@ void stopPositionControlSystem()
             PositionController::_instances[i]->disable();
         }
     PositionController::stopPositionControlTask();
-}
-
-void PositionController::applyHybridModeCorrection()
-{
-    if (!isHybridModeEnabled() || !_status.isMoving)
-        return;
-    // Kept behavior: sample once at start in setControlMode(); no continuous correction here.
-}
-
-void PositionController::setControlMode(ControlMode mode)
-{
-    _controlMode = mode;
-    switch (mode)
-    {
-        case ControlMode::OPEN_LOOP:
-            _status.controlMode = ControlMode::OPEN_LOOP;
-            break;
-        case ControlMode::HYBRID:
-            if (_encoderMae3 != nullptr && (_encoderMae3->enable() == mae3::Status::Ok))
-            {
-                _status.controlMode    = ControlMode::HYBRID;
-                const int32_t encSteps = getEncoderSteps();
-                _status.encoderSteps   = encSteps;
-                Serial.printf("Motor %d: HYBRID start at encoder=%d steps\r\n", _motorId + 1, encSteps);
-            }
-            else
-            {
-                Serial.printf("Motor[%d]: HYBRID unavailable → OPEN_LOOP\r\n", _motorId + 1);
-                _controlMode        = ControlMode::OPEN_LOOP;
-                _status.controlMode = ControlMode::OPEN_LOOP;
-            }
-            break;
-    }
 }
 
 // Distance helpers (unchanged semantics)

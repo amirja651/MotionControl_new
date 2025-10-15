@@ -40,13 +40,6 @@ enum class DistanceType
     VERY_LONG    // > 640 steps
 };
 
-// Control modes
-enum class ControlMode : uint8_t
-{
-    OPEN_LOOP,  // Open-loop control only
-    HYBRID      // Read encoder once at start, then open-loop
-};
-
 // Movement command structure
 struct MovementCommand
 {
@@ -56,7 +49,6 @@ struct MovementCommand
     DistanceType distanceType;           // Distance-based type
     bool         relative;               // True for relative movement, false for absolute
     uint32_t     priority;               // Command priority (higher = more important)
-    ControlMode  controlMode;            // Control mode (open-loop, hybrid)
     int32_t      movementDistanceSteps;  // Calculated movement distance in steps
 };
 
@@ -71,7 +63,6 @@ struct MotorStatus
     MovementType lastMovementType;
     uint32_t     movementStartTime;   // Time when movement started
     uint32_t     totalMovementTime;   // Total time for movement
-    ControlMode  controlMode;         // Current control mode
     int32_t      positionErrorSteps;  // Position error in steps
     int32_t      encoderSteps;        // Encoder reading in steps
 };
@@ -94,8 +85,8 @@ public:
     bool isEnabled() const;
 
     // Position control methods
-    bool moveToSteps(int32_t targetSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
-    bool moveRelativeSteps(int32_t deltaSteps, MovementType movementType = MovementType::MEDIUM_RANGE, ControlMode controlMode = ControlMode::OPEN_LOOP);
+    bool moveToSteps(int32_t targetSteps, MovementType movementType = MovementType::MEDIUM_RANGE);
+    bool moveRelativeSteps(int32_t deltaSteps, MovementType movementType = MovementType::MEDIUM_RANGE);
     void stop();
     bool isMoving() const;
     bool isAtTarget() const;
@@ -147,7 +138,6 @@ private:
     MotorStatus _status;
     bool        _enabled;
     bool        _initialized;
-    ControlMode _controlMode;
 
     // Speed profiles for different movement types
     struct SpeedProfile
@@ -172,10 +162,7 @@ private:
     static SemaphoreHandle_t _statusMutex;
 
 public:
-    static PositionController* _instances[4];  // Made public for global access
-
-    // Control mode methods
-    void setControlMode(ControlMode mode);
+    static PositionController* _instances[POSITION_CONTROL_COUNT];  // Made public for global access
 
 private:
     // Private methods
@@ -184,12 +171,6 @@ private:
     void  setSpeedForMovement(MovementType type);
     bool  executeMovement(const MovementCommand& command);
     float calculateOptimalSpeedSteps(int32_t distanceSteps, MovementType type);
-
-    // Control mode methods
-    ControlMode getControlMode() const;
-    bool        isHybridModeEnabled() const;
-
-    void applyHybridModeCorrection();
 
     // RTOS task function
     static void positionControlTask(void* parameter);

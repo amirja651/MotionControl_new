@@ -436,7 +436,7 @@ static void handleMove_2(cmd* c)
 
             // Rapid profile
             setCustomProfile(*gPC[n], kFastMaxSpeed, kFastAccel);
-            gPC[n]->moveToSteps(preSteps, MovementType::LONG_RANGE, ControlMode::OPEN_LOOP);
+            gPC[n]->moveToSteps(preSteps, MovementType::LONG_RANGE);
 
             // Chain Phase 2 (Touch) after homing-to-pre target:
             // Use a static callback (no lambdas) because attachOnComplete takes void(*)()
@@ -469,14 +469,14 @@ static void handleMove_2(cmd* c)
     // Linear: normal distance-based config
     configureByDistance(*gPC[n], nowSteps, targetSteps);
     saveStableSteps(n, nowSteps);
-    gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+    gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE);
 
     if (curSteps != stable)
     {
         configureByDistance(*gPC[n], curSteps, stable);
 
         // 1. Move to stable
-        gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+        gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE);
 
         // 2. When the motor reaches 'stable', automatically move to the requested target
         // Prepare next target for after homing
@@ -504,7 +504,7 @@ static void handleMove_2(cmd* c)
     saveStableSteps(n, nowSteps2);
 
     // Open-loop move (per your logic). Hybrid path is available via CLI control command.
-    if (gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
+    if (gPC[n]->moveToSteps(targetSteps, MovementType::MEDIUM_RANGE))
     {
         Serial.printf("\r\n[MOVE] n=%d -> targetSteps=%ld (cur=%ld)\r\n", n + 1, static_cast<long>(targetSteps), static_cast<long>(nowSteps2));
     }

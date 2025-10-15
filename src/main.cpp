@@ -23,7 +23,6 @@ SimpleCLI cli;
 
 Command cmdMotor;
 Command cmdMove;
-Command cmdControlMode;
 Command cmdStop;
 Command cmdEnable;
 Command cmdDisable;
@@ -108,10 +107,8 @@ static const char* kKeyPitchUm = "sys.pitch_um";
 
 #pragma region "Forward declarations"
 // ---------- Forward declarations (place before setup()) ----------
-static String             keyStable(uint8_t i);
-static String             keyMode(uint8_t i);
-static inline int         toInt(ControlMode m);
-static inline ControlMode toMode(int v);
+static String keyStable(uint8_t i);
+static String keyMode(uint8_t i);
 
 static inline bool isLinear(uint8_t idx);
 static inline bool isRotary(uint8_t idx);
@@ -128,7 +125,6 @@ static void configureSpeedByDistanceSteps(PositionController& pc, int32_t curren
 // CLI handlers
 static void handleMotor(cmd* c);
 static void handleMove(cmd* c);
-static void handleControl(cmd* c);
 static void handleStop(cmd* c);
 static void handleEnable(cmd* c);
 static void handleDisable(cmd* c);
@@ -289,20 +285,6 @@ void setup()
         // Serial.printf("Voltage monitor initialized!\r\n");
     }
 
-#if false
-    // Load stable positions; ensure each motor is at its stable before new moves
-    for (uint8_t i = 0; i < kMotorCount; ++i)
-    {
-        const int32_t stable = loadStableSteps(i);
-        gPC[i]->setCurrentPosition(stable);  // seed
-        if (stable != 0)
-        {
-            // Optionally, cue a move to stable immediately
-            gPC[i]->moveToSteps(stable, MovementType::SHORT_RANGE, ControlMode::OPEN_LOOP);
-        }
-    }
-#endif
-
     // CLI
     attachCli();
 
@@ -417,28 +399,6 @@ static bool validatePParameter(const Argument& aP)
         Serial.printf("[ERR] missing argument p=<position> (µm for linear, deg for rotary) ❌\r\n");
         return false;
     }
-}
-
-static void handleControl(cmd* c)
-{
-    Command cmd(c);  // Create wrapper object
-
-    int n = gCurrentMotor;
-    if (cmd.getArg("n").isSet())
-    {
-        const int nv = cmd.getArg("n").getValue().toInt();
-        if (nv >= 1 && nv <= kMotorCount)
-            n = nv - 1;
-    }
-    if (!gPC[n])
-        return;
-
-    ControlMode m = ControlMode::OPEN_LOOP;
-    if (cmd.getArg("h").isSet())
-        m = ControlMode::HYBRID;
-    gPC[n]->setControlMode(m);
-    gPrefs.putInt(keyMode(n).c_str(), toInt(m));
-    Serial.printf("[CTRL] motor %d mode=%s\r\n", n + 1, (m == ControlMode::HYBRID ? "HYBRID" : "OPEN_LOOP"));
 }
 
 static void handleStop(cmd* c)
@@ -559,7 +519,7 @@ static void handleLast(cmd* c)
     const int32_t stable = loadStableSteps(n);
     const int32_t cur    = gPC[n]->getCurrentSteps();
     configureSpeedByDistanceSteps(*gPC[n], cur, stable);
-    gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+    gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE);
     Serial.printf("[LAST] M%d -> stable %ld\r\n", n + 1, static_cast<long>(stable));
 }
 
@@ -643,7 +603,7 @@ static void handleMove(cmd* c)
 
         gPC[n]->attachOnComplete(onPendingTargetSteps);
 
-        if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))  // amir
+        if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE))  // amir
         {
             Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(seedSteps));
         }
@@ -669,7 +629,6 @@ static void attachCli()
 
     cmdMotor.setCallback(handleMotor);
     cmdMove.setCallback(handleMove);
-    cmdControlMode.setCallback(handleControl);
     cmdStop.setCallback(handleStop);
     cmdEnable.setCallback(handleEnable);
     cmdDisable.setCallback(handleDisable);
@@ -769,7 +728,7 @@ static void serviceCLI()
                 const int32_t stable = loadStableSteps(n);
                 const int32_t cur    = gPC[n]->getCurrentSteps();
                 configureSpeedByDistanceSteps(*gPC[n], cur, stable);
-                gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP);
+                gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE);
                 Serial.printf("\r\n[LAST] M%d -> stable %ld\r\n", n + 1, (long)stable);
                 printPrompt();
             }
@@ -891,12 +850,6 @@ static void initializeCLI()
     cmdMove.addArg("p", "0.0");  // positional argument (um or deg)
     cmdMove.setDescription("Move the current motor to the target position");
 
-    cmdControlMode = cli.addCmd("control", handleControl);
-    cmdControlMode.addArg("n", "1");  // motor number argument
-    cmdControlMode.addFlagArg("o");   // open loop
-    cmdControlMode.addFlagArg("h");   // hybrid
-    cmdControlMode.setDescription("Set control mode for current motor (open-loop or hybrid)");
-
     cmdStop = cli.addCmd("stop", handleStop);
     cmdStop.addArg("n", "1");  // motor number argument
     cmdStop.setDescription("Stop the current motor.");
@@ -984,16 +937,6 @@ void enableSelectedEncoder(uint8_t idx)
 
 #pragma region "Helpers"
 // ---------- Helpers ----------
-// Control modes persisted as int (OPEN_LOOP=0, HYBRID=1) for future-proofing
-static inline int toInt(ControlMode m)
-{
-    return (m == ControlMode::HYBRID) ? 1 : 0;
-}
-static inline ControlMode toMode(int v)
-{
-    return v == 1 ? ControlMode::HYBRID : ControlMode::OPEN_LOOP;
-}
-
 static inline bool isLinear(uint8_t idx)
 {
     return idx == kLinearMotorIndex;
@@ -1090,7 +1033,7 @@ static void onPendingTargetSteps()
         gTouchFinalSteps = pendingTargetSteps;
 
         // Queue Rapid move and chain Touch via onRapidArrived()
-        if (gPC[idx]->moveToSteps(preSteps, MovementType::LONG_RANGE, ControlMode::OPEN_LOOP))
+        if (gPC[idx]->moveToSteps(preSteps, MovementType::LONG_RANGE))
         {
             Serial.printf("[MOVE] Rapid to pre-target (deg window=%.2f)\r\n", kTouchWindowDeg);
         }
@@ -1115,7 +1058,7 @@ static void onPendingTargetSteps()
     gPC[idx]->attachOnComplete(onMovementComplete);
 
     // Queue final move
-    if (gPC[idx]->moveToSteps(pendingTargetSteps, MovementType::MEDIUM_RANGE, ControlMode::OPEN_LOOP))
+    if (gPC[idx]->moveToSteps(pendingTargetSteps, MovementType::MEDIUM_RANGE))
     {
         if (isLinear(idx))
         {
@@ -1146,7 +1089,7 @@ static void onRapidArrived()
     // After Touch completes, restore your normal completion callback so stable is persisted
     gPC[idx]->attachOnComplete(onMovementComplete);
 
-    gPC[idx]->moveToSteps(tgt, MovementType::SHORT_RANGE, ControlMode::OPEN_LOOP);
+    gPC[idx]->moveToSteps(tgt, MovementType::SHORT_RANGE);
 
     Serial.printf("[CHAIN] Rapid arrived -> Touch scheduled (M%d)\r\n", idx + 1);
 }
