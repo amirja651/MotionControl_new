@@ -23,7 +23,7 @@ ConvertValues UnitConverter::convertFromDegrees(std::double_t degrees) noexcept
     // Turns + residual degrees (branch‑light)
     const std::double_t t = degrees / k360;
     out.TO_TURNS          = fast_floor_to_i32(t);
-    out.TO_DEGREES        = degrees - static_cast<std::double_t>(out.TO_TURNS) * k360;
+    // out.TO_DEGREES        = degrees - static_cast<std::double_t>(out.TO_TURNS) * k360;
     if (isRotational())
         out.TO_TURNS = 0;
 
@@ -32,9 +32,9 @@ ConvertValues UnitConverter::convertFromDegrees(std::double_t degrees) noexcept
     const std::double_t deg_to_puls = _defaultResolution_f / k360;
     const std::double_t deg_to_step = static_cast<std::double_t>(_defaultMicrosteps) / k360;
 
-    out.TO_MICROMETERS = out.TO_DEGREES * deg_to_um;
-    out.TO_PULSES      = out.TO_DEGREES * deg_to_puls;
-    out.TO_STEPS       = static_cast<std::int32_t>(std::lround(out.TO_DEGREES * deg_to_step));
+    out.TO_MICROMETERS = degrees * deg_to_um;
+    out.TO_PULSES      = degrees * deg_to_puls;
+    out.TO_STEPS       = static_cast<std::int32_t>(std::lround(degrees * deg_to_step));
     return out;
 }
 
@@ -44,7 +44,7 @@ ConvertValues UnitConverter::convertFromPulses(std::double_t pulses_f) noexcept
 
     const std::double_t turns_d = pulses_f / _defaultResolution_f;
     out.TO_TURNS                = fast_floor_to_i32(turns_d);
-    out.TO_PULSES               = pulses_f - static_cast<std::double_t>(out.TO_TURNS) * _defaultResolution_f;
+    // out.TO_PULSES               = pulses_f - static_cast<std::double_t>(out.TO_TURNS) * _defaultResolution_f;
     if (isRotational())
         out.TO_TURNS = 0;
 
@@ -52,9 +52,9 @@ ConvertValues UnitConverter::convertFromPulses(std::double_t pulses_f) noexcept
     const std::double_t p_to_deg  = k360 / _defaultResolution_f;
     const std::double_t p_to_step = static_cast<std::double_t>(_defaultMicrosteps) / _defaultResolution_f;
 
-    out.TO_MICROMETERS = out.TO_PULSES * p_to_um;
-    out.TO_DEGREES     = out.TO_PULSES * p_to_deg;
-    out.TO_STEPS       = static_cast<std::int32_t>(std::lround(out.TO_PULSES * p_to_step));
+    out.TO_MICROMETERS = pulses_f * p_to_um;
+    out.TO_DEGREES     = pulses_f * p_to_deg;
+    out.TO_STEPS       = static_cast<std::int32_t>(std::lround(pulses_f * p_to_step));
     return out;
 }
 
@@ -64,11 +64,11 @@ ConvertValues UnitConverter::convertFromSteps(std::int32_t steps) noexcept
 
     const std::int32_t ms = _defaultMicrosteps;
     out.TO_TURNS          = steps / ms;  // integer division
-    out.TO_STEPS          = steps % ms;  // remainder within one rev
+    // out.TO_STEPS          = steps % ms;  // remainder within one rev
     if (isRotational())
         out.TO_TURNS = 0;
 
-    const std::double_t steps_d     = static_cast<std::double_t>(out.TO_STEPS);
+    const std::double_t steps_d     = static_cast<std::double_t>(steps);
     const std::double_t step_to_um  = _defaultMicrometers / static_cast<std::double_t>(ms);
     const std::double_t step_to_pul = _defaultResolution_f / static_cast<std::double_t>(ms);
     const std::double_t step_to_deg = k360 / static_cast<std::double_t>(ms);
@@ -85,7 +85,7 @@ ConvertValues UnitConverter::convertFromMicrometers(std::double_t micrometers) n
 
     const std::double_t turns_d = micrometers / _defaultMicrometers;
     out.TO_TURNS                = fast_floor_to_i32(turns_d);
-    out.TO_MICROMETERS          = micrometers - static_cast<std::double_t>(out.TO_TURNS) * _defaultMicrometers;
+    // out.TO_MICROMETERS          = micrometers - static_cast<std::double_t>(out.TO_TURNS) * _defaultMicrometers;
     if (isRotational())
         out.TO_TURNS = 0;
 
@@ -93,8 +93,8 @@ ConvertValues UnitConverter::convertFromMicrometers(std::double_t micrometers) n
     const std::double_t um_to_deg = k360 / _defaultMicrometers;
     const std::double_t um_to_stp = static_cast<std::double_t>(_defaultMicrosteps) / _defaultMicrometers;
 
-    out.TO_PULSES  = out.TO_MICROMETERS * um_to_pul;
-    out.TO_STEPS   = static_cast<std::int32_t>(std::lround(out.TO_MICROMETERS * um_to_stp));
-    out.TO_DEGREES = out.TO_MICROMETERS * um_to_deg;
+    out.TO_PULSES  = micrometers * um_to_pul;
+    out.TO_STEPS   = static_cast<std::int32_t>(std::lround(micrometers * um_to_stp));
+    out.TO_DEGREES = micrometers * um_to_deg;
     return out;
 }

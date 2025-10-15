@@ -410,7 +410,7 @@ bool PositionController::queueMovementCommand(const MovementCommand& c)
 // -----------------------------
 // Internals
 // -----------------------------
-void PositionController::updateStatus()
+void PositionController::updateStatus()  // amir
 {
     if (!_initialized)
         return;
@@ -465,7 +465,7 @@ bool PositionController::executeMovement(const MovementCommand& cmd)
         xSemaphoreGive(_statusMutex);
     }
 
-    configureSpeedForDistanceSteps(cmd.movementDistanceSteps);
+    configureSpeedByDistanceSteps(cmd.movementDistanceSteps);
     _stepper.moveTo(static_cast<long>(target));
 
     return true;
@@ -533,7 +533,7 @@ void PositionController::runPositionControl()
     }
 
     // Update status every tick (cheap) to avoid shared static timer between instances
-    updateStatus();
+    updateStatus();  // amir
 
     if (_status.isMoving && const_cast<AccelStepper&>(stepper).distanceToGo() == 0)
     {
@@ -558,23 +558,7 @@ bool PositionController::isHybridModeEnabled() const
     // Keep original semantics; avoid repeated heavy work here if possible
     return _controlMode == ControlMode::HYBRID && _encoderMae3 != nullptr && (_encoderMae3->enable() == mae3::Status::Ok);
 }
-/*
-EncoderState PositionController::getEncoderState() const
-{
-    if (_encoderMae3 != nullptr)
-    {
-        if (_encoderMae3->enable() == mae3::Status::Ok)
-        {
-            std::double_t pos{0U}, ton{0U}, toff{0U};
-            if (_encoderMae3->tryGetPosition(pos, ton, toff))
-            {
-                return {ton, toff, 0, pos, 0, Direction::UNKNOWN};
-            }
-        }
-    }
-    return {0, 0, 0, 0, 0, Direction::UNKNOWN};
-}
-*/
+
 int32_t PositionController::getEncoderSteps()
 {
     const std::double_t pulse_f = 333;  // getEncoderState().position_pulse;
@@ -743,10 +727,13 @@ float PositionController::calculateOptimalAccelerationForDistanceSteps(int32_t d
     return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].acceleration;
 }
 
-void PositionController::configureSpeedForDistanceSteps(int32_t d)
+void PositionController::configureSpeedByDistanceSteps(int32_t d)
 {
     if (!isValidMovementDistanceSteps(d))
+    {
+        Serial.printf("[INFO] Motor %d: speed config skipped (movement %d < %d steps)\r\n", _motorId + 1, d, VALID_MOVEMENT_DISTANCE_STEPS);
         return;
+    }
     const float v = calculateOptimalSpeedForDistanceSteps(d);
     const float a = calculateOptimalAccelerationForDistanceSteps(d);
     _stepper.setMaxSpeed(v);

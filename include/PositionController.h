@@ -117,7 +117,7 @@ public:
     void         setDistanceBasedSpeedProfile(DistanceType distanceType);
     float        calculateOptimalSpeedForDistanceSteps(int32_t distanceSteps);
     float        calculateOptimalAccelerationForDistanceSteps(int32_t distanceSteps);
-    void         configureSpeedForDistanceSteps(int32_t distanceSteps);
+    void         configureSpeedByDistanceSteps(int32_t distanceSteps);
 
     // RTOS task management
     static void startPositionControlTask();
