@@ -267,7 +267,7 @@ void PositionController::stop()
         _status.totalMovementTime = now_ms() - _status.movementStartTime;
         xSemaphoreGive(_statusMutex);
     }
-    Serial.printf("Motor %d stopped\r\n", _motorId + 1);
+    Serial.printf("Motor%d stopped\r\n", _motorId + 1);
 }
 
 bool PositionController::isMoving() const
@@ -539,7 +539,7 @@ void PositionController::runPositionControl()
             xSemaphoreGive(_statusMutex);
         }
         _movementCompleteFlag = true;
-        Serial.printf("Motor[%d] reached target 🎯\r\n", _motorId + 1);
+        Serial.printf("Motor%d reached target\r\n", _motorId + 1);
     }
 }
 
@@ -682,14 +682,14 @@ void PositionController::configureSpeedByDistanceSteps(int32_t d)
 {
     if (!isValidMovementDistanceSteps(d))
     {
-        Serial.printf("[INFO] Motor %d: speed config skipped (movement %d < %d steps)\r\n", _motorId + 1, d, VALID_MOVEMENT_DISTANCE_STEPS);
+        Serial.printf("[INFO] Motor%d: speed config skipped (movement %d < %d steps)\r\n", _motorId + 1, d, VALID_MOVEMENT_DISTANCE_STEPS);
         return;
     }
     const float v = calculateOptimalSpeedForDistanceSteps(d);
     const float a = calculateOptimalAccelerationForDistanceSteps(d);
     _stepper.setMaxSpeed(v);
     _stepper.setAcceleration(a);
-    Serial.printf("Motor %d: d=%d -> v=%.0f st/s, a=%.0f st/s^2\r\n", _motorId + 1, d, v, a);
+    // Serial.printf("Motor%d: d=%d -> v=%.0f st/s, a=%.0f st/s^2\r\n", _motorId + 1, d, v, a);
 }
 
 void PositionController::attachOnComplete(void (*cb)())

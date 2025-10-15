@@ -1,8 +1,3 @@
-// =============================
-// File: main.cpp  (lean RT variant)
-// Depends on: AccelStepper, TMCStepper, Preferences (Arduino-ESP32)
-// =============================
-
 #include <Arduino.h>
 #include <Preferences.h>
 #include <SimpleCLI.h>
@@ -416,7 +411,7 @@ static void handleStop(cmd* c)
         return;
     gPC[n]->stop();
     // Stopped before target → keep last start (already saved) as stable
-    Serial.printf("[STOP] motor %d\r\n", n + 1);
+    Serial.printf("[STOP] Motor%d\r\n", n + 1);
 }
 
 static void handleEnable(cmd* c)
@@ -433,7 +428,7 @@ static void handleEnable(cmd* c)
     if (!gPC[n])
         return;
     gPC[n]->enable();
-    Serial.printf("[EN] motor %d enabled\r\n", n + 1);
+    Serial.printf("[EN] Motor%d enabled\r\n", n + 1);
 }
 
 static void handleDisable(cmd* c)
@@ -450,7 +445,7 @@ static void handleDisable(cmd* c)
     if (!gPC[n])
         return;
     gPC[n]->disable();
-    Serial.printf("[EN] motor %d disabled\r\n", n + 1);
+    Serial.printf("[EN] Motor%d disabled\r\n", n + 1);
 }
 
 static void handlePosition(cmd* c)
@@ -603,7 +598,7 @@ static void handleMove(cmd* c)
 
         gPC[n]->attachOnComplete(onPendingTargetSteps);
 
-        if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE))  // amir
+        if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE))
         {
             Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(seedSteps));
         }
@@ -800,12 +795,11 @@ static void serviceCLI()
                 return;
             }
             // ---- Load stable; for rotary clamp to [0.05°, 359.95°] ----
-            double  deg             = 0.0f;  // amir
             int32_t stableWithClamp = 0;
             int32_t stable          = loadStableSteps(n);
+            double  deg             = UnitConverter::convertFromSteps(stable).TO_DEGREES;
             if (isRotary(n))
             {
-                double deg = UnitConverter::convertFromSteps(stable).TO_DEGREES;
                 if (deg < 0.01)
                     deg = 0.01;
                 if (deg > 359.955)
@@ -1105,7 +1099,7 @@ static void onMovementComplete()
     const int32_t tgt = gPC[idx]->getTargetSteps();
     saveStableSteps(idx, tgt);
 
-    Serial.printf("[CHAIN] Movement completed -> Stable steps saved (M%d)\r\n", idx + 1);
+    Serial.printf("[CHAIN] Movement completed 🎯 -> Stable steps saved (M%d)\r\n", idx + 1);
 }
 
 // Set a custom speed profile quickly (max speed + acceleration)
