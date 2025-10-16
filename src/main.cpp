@@ -155,6 +155,9 @@ void enableSelectedEncoder(uint8_t enc);
 static bool validateNParameter(const Argument& aN);
 static bool validatePParameter(const Argument& aP);
 
+inline float clampAngle(float angleDeg);
+inline float normalizeAndClampAngle(float angleDeg);
+
 #pragma endregion
 
 #pragma region "Setup and Loop"
@@ -571,10 +574,7 @@ static void handleMove(cmd* c)
     // ---- Load stable; for rotary clamp to [0.01°, 359.955°] ----
     if (isRotary(n))
     {
-        if (deg < 0.01)
-            deg = 0.01;
-        if (deg > 359.955)
-            deg = 359.955;
+        deg = normalizeAndClampAngle(deg);
 
         stableWithClamp = UnitConverter::convertFromDegrees(deg).TO_STEPS;
 
@@ -943,6 +943,23 @@ void enableSelectedEncoder(uint8_t idx)
 
 #pragma region "Helpers"
 // ---------- Helpers ----------
+inline float clampAngle(float angleDeg)
+{
+    return fminf(fmaxf(angleDeg, 0.01f), 359.955f);
+}
+
+inline float normalizeAndClampAngle(float angleDeg)
+{
+    // Normalize to range 0..360
+    while (angleDeg < 0.0f)
+        angleDeg += 360.0f;
+    while (angleDeg >= 360.0f)
+        angleDeg -= 360.0f;
+
+    // Now the final clamping
+    return fminf(fmaxf(angleDeg, 0.01f), 359.955f);
+}
+
 static inline bool isLinear(uint8_t idx)
 {
     return idx == kLinearMotorIndex;
@@ -1003,7 +1020,7 @@ static void onVoltageDropISR()
 static void onPendingTargetSteps()
 {
     const uint8_t idx = gCurrentMotor;
-    const double  tgt = gTargetPosition;
+    double        tgt = gTargetPosition;
 
     // ---- Compute target steps based on motor type ----
     int32_t pendingTargetSteps = 0;
@@ -1015,6 +1032,7 @@ static void onPendingTargetSteps()
     else
     {
         // p in degrees
+        tgt                = normalizeAndClampAngle(tgt);
         pendingTargetSteps = UnitConverter::convertFromDegrees(tgt).TO_STEPS;
     }
 
