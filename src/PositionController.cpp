@@ -552,16 +552,17 @@ void PositionController::positionControlTask(void* /*parameter*/)
 #endif
             }
         }
-
-        for (int i = 0; i < POSITION_CONTROL_COUNT; ++i)
+        for (int k = 0; k < 7; ++k)  // 5x faster call to run()
         {
-            if (_instances[i])
+            for (int i = 0; i < POSITION_CONTROL_COUNT; ++i)
             {
-                _instances[i]->runPositionControl();
-                _instances[i]->handleMovementComplete();
+                if (_instances[i])
+                {
+                    _instances[i]->runPositionControl();
+                    _instances[i]->handleMovementComplete();
+                }
             }
         }
-
         esp_task_wdt_reset();
         vTaskDelayUntil(&lastWake, period);
     }
