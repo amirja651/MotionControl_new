@@ -780,7 +780,6 @@ static void serviceCLI()
             double pos_f = 0.0, ton = 0.0, toff = 0.0;
             bool   enabled = readEncoderPulses(n, pos_f, ton, toff);
 
-            Serial.printf("[ENC] ENC%d enabled = %s\r\n", n + 1, enabled ? "YES" : "NO or no new data ❌");
             if (enabled)
             {
                 const float encoderAngle = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
@@ -1159,37 +1158,40 @@ static bool seedCurrentStepWithEncoder(uint8_t idx, int32_t& seedSteps)
     int32_t       turns    = isLinear(idx) ? (curSteps / ms) : 0;  // rotary → force 0 turns
 
     double pos_f = 0.0;
-    if (readEncoderPulses(idx, pos_f))
+    if (!readEncoderPulses(idx, pos_f))
     {
-        // Convert encoder pulses (0..4095) to steps within 1 revolution
-        const int32_t steps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
-        const float   deg   = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
-
-        // Rebuild absolute seed:
-        //  - linear:  (turns * ms) + steps
-        //  - rotary:  (    0 * ms) + steps
-        seedSteps               = (turns * ms) + steps;
-        const float seedDegrees = UnitConverter::convertFromSteps(seedSteps).TO_DEGREES;
-
-        // Set precise current position before any movement
-        gPC[idx]->setCurrentPosition(seedSteps);
-
-        // print
-        /*
-        Serial.printf("[INFO] Seed current position:\r\n");
-        Serial.printf("    microsteps : %d steps\r\n", ms);
-        Serial.printf("    turns      : %d\r\n", turns);
-        Serial.printf("    encoder    : %.2f°\r\n", deg);
-        Serial.printf("    seedSteps  : %d steps\r\n", seedSteps);
-        Serial.printf("    seedAngle  : %.2f°\r\n", seedDegrees);
-        */
-        return true;
+        // If curSteps == 0, the encoder could be parked at the zero index,
+        // which may cause it to report either zero or an undefined value after startup.
+        if (curSteps != 0)
+        {
+            Serial.printf("[ERR] seed not successful for M%d ❌\r\n", idx + 1);
+            return false;
+        }
     }
-    else
-    {
-        Serial.printf("[ERR] seed not successful for M%d ❌\r\n", idx + 1);
-        return false;
-    }
+
+    // Convert encoder pulses (0..4095) to steps within 1 revolution
+    const int32_t steps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
+    const float   deg   = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
+
+    // Rebuild absolute seed:
+    //  - linear:  (turns * ms) + steps
+    //  - rotary:  (    0 * ms) + steps
+    seedSteps               = (turns * ms) + steps;
+    const float seedDegrees = UnitConverter::convertFromSteps(seedSteps).TO_DEGREES;
+
+    // Set precise current position before any movement
+    gPC[idx]->setCurrentPosition(seedSteps);
+
+    // print
+    /*
+    Serial.printf("[INFO] Seed current position:\r\n");
+    Serial.printf("    microsteps : %d steps\r\n", ms);
+    Serial.printf("    turns      : %d\r\n", turns);
+    Serial.printf("    encoder    : %.2f°\r\n", deg);
+    Serial.printf("    seedSteps  : %d steps\r\n", seedSteps);
+    Serial.printf("    seedAngle  : %.2f°\r\n", seedDegrees);
+    */
+    return true;
 }
 
 #pragma endregion
