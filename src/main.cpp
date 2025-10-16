@@ -42,10 +42,16 @@ enum class CommandKey : uint8_t
     J = 3
 };
 
+// Every 200 µm is equivalent to one full revolution (360°) of the encoder
+constexpr float STEP_UNIT_UM      = 1.0f;    // Size of each step in µm (e.g. 1 µm or 0.5 µm depending on the resolution)
+constexpr float REV_DISTANCE_UM   = 200.0f;  // One full revolution of the motor in µm
+constexpr float TOLERANCE_UM      = 0.03f;   // Tolerance allowed for "boundary" detection
+constexpr float FULL_ROTATION_DEG = 360.0f;
+
 //---------- Used in onHomingComplete ----
 // Define globals for chaining
-static volatile uint8_t gCurrentMotor   = 0;
-static volatile double  gTargetPosition = 0.0f;
+static volatile uint8_t  gCurrentMotor   = 0;
+static volatile double_t gTargetPosition = 0.0f;
 
 // --- Chaining state (Rapid -> Touch) ---
 static volatile int32_t gTouchFinalSteps = 0;
@@ -60,18 +66,18 @@ static uint32_t gLastKPressMs = 0;
 static constexpr uint8_t  kMotorCount         = 4;
 static constexpr uint8_t  kLinearMotorIndex   = 0;        // M1 (index 0)
 static constexpr uint8_t  kFirstRotaryIndex   = 1;        // M2..M4
-static constexpr double   kDefaultLeadPitchUm = 200.0;    // default: 0.2 mm/rev = 200 µm
+static constexpr double_t kDefaultLeadPitchUm = 200.0;    // default: 0.2 mm/rev = 200 µm
 static constexpr int32_t  SPI_CLOCK           = 1000000;  // 1MHz SPI clock
 static constexpr uint32_t kSerialBaud         = 115200;
 static constexpr uint32_t kWatchdogSeconds    = 15;
 
 // --- Rotary touch-window and speed profiles ---
-static constexpr int32_t kTouchWindowStep = 10;     // final window near target in steps
-static constexpr double  kTouchWindowDeg  = 1.0;    // final window near target in degrees
-static constexpr float   kFastMaxSpeed    = 16000;  // steps/s for Rapid
-static constexpr float   kFastAccel       = 24000;  // steps/s^2 for Rapid
-static constexpr float   kTouchMaxSpeed   = 600;    // steps/s for Touch
-static constexpr float   kTouchAccel      = 1200;   // steps/s^2 for Touch
+static constexpr int32_t  kTouchWindowStep = 10;     // final window near target in steps
+static constexpr double_t kTouchWindowDeg  = 1.0;    // final window near target in degrees
+static constexpr float    kFastMaxSpeed    = 16000;  // steps/s for Rapid
+static constexpr float    kFastAccel       = 24000;  // steps/s^2 for Rapid
+static constexpr float    kTouchMaxSpeed   = 600;    // steps/s for Touch
+static constexpr float    kTouchAccel      = 1200;   // steps/s^2 for Touch
 
 // ---------- Persistence (NVS/Preferences) ----------
 Preferences gPrefs;  // namespace: "motion"
@@ -94,7 +100,7 @@ PositionController* gPC[kMotorCount] = {nullptr, nullptr, nullptr, nullptr};
 VoltageMonitor gVmon(VoltageMonitorPins::POWER_3_3, MonitorMode::DIGITAL_, /*thr*/ 1, /*debounceMs*/ 5);
 
 // Lead pitch (µm per revolution) — configurable at runtime
-double gLeadPitchUm = kDefaultLeadPitchUm;
+double_t gLeadPitchUm = kDefaultLeadPitchUm;
 
 static const char* kKeyPitchUm = "sys.pitch_um";
 
@@ -134,8 +140,8 @@ static void serviceCLI();
 static void initializeCLI();
 
 // Helper Read EncoderPosition
-static bool readEncoderPulses(uint8_t idx, double& pulses);
-static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, double& toff_us);
+static bool readEncoderPulses(uint8_t idx, double_t& pulses);
+static bool readEncoderPulses(uint8_t idx, double_t& pulses, double_t& ton_us, double_t& toff_us);
 
 // Used for handleMove() method
 static void onPendingTargetSteps();
@@ -157,6 +163,9 @@ static bool validatePParameter(const Argument& aP);
 
 inline float clampAngle(float angleDeg);
 inline float normalizeAndClampAngle(float angleDeg);
+
+int32_t         safeReadEncoderDeg(int32_t curSteps);
+inline double_t positiveMod(double_t value, double_t base);
 
 #pragma endregion
 
@@ -471,13 +480,13 @@ static void handlePosition(cmd* c)
     {
         const auto cvals = UnitConverter::convertFromSteps(cur);
         const auto tvals = UnitConverter::convertFromSteps(tgt);
-        Serial.printf("[POS] M%d cur=%.3f µm tgt=%.3f µm steps=(%ld -> %ld)\r\n", n + 1, cvals.TO_MICROMETERS, tvals.TO_MICROMETERS, static_cast<long>(cur), static_cast<long>(tgt));
+        Serial.printf("\r\n[POS] M%d cur=%.2f µm tgt=%.2f µm steps=(%ld -> %ld) degrees=(%.2f -> %.2f)\r\n", n + 1, cvals.TO_MICROMETERS, tvals.TO_MICROMETERS, static_cast<long>(cur), static_cast<long>(tgt), cvals.TO_DEGREES, tvals.TO_DEGREES);
     }
     else
     {
         const auto cvals = UnitConverter::convertFromSteps(cur);
         const auto tvals = UnitConverter::convertFromSteps(tgt);
-        Serial.printf("[POS] M%d cur=%.3f deg tgt=%.3f deg steps=(%ld -> %ld)\r\n", n + 1, cvals.TO_DEGREES, tvals.TO_DEGREES, static_cast<long>(cur), static_cast<long>(tgt));
+        Serial.printf("\r\n[POS] M%d cur=%.2f deg tgt=%.2f deg steps=(%ld -> %ld)\r\n", n + 1, cvals.TO_DEGREES, tvals.TO_DEGREES, static_cast<long>(cur), static_cast<long>(tgt));
     }
 }
 
@@ -526,7 +535,7 @@ static void handleConfPitch(cmd* c)
     Command cmd(c);  // Create wrapper object
 
     // conf pitch p=<micrometers_per_rev>  (affects linear motor only)
-    const double p = cmd.getArg("p").getValue().toDouble();
+    const double_t p = cmd.getArg("p").getValue().toDouble();
     if (p > 0.0)
     {
         gLeadPitchUm = p;
@@ -567,9 +576,9 @@ static void handleMove(cmd* c)
         return;
     }
 
-    int32_t stableWithClamp = 0;
-    int32_t stable          = loadStableSteps(n);
-    double  deg             = UnitConverter::convertFromSteps(stable).TO_DEGREES;
+    int32_t  stableWithClamp = 0;
+    int32_t  stable          = loadStableSteps(n);
+    double_t deg             = UnitConverter::convertFromSteps(stable).TO_DEGREES;
 
     // ---- Load stable; for rotary clamp to [0.01°, 359.955°] ----
     if (isRotary(n))
@@ -601,18 +610,6 @@ static void handleMove(cmd* c)
         if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE))
         {
             Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(seedSteps));
-
-            /*
-            [CLI] Current motor = 2 ℹ️
-            [INFO] Stable before=3556 steps, after=3556 steps (100.01°)
-            [INFO] Seed current position:
-                microsteps : 12800 steps
-                turns      : 0
-                encoder    : 99.67°
-                seedSteps  : 3544 steps
-                seedAngle  : 99.68°
-            [INFO] Homing to stable first: stable (3556 steps), current (3544 steps)
-            */
         }
         else
         {
@@ -750,17 +747,25 @@ static void serviceCLI()
             {
                 const int32_t cur = gPC[n]->getCurrentSteps();
                 const int32_t tgt = gPC[n]->getTargetSteps();
+
+                // It means this is the first time, and the motor has never moved before.
+                if (cur == tgt && cur == 0)
+                {
+                    int32_t seedSteps;
+                    seedCurrentStepWithEncoder(n, seedSteps);
+                }
+
                 if (isLinear(n))
                 {
                     const auto cvals = UnitConverter::convertFromSteps(cur);
                     const auto tvals = UnitConverter::convertFromSteps(tgt);
-                    Serial.printf("\r\n[POS] M%d cur=%.3f µm  tgt=%.3f µm  (steps %ld -> %ld)\r\n", n + 1, cvals.TO_MICROMETERS, tvals.TO_MICROMETERS, (long)cur, (long)tgt);
+                    Serial.printf("\r\n[POS] M%d cur=%.2f µm tgt=%.2f µm steps=(%ld -> %ld) degrees=(%.2f -> %.2f)\r\n", n + 1, cvals.TO_MICROMETERS, tvals.TO_MICROMETERS, static_cast<long>(cur), static_cast<long>(tgt), cvals.TO_DEGREES, tvals.TO_DEGREES);
                 }
                 else
                 {
                     const auto cvals = UnitConverter::convertFromSteps(cur);
                     const auto tvals = UnitConverter::convertFromSteps(tgt);
-                    Serial.printf("\r\n[POS] M%d cur=%.3f°  tgt=%.3f°  (steps %ld -> %ld)\r\n", n + 1, cvals.TO_DEGREES, tvals.TO_DEGREES, (long)cur, (long)tgt);
+                    Serial.printf("\r\n[POS] M%d cur=%.2f deg tgt=%.2f deg steps=(%ld -> %ld)\r\n", n + 1, cvals.TO_DEGREES, tvals.TO_DEGREES, static_cast<long>(cur), static_cast<long>(tgt));
                 }
                 printPrompt();
                 Serial.print(inputBuffer);
@@ -777,8 +782,8 @@ static void serviceCLI()
 
             const int n = gCurrentMotor;
 
-            double pos_f = 0.0, ton = 0.0, toff = 0.0;
-            bool   enabled = readEncoderPulses(n, pos_f, ton, toff);
+            double_t pos_f = 0.0, ton = 0.0, toff = 0.0;
+            bool     enabled = readEncoderPulses(n, pos_f, ton, toff);
 
             if (enabled)
             {
@@ -806,9 +811,9 @@ static void serviceCLI()
                 return;
             }
             // ---- Load stable; for rotary clamp to [0.05°, 359.95°] ----
-            int32_t stableWithClamp = 0;
-            int32_t stable          = loadStableSteps(n);
-            double  deg             = UnitConverter::convertFromSteps(stable).TO_DEGREES;
+            int32_t  stableWithClamp = 0;
+            int32_t  stable          = loadStableSteps(n);
+            double_t deg             = UnitConverter::convertFromSteps(stable).TO_DEGREES;
             if (isRotary(n))
             {
                 if (deg < 0.01)
@@ -899,11 +904,11 @@ static void initializeCLI()
 
 #pragma region "Read Encoder"
 // Read the current position from the encoder (degrees or micrometers)
-static bool readEncoderPulses(uint8_t idx, double& pulses)
+static bool readEncoderPulses(uint8_t idx, double_t& pulses)
 {
     // Enable only the selected encoder to reduce ISR load, then try to read it
     enableSelectedEncoder(idx);
-    double ton_us = 0, toff_us = 0;
+    double_t ton_us = 0, toff_us = 0;
     (void)gEnc[idx].tryGetPosition(pulses, ton_us, toff_us);
     delay(300);
     bool response = gEnc[idx].tryGetPosition(pulses, ton_us, toff_us);
@@ -913,7 +918,7 @@ static bool readEncoderPulses(uint8_t idx, double& pulses)
     }
     return response;
 }
-static bool readEncoderPulses(uint8_t idx, double& pulses, double& ton_us, double& toff_us)
+static bool readEncoderPulses(uint8_t idx, double_t& pulses, double_t& ton_us, double_t& toff_us)
 {
     // Enable only the selected encoder to reduce ISR load, then try to read it
     enableSelectedEncoder(idx);
@@ -1019,7 +1024,7 @@ static void onVoltageDropISR()
 static void onPendingTargetSteps()
 {
     const uint8_t idx = gCurrentMotor;
-    double        tgt = gTargetPosition;
+    double_t      tgt = gTargetPosition;
 
     // ---- Compute target steps based on motor type ----
     int32_t pendingTargetSteps = 0;
@@ -1157,21 +1162,22 @@ static bool seedCurrentStepWithEncoder(uint8_t idx, int32_t& seedSteps)
     const int32_t ms       = UnitConverter::getDefaultMicrosteps();
     int32_t       turns    = isLinear(idx) ? (curSteps / ms) : 0;  // rotary → force 0 turns
 
-    double pos_f = 0.0;
-    if (!readEncoderPulses(idx, pos_f))
+    double_t pos_f    = 0.0;
+    bool     response = readEncoderPulses(idx, pos_f);
+
+    // Convert encoder pulses (0..4095) to steps within 1 revolution
+    int32_t steps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
+    float   deg   = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
+
+    if (!response || deg >= 359.74 || deg <= 0.05)
     {
         // If curSteps == 0, the encoder could be parked at the zero index,
         // which may cause it to report either zero or an undefined value after startup.
-        if (curSteps != 0)
-        {
-            Serial.printf("[ERR] seed not successful for M%d ❌\r\n", idx + 1);
-            return false;
-        }
+        Serial.printf("[ERR] seed not successful for M%d (encoder=%.2f) ⚠️\r\n", idx + 1, pos_f);
+        pos_f = 0.0;
+        steps = 0;
+        deg   = 0;
     }
-
-    // Convert encoder pulses (0..4095) to steps within 1 revolution
-    const int32_t steps = UnitConverter::convertFromPulses(pos_f).TO_STEPS;
-    const float   deg   = UnitConverter::convertFromPulses(pos_f).TO_DEGREES;
 
     // Rebuild absolute seed:
     //  - linear:  (turns * ms) + steps
@@ -1183,15 +1189,45 @@ static bool seedCurrentStepWithEncoder(uint8_t idx, int32_t& seedSteps)
     gPC[idx]->setCurrentPosition(seedSteps);
 
     // print
-    /*
+
     Serial.printf("[INFO] Seed current position:\r\n");
     Serial.printf("    microsteps : %d steps\r\n", ms);
     Serial.printf("    turns      : %d\r\n", turns);
     Serial.printf("    encoder    : %.2f°\r\n", deg);
     Serial.printf("    seedSteps  : %d steps\r\n", seedSteps);
     Serial.printf("    seedAngle  : %.2f°\r\n", seedDegrees);
-    */
+
     return true;
 }
 
 #pragma endregion
+
+// Function that checks for special value before reading encoder
+int32_t safeReadEncoderDeg(int32_t curSteps)
+{
+    // Current position in µm (may be negative)
+    const double_t pos_um = UnitConverter::convertFromSteps(curSteps).TO_MICROMETERS;
+
+    // Positive remainder in the range [0, REV_DISTANCE_UM)
+    double_t mod = positiveMod(pos_um, REV_DISTANCE_UM);
+
+    // Check for proximity to 0 or 200 µm boundary (wrap)
+    bool nearBoundary = (mod <= TOLERANCE_UM) || (fabs(mod - REV_DISTANCE_UM) <= TOLERANCE_UM);
+
+    if (nearBoundary)
+    {
+        // Motor is exactly on the 0/360 boundary
+        Serial.printf("[DBG] Linear motor near 0°/360° boundary ⚠️ (mod=%.3f µm) → force encoder=0°\r\n", mod);
+        return 0;
+    }
+
+    return curSteps;
+}
+
+inline double_t positiveMod(double_t value, double_t base)
+{
+    double_t result = fmod(value, base);
+    if (result < 0.0)
+        result += base;
+    return result;
+}

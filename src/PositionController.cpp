@@ -14,6 +14,8 @@
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
 
+#define pc_print false
+
 // ---- Small helpers
 static inline uint32_t now_ms() noexcept
 {
@@ -198,10 +200,12 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
     const int32_t delta   = targetSteps - current;
     const int32_t dist    = std::abs(delta);
 
+#if pc_print
     Serial.printf("\r\n[DBG] M%d current=%ld, target=%ld, delta=%ld, dist=%ld\r\n", _motorId + 1, static_cast<long>(current), static_cast<long>(targetSteps), static_cast<long>(delta), static_cast<long>(dist));
+#endif
 
     if (!isValidMovementDistanceSteps(dist))
-    {  // amir e
+    {
         Serial.printf("Motor[%d]: distance %d < %d steps → ignore\r\n", _motorId + 1, dist, VALID_MOVEMENT_DISTANCE_STEPS);
         return false;
     }
@@ -215,6 +219,7 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
     cmd.priority              = 1;
     cmd.movementDistanceSteps = dist;
 
+#if pc_print
     Serial.printf("\r\n[DBG] Queue movement: motorId=%d, targetSteps=%ld, dist=%ld, type=%d, distType=%d, rel=%d, prio=%d\r\n\r\n",
                   cmd.motorId,
                   static_cast<long>(cmd.targetSteps),
@@ -223,6 +228,7 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
                   static_cast<int>(cmd.distanceType),
                   cmd.relative,
                   cmd.priority);
+#endif
 
     return queueMovementCommand(cmd);
 }
@@ -459,11 +465,15 @@ bool PositionController::executeMovement(const MovementCommand& cmd)
 {
     const int32_t target = cmd.targetSteps;
 
+#if pc_print
     Serial.printf("\r\n[DBG] M%d executeMovement: tgt=%ld, mType=%s, enabled=%d, init=%d\r\n", _motorId + 1, static_cast<long>(target), toStr(cmd.movementType), _enabled, _initialized);
+#endif
 
     if (!_enabled || !_initialized)
     {
+#if pc_print
         Serial.printf("[WARN] M%d executeMovement aborted: _enabled=%d, _initialized=%d ❌\r\n", _motorId + 1, _enabled, _initialized);
+#endif
         return false;
     }
 
@@ -477,12 +487,15 @@ bool PositionController::executeMovement(const MovementCommand& cmd)
         _status.movementStartTime = now_ms();
         _status.lastMovementType  = cmd.movementType;
         xSemaphoreGive(_statusMutex);
-
+#if pc_print
         Serial.printf("\r\n[DBG] M%d status set: targetSteps=%ld, isMoving=1, lastType=%s, t0=%lu ms ✅\r\n", _motorId + 1, static_cast<long>(_status.targetSteps), toStr(_status.lastMovementType), static_cast<unsigned long>(_status.movementStartTime));
+#endif
     }
     else
     {
+#if pc_print
         Serial.printf("\r\n[ERR] M%d executeMovement: xSemaphoreTake(_statusMutex,50ms) FAILED ❗ (tgt=%ld)\r\n", _motorId + 1, static_cast<long>(target));
+#endif
         return false;
     }
     // inja
@@ -515,6 +528,7 @@ void PositionController::positionControlTask(void* /*parameter*/)
     {
         if (_movementCommandQueue && xQueueReceive(_movementCommandQueue, &cmd, 0) == pdTRUE)
         {
+#if pc_print
             Serial.printf("\r\n[DBG] Dequeued cmd: motorId=%d, tgt=%ld, dist=%ld, type=%d, distType=%d, rel=%d, prio=%d\r\n",
                           cmd.motorId,
                           static_cast<long>(cmd.targetSteps),
@@ -523,16 +537,19 @@ void PositionController::positionControlTask(void* /*parameter*/)
                           static_cast<int>(cmd.distanceType),
                           cmd.relative,
                           cmd.priority);
-
+#endif
             if (cmd.motorId < POSITION_CONTROL_COUNT && _instances[cmd.motorId])
             {
+#if pc_print
                 Serial.printf("\r\n[DBG] Executing cmd for Motor%d...\r\n", cmd.motorId + 1);
-
+#endif
                 _instances[cmd.motorId]->executeMovement(cmd);
             }
             else
             {
+#if pc_print
                 Serial.printf("\r\n[WARN] Invalid motorId=%d or null instance — command skipped ❌\r\n", cmd.motorId);
+#endif
             }
         }
 
@@ -797,8 +814,9 @@ void PositionController::configureSpeedByDistanceSteps(int32_t d)
 
     _stepper.setMaxSpeed(v);
     _stepper.setAcceleration(a);
-
+#if pc_print
     Serial.printf("\r\n[INFO] Motor%d: d=%ld -> v=%.0f st/s, a=%.0f st/s^2\r\n", _motorId + 1, (long)d, v, a);
+#endif
 }
 
 void PositionController::attachOnComplete(void (*cb)())
