@@ -55,29 +55,17 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.encoderSteps       = 0;
 
     _instances[motorId] = this;
-#if false
-    _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {2000.0f, 4000.0f};
-    _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};
-    _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};
 
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 6};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)]      = {1000.0f, 2000.0f, 32};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)]     = {2000.0f, 4000.0f, 64};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)]       = {4000.0f, 8000.0f, 320};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)]  = {8000.0f, 16000.0f, 640};
-#else
-    // PositionController.cpp (or where you define distance-speed tables)
-    _speedProfiles[(int)MovementType::LONG_RANGE]   = {16000.0f, 24000.0f};
-    _speedProfiles[(int)MovementType::MEDIUM_RANGE] = {6000.0f, 12000.0f};
-    _speedProfiles[(int)MovementType::SHORT_RANGE]  = {600.0f, 1200.0f};
+    _speedProfiles[static_cast<uint8_t>(MovementType::SHORT_RANGE)]  = {600.0f, 1200.0f};
+    _speedProfiles[static_cast<uint8_t>(MovementType::MEDIUM_RANGE)] = {6000.0f, 12000.0f};
+    _speedProfiles[static_cast<uint8_t>(MovementType::LONG_RANGE)]   = {16000.0f, 24000.0f};
 
-    // Optionally refine distance thresholds for rotary:
-    _distanceSpeedProfiles[(int)DistanceType::SHORT]     = {800.0f, 1600.0f, 32};
-    _distanceSpeedProfiles[(int)DistanceType::MEDIUM]    = {3000.0f, 8000.0f, 128};
-    _distanceSpeedProfiles[(int)DistanceType::LONG]      = {8000.0f, 16000.0f, 640};
-    _distanceSpeedProfiles[(int)DistanceType::VERY_LONG] = {16000.0f, 24000.0f, 960};
-#endif
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::SHORT)]      = {800.0f, 1600.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::MEDIUM)]     = {3000.0f, 8000.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::LONG)]       = {8000.0f, 16000.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::VERY_LONG)]  = {16000.0f, 24000.0f};
 }
 
 PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, DirMultiplexer& dirMultiplexer, uint16_t stepPin, uint16_t enPin)
@@ -104,29 +92,17 @@ PositionController::PositionController(uint8_t motorId, TMC5160Manager& driver, 
     _status.totalMovementTime = 0;
 
     _instances[motorId] = this;
-#if false
-    _speedProfiles[static_cast<int>(MovementType::SHORT_RANGE)]  = {2000.0f, 4000.0f};
-    _speedProfiles[static_cast<int>(MovementType::MEDIUM_RANGE)] = {4000.0f, 8000.0f};
-    _speedProfiles[static_cast<int>(MovementType::LONG_RANGE)]   = {8000.0f, 16000.0f};
 
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f, 0};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f, 6};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::SHORT)]      = {1000.0f, 2000.0f, 32};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)]     = {2000.0f, 4000.0f, 64};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::LONG)]       = {4000.0f, 8000.0f, 320};
-    _distanceSpeedProfiles[static_cast<int>(DistanceType::VERY_LONG)]  = {8000.0f, 16000.0f, 640};
-#else
-    // PositionController.cpp (or where you define distance-speed tables)
-    _speedProfiles[(int)MovementType::LONG_RANGE]   = {16000.0f, 24000.0f};
-    _speedProfiles[(int)MovementType::MEDIUM_RANGE] = {6000.0f, 12000.0f};
-    _speedProfiles[(int)MovementType::SHORT_RANGE]  = {600.0f, 1200.0f};
+    _speedProfiles[static_cast<uint8_t>(MovementType::SHORT_RANGE)]  = {600.0f, 1200.0f};
+    _speedProfiles[static_cast<uint8_t>(MovementType::MEDIUM_RANGE)] = {6000.0f, 12000.0f};
+    _speedProfiles[static_cast<uint8_t>(MovementType::LONG_RANGE)]   = {16000.0f, 24000.0f};
 
-    // Optionally refine distance thresholds for rotary:
-    _distanceSpeedProfiles[(int)DistanceType::SHORT]     = {800.0f, 1600.0f, 32};
-    _distanceSpeedProfiles[(int)DistanceType::MEDIUM]    = {3000.0f, 8000.0f, 128};
-    _distanceSpeedProfiles[(int)DistanceType::LONG]      = {8000.0f, 16000.0f, 640};
-    _distanceSpeedProfiles[(int)DistanceType::VERY_LONG] = {16000.0f, 24000.0f, 960};
-#endif
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::NEGLIGIBLE)] = {0.0f, 0.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::VERY_SHORT)] = {500.0f, 1000.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::SHORT)]      = {800.0f, 1600.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::MEDIUM)]     = {3000.0f, 8000.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::LONG)]       = {8000.0f, 16000.0f};
+    _distanceSpeedProfiles[static_cast<uint8_t>(DistanceType::VERY_LONG)]  = {16000.0f, 24000.0f};
 }
 
 PositionController::~PositionController()
@@ -164,6 +140,13 @@ bool PositionController::begin()
     _stepper.setAcceleration(_speedProfiles[idx].acceleration);
 
     setCurrentPosition(0);
+
+    // 🔹 Print to check the correctness of the initialization:
+    const size_t n = sizeof(_distanceSpeedProfiles) / sizeof(_distanceSpeedProfiles[0]);
+    for (int i = 0; i < (int)n; i++)
+    {
+        Serial.printf("[DBG] Profile[%d]: vmax=%.0f, acc=%.0f\r\n", i, _distanceSpeedProfiles[i].maxSpeed, _distanceSpeedProfiles[i].acceleration);
+    }
 
     _initialized = true;
     return true;
@@ -206,11 +189,16 @@ bool PositionController::isEnabled() const
 bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementType)
 {
     if (!_enabled || !_initialized)
+    {
+        Serial.printf("[WARN] M%d: moveToSteps aborted (_enabled=%d, _initialized=%d)\r\n", _motorId + 1, _enabled, _initialized);
         return false;
+    }
 
     const int32_t current = getCurrentSteps();
     const int32_t delta   = targetSteps - current;
     const int32_t dist    = std::abs(delta);
+
+    Serial.printf("\r\n[DBG] M%d current=%ld, target=%ld, delta=%ld, dist=%ld\r\n", _motorId + 1, static_cast<long>(current), static_cast<long>(targetSteps), static_cast<long>(delta), static_cast<long>(dist));
 
     if (!isValidMovementDistanceSteps(dist))
     {  // amir e
@@ -226,6 +214,16 @@ bool PositionController::moveToSteps(int32_t targetSteps, MovementType movementT
     cmd.relative              = false;
     cmd.priority              = 1;
     cmd.movementDistanceSteps = dist;
+
+    Serial.printf("\r\n[DBG] Queue movement: motorId=%d, targetSteps=%ld, dist=%ld, type=%d, distType=%d, rel=%d, prio=%d\r\n\r\n",
+                  cmd.motorId,
+                  static_cast<long>(cmd.targetSteps),
+                  static_cast<long>(cmd.movementDistanceSteps),
+                  static_cast<int>(cmd.movementType),
+                  static_cast<int>(cmd.distanceType),
+                  cmd.relative,
+                  cmd.priority);
+
     return queueMovementCommand(cmd);
 }
 
@@ -442,12 +440,35 @@ void PositionController::setDirection(bool dir)
     //_dirMultiplexer.setMotorDirection(_motorId, dir);
 }
 
+static const char* toStr(MovementType t)
+{
+    switch (t)
+    {
+        case MovementType::SHORT_RANGE:
+            return "SHORT";
+        case MovementType::MEDIUM_RANGE:
+            return "MEDIUM";
+        case MovementType::LONG_RANGE:
+            return "LONG";
+        default:
+            return "UNK";
+    }
+}
+
 bool PositionController::executeMovement(const MovementCommand& cmd)
 {
+    const int32_t target = cmd.targetSteps;
+
+    Serial.printf("\r\n[DBG] M%d executeMovement: tgt=%ld, mType=%s, enabled=%d, init=%d\r\n", _motorId + 1, static_cast<long>(target), toStr(cmd.movementType), _enabled, _initialized);
+
+    if (!_enabled || !_initialized)
+    {
+        Serial.printf("[WARN] M%d executeMovement aborted: _enabled=%d, _initialized=%d ❌\r\n", _motorId + 1, _enabled, _initialized);
+        return false;
+    }
+
     if (!_enabled || !_initialized)
         return false;
-
-    const int32_t target = cmd.targetSteps;
 
     if (xSemaphoreTake(_statusMutex, pdMS_TO_TICKS(50)) == pdTRUE)
     {
@@ -456,8 +477,15 @@ bool PositionController::executeMovement(const MovementCommand& cmd)
         _status.movementStartTime = now_ms();
         _status.lastMovementType  = cmd.movementType;
         xSemaphoreGive(_statusMutex);
-    }
 
+        Serial.printf("\r\n[DBG] M%d status set: targetSteps=%ld, isMoving=1, lastType=%s, t0=%lu ms ✅\r\n", _motorId + 1, static_cast<long>(_status.targetSteps), toStr(_status.lastMovementType), static_cast<unsigned long>(_status.movementStartTime));
+    }
+    else
+    {
+        Serial.printf("\r\n[ERR] M%d executeMovement: xSemaphoreTake(_statusMutex,50ms) FAILED ❗ (tgt=%ld)\r\n", _motorId + 1, static_cast<long>(target));
+        return false;
+    }
+    // inja
     configureSpeedByDistanceSteps(cmd.movementDistanceSteps);
     _stepper.moveTo(static_cast<long>(target));
 
@@ -487,9 +515,24 @@ void PositionController::positionControlTask(void* /*parameter*/)
     {
         if (_movementCommandQueue && xQueueReceive(_movementCommandQueue, &cmd, 0) == pdTRUE)
         {
+            Serial.printf("\r\n[DBG] Dequeued cmd: motorId=%d, tgt=%ld, dist=%ld, type=%d, distType=%d, rel=%d, prio=%d\r\n",
+                          cmd.motorId,
+                          static_cast<long>(cmd.targetSteps),
+                          static_cast<long>(cmd.movementDistanceSteps),
+                          static_cast<int>(cmd.movementType),
+                          static_cast<int>(cmd.distanceType),
+                          cmd.relative,
+                          cmd.priority);
+
             if (cmd.motorId < POSITION_CONTROL_COUNT && _instances[cmd.motorId])
             {
+                Serial.printf("\r\n[DBG] Executing cmd for Motor%d...\r\n", cmd.motorId + 1);
+
                 _instances[cmd.motorId]->executeMovement(cmd);
+            }
+            else
+            {
+                Serial.printf("\r\n[WARN] Invalid motorId=%d or null instance — command skipped ❌\r\n", cmd.motorId);
             }
         }
 
@@ -498,6 +541,7 @@ void PositionController::positionControlTask(void* /*parameter*/)
             if (_instances[i])
             {
                 _instances[i]->runPositionControl();
+                _instances[i]->handleMovementComplete();
             }
         }
 
@@ -576,7 +620,7 @@ void stopPositionControlSystem()
 // Distance helpers (unchanged semantics)
 DistanceType PositionController::calculateDistanceTypeSteps(int32_t d)
 {
-    if (d < 6)
+    if (d < 1)
         return DistanceType::NEGLIGIBLE;
     if (d < 32)
         return DistanceType::VERY_SHORT;
@@ -606,76 +650,138 @@ void PositionController::setDistanceBasedSpeedProfile(DistanceType t)
     }
 }
 
+// If you don't have std::clamp, make your own style clamp:
+static inline float clampf(float x, float lo, float hi)
+{
+    return x < lo ? lo : (x > hi ? hi : x);
+}
+
 float PositionController::calculateOptimalSpeedForDistanceSteps(int32_t d)
 {
-    const DistanceType t = calculateDistanceTypeSteps(d);
+    const int32_t      dist = std::abs(d);  // ← Always work with absolute values
+    const DistanceType t    = calculateDistanceTypeSteps(dist);
     if (t == DistanceType::NEGLIGIBLE)
         return 0.0f;
-    const int idx = static_cast<int>(t);
-    if (idx >= 0 && idx < 6)
+
+    // Actual size of the profile table
+    const size_t nProfiles = sizeof(_distanceSpeedProfiles) / sizeof(_distanceSpeedProfiles[0]);
+    const int    idx       = static_cast<int>(t);
+    if (idx < 0 || idx >= static_cast<int>(nProfiles))
     {
-        const float base = _distanceSpeedProfiles[idx].maxSpeed;
-        float       mul  = 1.0f;
-        switch (t)
-        {
-            case DistanceType::VERY_SHORT:
-                mul = 0.5f + (d - 6) * 0.5f / 26.0f;
-                break;
-            case DistanceType::SHORT:
-                mul = 0.7f + (d - 32) * 0.3f / 32.0f;
-                break;
-            case DistanceType::MEDIUM:
-                mul = 0.8f + (d - 64) * 0.2f / 256.0f;
-                break;
-            case DistanceType::LONG:
-                mul = 0.9f + (d - 320) * 0.1f / 320.0f;
-                break;
-            case DistanceType::VERY_LONG:
-                mul = 1.0f;
-                break;
-            default:
-                mul = 1.0f;
-                break;
-        }
-        return base * mul;
+        // safe fallback
+        return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].maxSpeed;
     }
-    return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].maxSpeed;
+
+    const float base = _distanceSpeedProfiles[idx].maxSpeed;
+    float       mul  = 1.0f;
+
+    // Note: a..b bounds must be the same as calculateDistanceTypeSteps logic
+    switch (t)
+    {
+        case DistanceType::VERY_SHORT:
+        {  // [6,32)
+            const float a = 6.f, b = 32.f;
+            mul = 0.5f + (dist - a) * (1.0f - 0.5f) / (b - a);
+            break;
+        }
+        case DistanceType::SHORT:
+        {  // [32,64)
+            const float a = 32.f, b = 64.f;
+            mul = 0.7f + (dist - a) * (1.0f - 0.7f) / (b - a);
+            break;
+        }
+        case DistanceType::MEDIUM:
+        {  // [64,320)
+            const float a = 64.f, b = 320.f;
+            mul = 0.8f + (dist - a) * (1.0f - 0.8f) / (b - a);
+            break;
+        }
+        case DistanceType::LONG:
+        {  // [320,640) — if this is the range in your classification
+            const float a = 320.f, b = 640.f;
+            mul = 0.9f + (dist - a) * (1.0f - 0.9f) / (b - a);
+            break;
+        }
+        case DistanceType::VERY_LONG:
+            mul = 1.0f;
+            break;
+
+        default:
+            mul = 1.0f;
+            break;
+    }
+
+    // Prevent out-of-range operation
+    mul = clampf(mul, 0.0f, 1.0f);
+
+    float v = base * mul;
+
+    // If you have a global speed limit, apply it here
+    // if (_maxAllowedSpeedStepsPerSec > 0) v = std::min(v, _maxAllowedSpeedStepsPerSec);
+
+    // Optional debug:
+    // Serial.printf("[DBG] M%d: d=%ld, type=%d, base=%.0f, mul=%.2f -> v=%.0f ​​st/s\r\n",
+    // _motorId + 1, static_cast<long>(dist), idx, base, mul, v);
+
+    return v;
 }
 
 float PositionController::calculateOptimalAccelerationForDistanceSteps(int32_t d)
 {
-    const DistanceType t = calculateDistanceTypeSteps(d);
+    const int32_t      dist = std::abs(d);
+    const DistanceType t    = calculateDistanceTypeSteps(dist);
     if (t == DistanceType::NEGLIGIBLE)
         return 0.0f;
-    const int idx = static_cast<int>(t);
-    if (idx >= 0 && idx < 6)
+
+    const size_t n   = sizeof(_distanceSpeedProfiles) / sizeof(_distanceSpeedProfiles[0]);
+    const int    idx = (int)t;
+    if (idx < 0 || idx >= (int)n)
+        return _distanceSpeedProfiles[(int)DistanceType::MEDIUM].acceleration;
+
+    const float base = _distanceSpeedProfiles[idx].acceleration;
+    float       mul  = 1.0f;
+
+    switch (t)
     {
-        const float base = _distanceSpeedProfiles[idx].acceleration;
-        float       mul  = 1.0f;
-        switch (t)
+        case DistanceType::VERY_SHORT:
         {
-            case DistanceType::VERY_SHORT:
-                mul = 0.3f + (d - 6) * 0.4f / 26.0f;
-                break;
-            case DistanceType::SHORT:
-                mul = 0.5f + (d - 32) * 0.3f / 32.0f;
-                break;
-            case DistanceType::MEDIUM:
-                mul = 0.7f + (d - 64) * 0.2f / 256.0f;
-                break;
-            case DistanceType::LONG:
-                mul = 0.8f + (d - 320) * 0.2f / 320.0f;
-                break;
-            case DistanceType::VERY_LONG:
-                mul = 1.0f;
-                break;
-            default:
-                mul = 1.0f;
-                break;
+            const float a = 6.f, b = 32.f;
+            mul = 0.5f + (dist - a) * (1.0f - 0.5f) / (b - a);
+            break;
         }
-        return base * mul;
+        case DistanceType::SHORT:
+        {
+            const float a = 32.f, b = 64.f;
+            mul = 0.7f + (dist - a) * (1.0f - 0.7f) / (b - a);
+            break;
+        }
+        case DistanceType::MEDIUM:
+        {
+            const float a = 64.f, b = 320.f;
+            mul = 0.8f + (dist - a) * (1.0f - 0.8f) / (b - a);
+            break;
+        }
+        case DistanceType::LONG:
+        {
+            const float a = 320.f, b = 640.f;
+            mul = 0.9f + (dist - a) * (1.0f - 0.9f) / (b - a);
+            break;
+        }
+        case DistanceType::VERY_LONG:
+        default:
+            mul = 1.0f;
+            break;
     }
-    return _distanceSpeedProfiles[static_cast<int>(DistanceType::MEDIUM)].acceleration;
+    mul = clampf(mul, 0.0f, 1.0f);
+
+    float a = base * mul;
+
+    // Safe minimums
+    const float minAccel = 1000.0f;  // Depending on the hardware
+    if (a < minAccel)
+        a = minAccel;
+
+    return a;
 }
 
 void PositionController::configureSpeedByDistanceSteps(int32_t d)
@@ -685,11 +791,14 @@ void PositionController::configureSpeedByDistanceSteps(int32_t d)
         Serial.printf("[INFO] Motor%d: speed config skipped (movement %d < %d steps)\r\n", _motorId + 1, d, VALID_MOVEMENT_DISTANCE_STEPS);
         return;
     }
-    const float v = calculateOptimalSpeedForDistanceSteps(d);
-    const float a = calculateOptimalAccelerationForDistanceSteps(d);
+
+    float v = calculateOptimalSpeedForDistanceSteps(d);
+    float a = calculateOptimalAccelerationForDistanceSteps(d);
+
     _stepper.setMaxSpeed(v);
     _stepper.setAcceleration(a);
-    // Serial.printf("[INFO] Motor%d: d=%d -> v=%.0f st/s, a=%.0f st/s^2\r\n", _motorId + 1, d, v, a);
+
+    Serial.printf("\r\n[INFO] Motor%d: d=%ld -> v=%.0f st/s, a=%.0f st/s^2\r\n", _motorId + 1, (long)d, v, a);
 }
 
 void PositionController::attachOnComplete(void (*cb)())

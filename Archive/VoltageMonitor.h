@@ -25,10 +25,10 @@ public:
     using VoltageDropCallback = std::function<void()>;
 
     // Monitoring modes
-    enum class MonitorMode
+    enum class MonitorMode : std::uint8_t
     {
-        DIGITAL_,  // Digital HIGH/LOW monitoring
-        ANALOG_    // Analog threshold-based monitoring
+        DIGITAL_ = 0,  // Digital HIGH/LOW monitoring
+        ANALOG_  = 1   // Analog threshold-based monitoring
     };
 
     /**
@@ -38,8 +38,7 @@ public:
      * @param threshold Voltage threshold for triggering (0-4095 for analog, ignored for digital)
      * @param debounceMs Debounce time in milliseconds
      */
-    VoltageMonitor(uint8_t pin, MonitorMode mode = MonitorMode::DIGITAL_, uint16_t threshold = 2048,
-                   uint16_t debounceMs = 50);
+    VoltageMonitor(uint8_t pin, MonitorMode mode = MonitorMode::DIGITAL_, uint16_t threshold = 2048, uint16_t debounceMs = 50);
 
     /**
      * @brief Initialize the voltage monitor

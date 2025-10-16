@@ -294,7 +294,7 @@ void loop()
         if (gPC[i]->isEnabled())
         {
             gEnc[i].handleInAbsenceOfInterrupt();
-            gPC[i]->handleMovementComplete();
+            // gPC[i]->handleMovementComplete();
         }
     }
 
@@ -601,6 +601,18 @@ static void handleMove(cmd* c)
         if (gPC[n]->moveToSteps(stable, MovementType::MEDIUM_RANGE))
         {
             Serial.printf("[INFO] Homing to stable first: stable (%ld steps), current (%ld steps)\r\n", static_cast<long>(stable), static_cast<long>(seedSteps));
+
+            /*
+            [CLI] Current motor = 2 ℹ️
+            [INFO] Stable before=3556 steps, after=3556 steps (100.01°)
+            [INFO] Seed current position:
+                microsteps : 12800 steps
+                turns      : 0
+                encoder    : 99.67°
+                seedSteps  : 3544 steps
+                seedAngle  : 99.68°
+            [INFO] Homing to stable first: stable (3556 steps), current (3544 steps)
+            */
         }
         else
         {
@@ -1145,13 +1157,14 @@ static bool seedCurrentStepWithEncoder(uint8_t idx, int32_t& seedSteps)
         gPC[idx]->setCurrentPosition(seedSteps);
 
         // print
+        /*
         Serial.printf("[INFO] Seed current position:\r\n");
         Serial.printf("    microsteps : %d steps\r\n", ms);
         Serial.printf("    turns      : %d\r\n", turns);
         Serial.printf("    encoder    : %.2f°\r\n", deg);
         Serial.printf("    seedSteps  : %d steps\r\n", seedSteps);
         Serial.printf("    seedAngle  : %.2f°\r\n", seedDegrees);
-
+        */
         return true;
     }
     else

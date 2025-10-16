@@ -22,22 +22,22 @@ static constexpr uint32_t REOLUTION_BITS                = 12U;
 static constexpr uint32_t RESOLUTION_STEPS              = (1UL << REOLUTION_BITS);  // 4096
 
 // Movement types
-enum class MovementType
+enum class MovementType : std::uint8_t
 {
-    SHORT_RANGE,   // Few degrees
-    MEDIUM_RANGE,  // Medium range
-    LONG_RANGE     // Long range
+    SHORT_RANGE  = 0,  // Few degrees
+    MEDIUM_RANGE = 1,  // Medium range
+    LONG_RANGE   = 2   // Long range
 };
 
 // Distance-based movement types for precise control
-enum class DistanceType
+enum class DistanceType : std::uint8_t
 {
-    NEGLIGIBLE,  // < 6 steps - ignored
-    VERY_SHORT,  // 6 - 32 steps
-    SHORT,       // 32 - 64 steps
-    MEDIUM,      // 64 - 320 steps
-    LONG,        // 320 - 640 steps
-    VERY_LONG    // > 640 steps
+    NEGLIGIBLE = 0,  // < 6 steps - ignored
+    VERY_SHORT = 1,  // 6 - 32 steps
+    SHORT      = 2,  // 32 - 64 steps
+    MEDIUM     = 3,  // 64 - 320 steps
+    LONG       = 4,  // 320 - 640 steps
+    VERY_LONG  = 5   // > 640 steps
 };
 
 // Movement command structure
@@ -150,9 +150,8 @@ private:
     // Distance-based speed profiles for precise control
     struct DistanceSpeedProfile
     {
-        float   maxSpeed;                   // Steps per second
-        float   acceleration;               // Steps per second squared
-        int32_t decelerationDistanceSteps;  // Distance to start deceleration (steps)
+        float maxSpeed;      // Steps per second
+        float acceleration;  // Steps per second squared
     };
     DistanceSpeedProfile _distanceSpeedProfiles[6];  // Indexed by DistanceType
 
