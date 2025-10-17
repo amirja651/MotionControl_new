@@ -6,10 +6,10 @@
 #include <Arduino.h>
 
 #ifndef LINK_SCLK
-    #define LINK_SCLK 36  // Example for S3 Mini: Change
-    #define LINK_MISO 37
-    #define LINK_MOSI 35
-    #define LINK_CS   34
+    #define LINK_SCLK 7  // Example for S3 Mini: Change
+    #define LINK_MISO 8
+    #define LINK_MOSI 13
+    #define LINK_CS   10
 #endif
 
 class MiniLinkSlave
@@ -78,7 +78,7 @@ public:
     }
     uint16_t getEncoderRaw(uint8_t motor)
     {
-        // TODO: مقدار واقعی از MAE3
+        // TODO: actual value from MAE3
         (void)motor;
         return _dbg_enc;  // Sample
     }
