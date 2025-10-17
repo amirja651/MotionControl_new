@@ -1,18 +1,25 @@
 #include <Arduino.h>
 #include <Preferences.h>
-#include <SimpleCLI.h>
 
-#include "CommandHistory.h"
-#include "DirMultiplexer_lean.h"     // fast DIR mux
-#include "MAE3Encoder_lean.h"        // MAE3 PWM encoder (lean)
-#include "Pins_lean.h"               // pin maps
-#include "PositionController.h"      // motion controller & RTOS task
-#include "SystemDiagnostics_lean.h"  // diagnostics
-#include "TMC5160Manager_lean.h"     // driver manager
-#include "UnitConverter_lean.h"      // unit conversions
-#include "VoltageMonitor_lean.h"     // voltage monitor
+#define MASTER 0
 
-#pragma region "Define Variables"
+#if MASTER
+    #include "CommandHistory.h"
+    #include "DirMultiplexer_lean.h"  // fast DIR mux
+    #include "MAE3Encoder_lean.h"     // MAE3 PWM encoder (lean)
+    #include "MiniLinkMaster.h"
+    #include "Pins_lean.h"               // pin maps
+    #include "PositionController.h"      // motion controller & RTOS task
+    #include "SystemDiagnostics_lean.h"  // diagnostics
+    #include "TMC5160Manager_lean.h"     // driver manager
+    #include "UnitConverter_lean.h"      // unit conversions
+    #include "VoltageMonitor_lean.h"     // voltage monitor
+
+    #include <SimpleCLI.h>
+
+    #pragma region "Define Variables"
+
+MiniLinkMaster link;
 
 SimpleCLI cli;
 
@@ -104,9 +111,9 @@ double_t gLeadPitchUm = kDefaultLeadPitchUm;
 
 static const char* kKeyPitchUm = "sys.pitch_um";
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "Forward declarations"
+    #pragma region "Forward declarations"
 // ---------- Forward declarations (place before setup()) ----------
 static String keyStable(uint8_t i);
 static String keyMode(uint8_t i);
@@ -167,9 +174,9 @@ inline float normalizeAndClampAngle(float angleDeg);
 int32_t         safeReadEncoderDeg(int32_t curSteps);
 inline double_t positiveMod(double_t value, double_t base);
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "Setup and Loop"
+    #pragma region "Setup and Loop"
 void setup()
 {
     SPI.begin(spi_sck(), spi_miso(), spi_mosi());
@@ -178,10 +185,18 @@ void setup()
     Serial.begin(kSerialBaud);
     esp_log_level_set("*", ESP_LOG_INFO);
     delay(1000);
+
+    link.begin(10'000'000);  // 10MHz
+
     while (!Serial)
     {
         delay(10);
     }
+
+    if (link.ping())
+        Serial.println("Mini PONG!");
+    else
+        Serial.println("Mini not responding.");
 
     // NVS
     gPrefs.begin("motion", false /*rw*/);
@@ -191,9 +206,9 @@ void setup()
     SystemDiagnostics::printSystemStatus();
 
     const char* txt = "**NOT**";
-#ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
+    #ifdef CONFIG_FREERTOS_CHECK_STACKOVERFLOW
     txt = "";
-#endif
+    #endif
     Serial.printf("Stack overflow checking %s enabled\r\n", txt);
 
     // GPIO safe init
@@ -326,15 +341,28 @@ void loop()
         Serial.println("[POWER] Drop detected → motors stopped; last start kept as stable");
     }
 
+    // esp32-mini links
+    static uint32_t t0 = millis();
+    if (millis() - t0 > 1000)
+    {
+        t0          = millis();
+        int32_t pos = 0;
+        if (link.getPosition(5, pos))
+        {
+            Serial.print("M5 pos = ");
+            Serial.println(pos);
+        }
+    }
+
     // CLI
     serviceCLI();
 
     delay(1);
 }
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "Save and Load"
+    #pragma region "Save and Load"
 // Keys: "m<idx>.stable_steps", "m<idx>.mode", "sys.pitch_um"
 static String keyStable(uint8_t i)
 {
@@ -357,9 +385,9 @@ static int32_t loadStableSteps(uint8_t idx)
     return gPrefs.getInt(keyStable(idx).c_str(), 0);
 }
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "CLI handlers"
+    #pragma region "CLI handlers"
 // ---------- CLI handlers ----------
 static void handleMotor(cmd* c)
 {
@@ -623,9 +651,9 @@ static void handleMove(cmd* c)
     onPendingTargetSteps();
 }
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "CLI"
+    #pragma region "CLI"
 // ---------- Setup & Loop ----------
 static void attachCli()
 {
@@ -900,9 +928,9 @@ static void initializeCLI()
     cmdTest.setDescription("Test the conversion functions");
 }
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "Read Encoder"
+    #pragma region "Read Encoder"
 // Read the current position from the encoder (degrees or micrometers)
 static bool readEncoderPulses(uint8_t idx, double_t& pulses)
 {
@@ -943,9 +971,9 @@ void enableSelectedEncoder(uint8_t idx)
             gEnc[i].disable();
     }
 }
-#pragma endregion
+    #pragma endregion
 
-#pragma region "Helpers"
+    #pragma region "Helpers"
 // ---------- Helpers ----------
 inline float clampAngle(float angleDeg)
 {
@@ -1012,9 +1040,9 @@ static inline void printPrompt()
     Serial.print("> ");
 }
 
-#pragma endregion
+    #pragma endregion
 
-#pragma region "Callback"
+    #pragma region "Callback"
 static void onVoltageDropISR()
 {
     gVoltageDrop = true;
@@ -1200,7 +1228,7 @@ static bool seedCurrentStepWithEncoder(uint8_t idx, int32_t& seedSteps)
     return true;
 }
 
-#pragma endregion
+    #pragma endregion
 
 // Function that checks for special value before reading encoder
 int32_t safeReadEncoderDeg(int32_t curSteps)
@@ -1231,3 +1259,22 @@ inline double_t positiveMod(double_t value, double_t base)
         result += base;
     return result;
 }
+
+#else
+    #include "MiniLinkSlave.h"
+
+MiniLinkSlave linkSlave;
+
+void setup()
+{
+    Serial.begin(115200);
+    linkSlave.begin2();
+    Serial.println("SPI Slave ready.");
+}
+
+void loop()
+{
+    linkSlave.serviceOnce();  // blocks until a frame arrives
+}
+
+#endif
